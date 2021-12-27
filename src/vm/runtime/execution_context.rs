@@ -1,3 +1,5 @@
+use tracing_rc::rc::Gc;
+
 use crate::{
     compiling::Chunk,
     vm::{
@@ -201,6 +203,12 @@ impl Context<'_> {
                     self.in_scope.add_result(self.in_scope.load_va(0));
                 }
 
+                // Allocate values
+                Op::AllocFunc(AllocFunc { dest, id }) => {
+                    let func = Value::Function(Gc::new(Function::new(&self.in_scope, id)));
+                    self.in_scope.store(dest, func);
+                }
+
                 // Alter the active scopes
                 Op::PushScope(descriptor) => {
                     self.in_scope.push_scope(descriptor);
@@ -244,7 +252,6 @@ impl Context<'_> {
         Ok(self.in_scope.into_results().into())
     }
 
-    // TODO(functions): alloc call isn
     fn start_call(
         &mut self,
         target: Register,

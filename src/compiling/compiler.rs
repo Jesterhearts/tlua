@@ -172,8 +172,13 @@ where
         register
     }
 
-    fn init_alloc_fn(self, _compiler: &mut CompilerContext, _value: FuncId) -> RegisterTy {
-        todo!()
+    fn init_alloc_fn(self, compiler: &mut CompilerContext, value: FuncId) -> RegisterTy {
+        let register = self.no_init_needed();
+        compiler.write(vm::opcodes::AllocFunc::from((
+            UnasmRegister::from(register),
+            value,
+        )));
+        register
     }
 
     /// Indicate that the register should be initialized from another register.

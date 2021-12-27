@@ -6,6 +6,7 @@ use derive_more::{
 use crate::vm::{
     binop::*,
     Constant,
+    FuncId,
     OpError,
     Register,
 };
@@ -81,6 +82,8 @@ pub(crate) enum Op<RegisterTy> {
     Set(Set<RegisterTy>),
     SetIndirect(SetIndirect<RegisterTy>),
     SetFromVa(SetFromVa<RegisterTy>),
+    /// Allocate a new function
+    AllocFunc(AllocFunc<RegisterTy>),
     /// Push a new scope as the current local scope.
     PushScope(ScopeDescriptor),
     /// Discard the current scope and restore the most recently pushed scope.
@@ -229,6 +232,12 @@ pub(crate) struct MapRet<RegTy> {
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub(crate) struct Raise {
     pub(crate) err: OpError,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub(crate) struct AllocFunc<RegTy> {
+    pub(crate) dest: RegTy,
+    pub(crate) id: FuncId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]

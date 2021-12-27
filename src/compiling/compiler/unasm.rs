@@ -208,6 +208,11 @@ impl UnasmOp {
                 index,
             }
             .into(),
+            Op::AllocFunc(AllocFunc { dest, id }) => AllocFunc {
+                dest: dest.into(),
+                id,
+            }
+            .into(),
             Op::PushScope(descriptor) => descriptor.into(),
             Op::PopScope => Op::PopScope,
             Op::StartCall(StartCall { target }) => StartCall {

@@ -171,9 +171,13 @@ pub struct Function {
 }
 
 impl Function {
-    pub(crate) fn new(id: FuncId) -> Self {
+    pub(crate) fn new(available_scope: &ScopeSet, id: FuncId) -> Self {
+        // TODO(perf): This is way too pessimistic and could use info from the compiler
+        // to cut down on the size of the scopes it captures.
+        let mut referenced_scopes = available_scope.referenced.clone();
+        referenced_scopes.extend(std::iter::once(available_scope.local.clone()));
         Self {
-            referenced_scopes: Default::default(),
+            referenced_scopes,
             id,
         }
     }
