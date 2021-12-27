@@ -26,6 +26,7 @@ smallvec = '^1.0'
 sys-locale = '^0.1'
 take_mut = '^0.2'
 thiserror = '^1.0'
+tracing-rc = '^0.1'
 
 [dependencies.bumpalo]
 version = '^3.0'

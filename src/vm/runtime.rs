@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use tracing_rc::rc::collect_full;
+
 use crate::{
     ast::identifiers::Ident,
     compiling::Chunk,
@@ -11,21 +13,9 @@ use crate::{
 };
 
 pub(crate) mod execution_context;
-pub(crate) mod heap;
 pub(crate) mod value;
 
-pub use self::{
-    heap::{
-        collect,
-        collect_full,
-        collect_with_options,
-        CollectionType,
-        GcPtr,
-        GcVisitor,
-        Traceable,
-    },
-    value::Value,
-};
+pub use self::value::Value;
 
 #[derive(Debug, Default)]
 pub struct Runtime {
@@ -60,7 +50,7 @@ impl Runtime {
         );
 
         let result = execution_context.execute()?;
-        collect();
+        collect_full();
 
         Ok(result)
     }

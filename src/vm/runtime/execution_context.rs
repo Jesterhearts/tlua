@@ -255,7 +255,7 @@ impl Context<'_> {
             _ => todo!("Metatables are not supported"),
         };
 
-        let results = self.execute_call(&(*func).borrow(), other_results)?;
+        let results = self.execute_call(&func.borrow(), other_results)?;
 
         match self.instructions[self.instruction] {
             // We just performed a call, so if the very next instruction is StartCallExtending, we

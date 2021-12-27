@@ -5,19 +5,14 @@ use std::{
 };
 
 use derive_more::From;
+use tracing_rc::{
+    rc::Gc,
+    Trace,
+};
 
 use crate::{
     values::LuaString,
-    vm::{
-        runtime::{
-            heap::{
-                GcPtr,
-                Traceable,
-            },
-            GcVisitor,
-        },
-        Constant,
-    },
+    vm::Constant,
 };
 
 pub(crate) mod function;
@@ -31,15 +26,15 @@ pub use self::{
     table::Table,
 };
 
-#[derive(Debug, Clone, From)]
+#[derive(Debug, Clone, Trace, From)]
 pub enum Value {
     Nil,
     Bool(bool),
     Number(Number),
     String(Rc<RefCell<LuaString>>),
-    Table(GcPtr<RefCell<Table>>),
+    Table(#[trace] Gc<Table>),
+    Function(#[trace] Gc<Function>),
     Userdata(((),)),
-    Function(GcPtr<RefCell<Function>>),
 }
 
 impl PartialEq for Value {
@@ -52,19 +47,6 @@ impl PartialEq for Value {
             (Self::Userdata(_), Self::Userdata(_)) => todo!(),
             (Self::Function(_), Self::Function(_)) => todo!(),
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
-        }
-    }
-}
-
-impl Traceable for Value {
-    unsafe fn visit_children(&self, visitor: &mut GcVisitor) {
-        match self {
-            Value::Table(t) => visitor(t.node()),
-            Value::Function(f) => visitor(f.node()),
-
-            Value::Userdata(_) => todo!(),
-
-            Value::Nil | Value::Bool(_) | Value::Number(_) | Value::String(_) => (),
         }
     }
 }

@@ -9,13 +9,13 @@ use derive_more::{
     From,
     Into,
 };
+use tracing_rc::{
+    rc::Trace,
+    Trace,
+};
 
 use crate::vm::{
     opcodes::ScopeDescriptor,
-    runtime::heap::{
-        GcVisitor,
-        Traceable,
-    },
     FuncId,
     Register,
     Value,
@@ -30,6 +30,14 @@ impl Scope {
     pub(crate) fn new(size: usize) -> Self {
         Self {
             registers: Rc::new(vec![RefCell::new(Value::Nil); size]),
+        }
+    }
+}
+
+impl Trace for Scope {
+    fn visit_children(&self, visitor: &mut tracing_rc::rc::GcVisitor) {
+        for v in self.registers.iter() {
+            v.visit_children(visitor);
         }
     }
 }
@@ -154,23 +162,12 @@ impl ScopeSet {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Trace)]
 pub struct Function {
     pub(crate) referenced_scopes: Vec<Scope>,
-    pub(crate) id: FuncId,
-}
 
-impl Traceable for RefCell<Function> {
-    unsafe fn visit_children(&self, visitor: &mut GcVisitor) {
-        for value in self
-            .borrow()
-            .referenced_scopes
-            .iter()
-            .flat_map(|scope| scope.registers.iter())
-        {
-            value.borrow().visit_children(visitor)
-        }
-    }
+    #[trace(ignore)]
+    pub(crate) id: FuncId,
 }
 
 impl Function {
