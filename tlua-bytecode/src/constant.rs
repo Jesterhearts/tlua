@@ -66,7 +66,12 @@ impl NumLike for Constant {
 
 impl Constant {
     pub fn short_type_name(&self) -> &'static str {
-        todo!()
+        match self {
+            Constant::Nil => "nil",
+            Constant::Bool(_) => "bool",
+            Constant::Float(_) | Constant::Integer(_) => "number",
+            Constant::String(_) => "string",
+        }
     }
 }
 

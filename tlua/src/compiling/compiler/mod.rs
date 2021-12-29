@@ -1050,12 +1050,19 @@ impl CompilerContext<'_> {
             (Constant::Float(lhs), Constant::Float(rhs)) => {
                 Ok(Op::apply_numbers(lhs.into(), rhs.into()).into())
             }
+            (Constant::Float(lhs), Constant::Integer(rhs)) => {
+                Ok(Op::apply_numbers(lhs.into(), rhs.into()).into())
+            }
             (Constant::Integer(lhs), Constant::Integer(rhs)) => {
+                Ok(Op::apply_numbers(lhs.into(), rhs.into()).into())
+            }
+            (Constant::Integer(lhs), Constant::Float(rhs)) => {
                 Ok(Op::apply_numbers(lhs.into(), rhs.into()).into())
             }
             (Constant::String(lhs), Constant::String(rhs)) => {
                 Ok(Op::apply_strings(&lhs, &rhs).into())
             }
+            // TODO(lang-5.4): This should be truthy for eq/ne.
             (lhs, rhs) => Err(OpError::CmpErr {
                 lhs: lhs.short_type_name(),
                 rhs: rhs.short_type_name(),
