@@ -12,7 +12,7 @@
 - ✔ Full parser
 - Full bytecode generator
 - Support for Tables
-- Safe GC Support
+- ✔ Safe GC Support
 - Support for Userdata
 - Benchmarks & performance at least in the neighborhood of PUC-Rio Lua
 - Fuzz testing
