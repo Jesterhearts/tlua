@@ -1,28 +1,31 @@
+use tlua_bytecode::{
+    binop::f64inbounds,
+    opcodes::{
+        Op,
+        *,
+    },
+    ByteCodeError,
+    OpError,
+    Register,
+    Truthy,
+};
 use tracing_rc::rc::Gc;
 
 use crate::{
     compiling::Chunk,
     vm::{
-        binop::{
-            f64inbounds,
-            traits::ApplyBinop,
-        },
-        opcodes::{
-            Op,
-            *,
-        },
-        runtime::value::{
-            function::{
-                Scope,
-                ScopeSet,
+        binop::traits::ApplyBinop,
+        runtime::{
+            value::{
+                function::{
+                    Scope,
+                    ScopeSet,
+                },
+                Function,
+                Number,
             },
-            Function,
-            Number,
+            Value,
         },
-        ByteCodeError,
-        OpError,
-        Register,
-        Value,
     },
 };
 

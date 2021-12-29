@@ -1,12 +1,10 @@
+use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::while_loop::WhileLoop;
 
-use crate::{
-    compiling::{
-        CompileError,
-        CompileStatement,
-        CompilerContext,
-    },
-    vm::OpError,
+use crate::compiling::{
+    CompileError,
+    CompileStatement,
+    CompilerContext,
 };
 
 impl CompileStatement for WhileLoop<'_> {

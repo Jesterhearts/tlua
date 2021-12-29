@@ -1,3 +1,4 @@
+use tlua_bytecode::OpError;
 use tlua_parser::{
     ast::{
         block::{
@@ -9,13 +10,10 @@ use tlua_parser::{
     list::List,
 };
 
-use crate::{
-    compiling::{
-        CompileError,
-        CompileStatement,
-        CompilerContext,
-    },
-    vm::OpError,
+use crate::compiling::{
+    CompileError,
+    CompileStatement,
+    CompilerContext,
 };
 
 impl CompileStatement for List<'_, Statement<'_>> {

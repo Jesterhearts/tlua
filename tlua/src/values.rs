@@ -1,11 +1,10 @@
 use std::borrow::Borrow;
 
+use tlua_bytecode::StringLike;
 use tlua_parser::ast::{
     constant_string::ConstantString,
     identifiers::Ident,
 };
-
-use crate::vm::binop::traits::StringLike;
 
 #[derive(Clone, PartialEq, PartialOrd, Hash, Default)]
 pub struct LuaString(Vec<u8>);

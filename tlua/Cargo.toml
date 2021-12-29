@@ -22,6 +22,9 @@ tracing-rc = '^0.1'
 version = '^0.1'
 features = [ "attributes" ]
 
+[dependencies.tlua-bytecode]
+path = "../tlua-bytecode"
+
 [dependencies.tlua-parser]
 path = "../tlua-parser"
 

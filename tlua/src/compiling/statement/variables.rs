@@ -1,16 +1,14 @@
+use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::variables::{
     Attribute,
     LocalVarList,
 };
 
-use crate::{
-    compiling::{
-        compiler::LocalVariableTarget,
-        CompileError,
-        CompileStatement,
-        CompilerContext,
-    },
-    vm::OpError,
+use crate::compiling::{
+    compiler::LocalVariableTarget,
+    CompileError,
+    CompileStatement,
+    CompilerContext,
 };
 
 impl CompileStatement for LocalVarList<'_> {

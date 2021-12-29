@@ -1,3 +1,4 @@
+use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::{
     Break,
     Empty,
@@ -5,13 +6,10 @@ use tlua_parser::ast::statement::{
     Label,
 };
 
-use crate::{
-    compiling::{
-        CompileError,
-        CompileStatement,
-        CompilerContext,
-    },
-    vm::OpError,
+use crate::compiling::{
+    CompileError,
+    CompileStatement,
+    CompilerContext,
 };
 
 pub mod assignment;

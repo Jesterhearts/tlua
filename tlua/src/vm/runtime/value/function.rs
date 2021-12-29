@@ -9,17 +9,17 @@ use derive_more::{
     From,
     Into,
 };
+use tlua_bytecode::{
+    opcodes::ScopeDescriptor,
+    FuncId,
+    Register,
+};
 use tracing_rc::{
     rc::Trace,
     Trace,
 };
 
-use crate::vm::{
-    opcodes::ScopeDescriptor,
-    FuncId,
-    Register,
-    Value,
-};
+use crate::vm::runtime::Value;
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope {

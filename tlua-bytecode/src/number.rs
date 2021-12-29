@@ -1,12 +1,20 @@
-pub trait NumLike {
-    fn as_float(&self) -> Option<f64>;
-    fn as_int(&self) -> Option<i64>;
-}
+use tlua_parser::ast;
+
+use crate::NumLike;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Number {
     Float(f64),
     Integer(i64),
+}
+
+impl From<ast::expressions::number::Number> for Number {
+    fn from(ast_num: ast::expressions::number::Number) -> Self {
+        match ast_num {
+            ast::expressions::number::Number::Float(f) => Self::Float(f),
+            ast::expressions::number::Number::Integer(i) => Self::Integer(i),
+        }
+    }
 }
 
 impl std::hash::Hash for Number {

@@ -4,30 +4,30 @@ use std::ops::{
 };
 
 use derive_more::From;
+use tlua_bytecode::{
+    binop::traits::{
+        BooleanOpEval,
+        ComparisonOpEval,
+        NumericOpEval,
+    },
+    opcodes,
+    ByteCodeError,
+    Constant,
+    FuncId,
+    OpError,
+    Truthy,
+};
 use tlua_parser::ast::{
     block::Block,
     identifiers::Ident,
 };
 
-use crate::{
-    compiling::{
-        Chunk,
-        CompileError,
-        CompileExpression,
-        CompileStatement,
-        NodeOutput,
-    },
-    vm::{
-        self,
-        binop::traits::{
-            BooleanOpEval,
-            CompareBinop,
-            NumericOpEval,
-        },
-        Constant,
-        FuncId,
-        OpError,
-    },
+use crate::compiling::{
+    Chunk,
+    CompileError,
+    CompileExpression,
+    CompileStatement,
+    NodeOutput,
 };
 
 mod scope;
@@ -157,7 +157,7 @@ where
     /// Indicate that the register should be initialized from a return value.
     fn init_from_ret(self, compiler: &mut CompilerContext) -> RegisterTy {
         let register = self.no_init_needed();
-        compiler.write(vm::opcodes::MapRet::from(UnasmRegister::from(register)));
+        compiler.write(opcodes::MapRet::from(UnasmRegister::from(register)));
         register
     }
 
@@ -165,16 +165,13 @@ where
     /// constant is always nil, please use init_from_nil.
     fn init_from_const(self, compiler: &mut CompilerContext, value: Constant) -> RegisterTy {
         let register = self.no_init_needed();
-        compiler.write(vm::opcodes::Set::from((
-            UnasmRegister::from(register),
-            value,
-        )));
+        compiler.write(opcodes::Set::from((UnasmRegister::from(register), value)));
         register
     }
 
     fn init_alloc_fn(self, compiler: &mut CompilerContext, value: FuncId) -> RegisterTy {
         let register = self.no_init_needed();
-        compiler.write(vm::opcodes::AllocFunc::from((
+        compiler.write(opcodes::AllocFunc::from((
             UnasmRegister::from(register),
             value,
         )));
@@ -184,7 +181,7 @@ where
     /// Indicate that the register should be initialized from another register.
     fn init_from_reg(self, compiler: &mut CompilerContext, other: UnasmRegister) -> RegisterTy {
         let register = self.no_init_needed();
-        compiler.write(vm::opcodes::SetIndirect::from((
+        compiler.write(opcodes::SetIndirect::from((
             UnasmRegister::from(register),
             other,
         )));
@@ -193,7 +190,7 @@ where
 
     fn init_from_va(self, compiler: &mut CompilerContext, index: usize) -> RegisterTy {
         let register = self.no_init_needed();
-        compiler.write(vm::opcodes::SetFromVa::from((
+        compiler.write(opcodes::SetFromVa::from((
             UnasmRegister::from(register),
             index,
         )));
@@ -341,7 +338,7 @@ impl CompilerContext<'_> {
         match ret {
             Some(ret) => ret.compile(self)?,
             None => {
-                self.write(vm::opcodes::Op::Ret);
+                self.write(opcodes::Op::Ret);
                 None
             }
         };
@@ -578,8 +575,8 @@ impl CompilerContext<'_> {
 
         if args.len() == 0 {
             // No arguments, just call.
-            self.write(vm::opcodes::StartCall::from(target));
-            self.write(vm::opcodes::Op::DoCall);
+            self.write(opcodes::StartCall::from(target));
+            self.write(opcodes::Op::DoCall);
             return Ok(None);
         }
 
@@ -611,11 +608,11 @@ impl CompilerContext<'_> {
         let write_args = |compiler: &mut CompilerContext, arg_srcs: Vec<ArgSrc>| {
             for arg in arg_srcs.into_iter() {
                 match arg {
-                    ArgSrc::Const(constant) => compiler.write(vm::opcodes::MapArg::from(constant)),
+                    ArgSrc::Const(constant) => compiler.write(opcodes::MapArg::from(constant)),
                     ArgSrc::Register(register) => {
-                        compiler.write(vm::opcodes::MapArgIndirect::from(register))
+                        compiler.write(opcodes::MapArgIndirect::from(register))
                     }
-                    ArgSrc::Va0 => compiler.write(vm::opcodes::Op::MapVa0),
+                    ArgSrc::Va0 => compiler.write(opcodes::Op::MapVa0),
                 }
             }
         };
@@ -629,23 +626,23 @@ impl CompilerContext<'_> {
                 arg_srcs.push(ArgSrc::Register(r));
             }
             NodeOutput::ReturnValues => {
-                self.write(vm::opcodes::StartCallExtending::from(target));
+                self.write(opcodes::StartCallExtending::from(target));
                 write_args(self, arg_srcs);
                 return Ok(None);
             }
             NodeOutput::VAStack => {
-                self.write(vm::opcodes::StartCall::from(target));
+                self.write(opcodes::StartCall::from(target));
                 write_args(self, arg_srcs);
-                self.write(vm::opcodes::Op::MapVarArgsAndDoCall);
+                self.write(opcodes::Op::MapVarArgsAndDoCall);
                 return Ok(None);
             }
             NodeOutput::Err(err) => return Ok(Some(err)),
             NodeOutput::Function(_) => todo!(),
         }
 
-        self.write(vm::opcodes::StartCall::from(target));
+        self.write(opcodes::StartCall::from(target));
         write_args(self, arg_srcs);
-        self.write(vm::opcodes::Op::DoCall);
+        self.write(opcodes::Op::DoCall);
         Ok(None)
     }
 
@@ -657,7 +654,7 @@ impl CompilerContext<'_> {
     /// Instruct the compiler to emit a sequence of instruction corresponding to
     /// raising an error with a compile-time known type.
     pub fn write_raise(&mut self, err: OpError) {
-        self.write(vm::opcodes::Raise::from(err));
+        self.write(opcodes::Raise::from(err));
     }
 
     /// Instruct the compiler to compile a new block in its own subscope
@@ -691,9 +688,9 @@ impl CompilerContext<'_> {
                 };
 
                 let pending = inner.function.instructions.len();
-                inner.write(vm::opcodes::Raise {
+                inner.write(opcodes::Raise {
                     err: OpError::ByteCodeError {
-                        err: vm::ByteCodeError::MissingScopeDescriptor,
+                        err: ByteCodeError::MissingScopeDescriptor,
                         offset: pending,
                     },
                 });
@@ -706,11 +703,11 @@ impl CompilerContext<'_> {
                     });
 
                 if result.is_ok() {
-                    inner.function.instructions[pending] = vm::opcodes::ScopeDescriptor {
+                    inner.function.instructions[pending] = opcodes::ScopeDescriptor {
                         size: inner.scope.total_locals,
                     }
                     .into();
-                    inner.write(vm::opcodes::Op::PopScope);
+                    inner.write(opcodes::Op::PopScope);
                 }
 
                 (inner.has_va_args, inner.function, inner.scope.total_anons)
@@ -740,7 +737,7 @@ impl CompilerContext<'_> {
         let mut pending_exit = None;
         let cleanup_pending = |pending, compiler: &mut CompilerContext| {
             if let Some(pending) = pending {
-                compiler.function.instructions[pending] = vm::opcodes::Jump {
+                compiler.function.instructions[pending] = opcodes::Jump {
                     target: compiler.function.instructions.len(),
                 }
                 .into();
@@ -751,9 +748,9 @@ impl CompilerContext<'_> {
         let cleanup_add_pending_block_exit = |pending, compiler: &mut CompilerContext| {
             let pending = cleanup_pending(pending, compiler);
 
-            compiler.write(vm::opcodes::Raise {
+            compiler.write(opcodes::Raise {
                 err: OpError::ByteCodeError {
-                    err: vm::ByteCodeError::MissingJump,
+                    err: ByteCodeError::MissingJump,
                     offset: pending,
                 },
             });
@@ -780,9 +777,9 @@ impl CompilerContext<'_> {
                 }
                 NodeOutput::Register(reg) => {
                     let jump_location = self.function.instructions.len();
-                    self.write(vm::opcodes::Raise {
+                    self.write(opcodes::Raise {
                         err: OpError::ByteCodeError {
-                            err: vm::ByteCodeError::MissingJump,
+                            err: ByteCodeError::MissingJump,
                             offset: jump_location,
                         },
                     });
@@ -791,7 +788,7 @@ impl CompilerContext<'_> {
 
                     pending_exit = Some(cleanup_add_pending_block_exit(pending_exit, self));
 
-                    self.function.instructions[jump_location] = vm::opcodes::JumpNot {
+                    self.function.instructions[jump_location] = opcodes::JumpNot {
                         cond: reg,
                         target: self.function.instructions.len(),
                     }
@@ -799,9 +796,9 @@ impl CompilerContext<'_> {
                 }
                 NodeOutput::ReturnValues => {
                     let jump_location = self.function.instructions.len();
-                    self.write(vm::opcodes::Raise {
+                    self.write(opcodes::Raise {
                         err: OpError::ByteCodeError {
-                            err: vm::ByteCodeError::MissingJump,
+                            err: ByteCodeError::MissingJump,
                             offset: jump_location,
                         },
                     });
@@ -810,16 +807,16 @@ impl CompilerContext<'_> {
 
                     pending_exit = Some(cleanup_add_pending_block_exit(pending_exit, self));
 
-                    self.function.instructions[jump_location] = vm::opcodes::JumpNotRet0 {
+                    self.function.instructions[jump_location] = opcodes::JumpNotRet0 {
                         target: self.function.instructions.len(),
                     }
                     .into();
                 }
                 NodeOutput::VAStack => {
                     let jump_location = self.function.instructions.len();
-                    self.write(vm::opcodes::Raise {
+                    self.write(opcodes::Raise {
                         err: OpError::ByteCodeError {
-                            err: vm::ByteCodeError::MissingJump,
+                            err: ByteCodeError::MissingJump,
                             offset: jump_location,
                         },
                     });
@@ -828,7 +825,7 @@ impl CompilerContext<'_> {
 
                     pending_exit = Some(cleanup_add_pending_block_exit(pending_exit, self));
 
-                    self.function.instructions[jump_location] = vm::opcodes::JumpNotVa0 {
+                    self.function.instructions[jump_location] = opcodes::JumpNotVa0 {
                         target: self.function.instructions.len(),
                     }
                     .into();
@@ -934,7 +931,7 @@ impl CompilerContext<'_> {
         mut outputs: impl ExactSizeIterator<Item = impl CompileExpression>,
     ) -> Result<Option<OpError>, CompileError> {
         if outputs.len() == 0 {
-            self.write(vm::opcodes::Op::Ret);
+            self.write(opcodes::Op::Ret);
             return Ok(None);
         }
 
@@ -947,18 +944,18 @@ impl CompilerContext<'_> {
                 .compile(self)?
             {
                 NodeOutput::Constant(c) => {
-                    self.write(vm::opcodes::SetRet::from(c));
+                    self.write(opcodes::SetRet::from(c));
                 }
                 NodeOutput::Register(register) => {
-                    self.write(vm::opcodes::SetRetIndirect::from(register));
+                    self.write(opcodes::SetRetIndirect::from(register));
                 }
                 NodeOutput::Err(err) => {
                     return Ok(Some(err));
                 }
                 NodeOutput::ReturnValues => {
-                    self.write(vm::opcodes::Op::SetRetFromRet0);
+                    self.write(opcodes::Op::SetRetFromRet0);
                 }
-                NodeOutput::VAStack => self.write(vm::opcodes::Op::SetRetVa0),
+                NodeOutput::VAStack => self.write(opcodes::Op::SetRetVa0),
                 NodeOutput::Function(_) => todo!(),
             }
         }
@@ -969,17 +966,17 @@ impl CompilerContext<'_> {
             .compile(self)?
         {
             NodeOutput::Constant(c) => {
-                self.write(vm::opcodes::SetRet::from(c));
-                self.write(vm::opcodes::Op::Ret)
+                self.write(opcodes::SetRet::from(c));
+                self.write(opcodes::Op::Ret)
             }
             NodeOutput::Register(register) => {
-                self.write(vm::opcodes::SetRetIndirect::from(register));
-                self.write(vm::opcodes::Op::Ret)
+                self.write(opcodes::SetRetIndirect::from(register));
+                self.write(opcodes::Op::Ret)
             }
             NodeOutput::ReturnValues => {
-                self.write(vm::opcodes::Op::CopyRetFromRetAndRet);
+                self.write(opcodes::Op::CopyRetFromRetAndRet);
             }
-            NodeOutput::VAStack => self.write(vm::opcodes::Op::CopyRetFromVaAndRet),
+            NodeOutput::VAStack => self.write(opcodes::Op::CopyRetFromVaAndRet),
             NodeOutput::Err(err) => {
                 return Ok(Some(err));
             }
@@ -1040,7 +1037,7 @@ impl CompilerContext<'_> {
         rhs: Rhs,
     ) -> Result<NodeOutput, CompileError>
     where
-        Op: CompareBinop + From<(UnasmRegister, Constant)> + Into<UnasmOp>,
+        Op: ComparisonOpEval + From<(UnasmRegister, Constant)> + Into<UnasmOp>,
         OpIndirect: From<(UnasmRegister, UnasmRegister)> + Into<UnasmOp>,
         Lhs: CompileExpression,
         Rhs: CompileExpression,
@@ -1079,9 +1076,7 @@ impl CompilerContext<'_> {
         Lhs: CompileExpression,
         Rhs: CompileExpression,
     {
-        self.write_binop::<Op, OpIndirect, _, _, _>(lhs, rhs, |lhs, rhs| {
-            Ok(Op::evaluate(lhs.as_bool(), rhs.as_bool()).into())
-        })
+        self.write_binop::<Op, OpIndirect, _, _, _>(lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
     }
 
     // TODO(unary-ops)

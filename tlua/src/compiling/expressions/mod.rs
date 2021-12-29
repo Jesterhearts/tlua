@@ -1,3 +1,4 @@
+use tlua_bytecode::Constant;
 use tlua_parser::ast::{
     constant_string::ConstantString,
     expressions::{
@@ -7,16 +8,10 @@ use tlua_parser::ast::{
     },
 };
 
-use crate::{
-    compiling::{
-        CompileExpression,
-        CompilerContext,
-        NodeOutput,
-    },
-    vm::{
-        self,
-        Constant,
-    },
+use crate::compiling::{
+    CompileExpression,
+    CompilerContext,
+    NodeOutput,
 };
 
 pub mod function_defs;
@@ -38,11 +33,7 @@ impl CompileExpression for bool {
 impl CompileExpression for Number {
     fn compile(&self, _: &mut CompilerContext) -> Result<NodeOutput, super::CompileError> {
         Ok(NodeOutput::Constant(
-            match *self {
-                Number::Float(f) => vm::Number::from(f),
-                Number::Integer(i) => vm::Number::from(i),
-            }
-            .into(),
+            tlua_bytecode::Number::from(*self).into(),
         ))
     }
 }

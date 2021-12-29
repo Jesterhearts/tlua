@@ -3,12 +3,12 @@ use derive_more::{
     From,
 };
 
-use crate::vm::{
+use crate::{
     binop::*,
-    Constant,
+    constant::Constant,
+    register::Register,
     FuncId,
     OpError,
-    Register,
 };
 
 pub type Instruction = Op<Register>;
@@ -70,13 +70,15 @@ pub enum Op<RegisterTy> {
     Length(Length<RegisterTy>),
     // Control flow
     Raise(Raise),
-    // Unconditionally jump to the targt instruction
+    /// Unconditionally jump to the targt instruction
     Jump(Jump),
-    // Jump to a specific instruction if the value in the register evaluates to false.
+    /// Jump to a specific instruction if the value in the register evaluates to
+    /// false.
     JumpNot(JumpNot<RegisterTy>),
-    // Jump to a specific instruction if the first return value evaluates to false.
+    /// Jump to a specific instruction if the first return value evaluates to
+    /// false.
     JumpNotRet0(JumpNotRet0),
-    // Jump to a specific instruction if the first variadic argument
+    /// Jump to a specific instruction if the first variadic argument
     JumpNotVa0(JumpNotVa0),
     // Register operations
     Set(Set<RegisterTy>),
@@ -136,7 +138,7 @@ pub enum Op<RegisterTy> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From, Deref)]
-pub struct Concat<RegTy>(BinOp<Self, RegTy, Constant>);
+pub struct Concat<RegTy>(BinOpData<Self, RegTy, Constant>);
 
 impl<RegTy> From<(RegTy, Constant)> for Concat<RegTy> {
     fn from(tuple: (RegTy, Constant)) -> Self {
@@ -145,7 +147,7 @@ impl<RegTy> From<(RegTy, Constant)> for Concat<RegTy> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From, Deref)]
-pub struct ConcatIndirect<RegTy>(BinOp<Self, RegTy, RegTy>);
+pub struct ConcatIndirect<RegTy>(BinOpData<Self, RegTy, RegTy>);
 
 impl<RegTy> From<(RegTy, RegTy)> for ConcatIndirect<RegTy> {
     fn from(tuple: (RegTy, RegTy)) -> Self {

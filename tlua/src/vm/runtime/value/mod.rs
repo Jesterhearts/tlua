@@ -5,26 +5,24 @@ use std::{
 };
 
 use derive_more::From;
+pub use tlua_bytecode::Number;
+use tlua_bytecode::{
+    Constant,
+    NumLike,
+    Truthy,
+};
 use tracing_rc::{
     rc::Gc,
     Trace,
 };
 
-use crate::{
-    values::LuaString,
-    vm::Constant,
-};
+use crate::values::LuaString;
 
 pub mod function;
-pub mod number;
 pub mod table;
 
 pub use self::{
     function::Function,
-    number::{
-        NumLike,
-        Number,
-    },
     table::Table,
 };
 
@@ -77,6 +75,16 @@ impl From<f64> for Value {
     }
 }
 
+impl Truthy for Value {
+    fn as_bool(&self) -> bool {
+        match self {
+            Value::Nil => false,
+            Value::Bool(b) => *b,
+            _ => true,
+        }
+    }
+}
+
 impl NumLike for Value {
     fn as_float(&self) -> Option<f64> {
         match self {
@@ -89,16 +97,6 @@ impl NumLike for Value {
         match self {
             Value::Number(n) => n.as_int(),
             _ => None,
-        }
-    }
-}
-
-impl Value {
-    pub fn as_bool(&self) -> bool {
-        match self {
-            Value::Bool(b) => *b,
-            Value::Nil => false,
-            _ => true,
         }
     }
 }

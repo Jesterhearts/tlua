@@ -1,12 +1,10 @@
+use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::repeat_loop::RepeatLoop;
 
-use crate::{
-    compiling::{
-        CompileError,
-        CompileStatement,
-        CompilerContext,
-    },
-    vm::OpError,
+use crate::compiling::{
+    CompileError,
+    CompileStatement,
+    CompilerContext,
 };
 
 impl CompileStatement for RepeatLoop<'_> {

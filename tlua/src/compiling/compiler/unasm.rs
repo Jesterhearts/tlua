@@ -4,20 +4,14 @@ use derive_more::{
     Deref,
     From,
 };
-
-use crate::{
-    compiling::Function,
-    vm::{
-        binop::*,
-        opcodes::{
-            Instruction,
-            Op,
-            *,
-        },
-        Constant,
-        Register,
-    },
+use tlua_bytecode::{
+    binop::*,
+    opcodes::*,
+    Constant,
+    Register,
 };
+
+use crate::compiling::Function;
 
 pub trait AssembleOp {
     type Target;
@@ -99,7 +93,7 @@ impl From<UnasmRegister> for Register {
 
 pub type UnasmOp = Op<UnasmRegister>;
 
-impl<OpTy> AssembleOp for BinOp<OpTy, UnasmRegister, Constant> {
+impl<OpTy> AssembleOp for BinOpData<OpTy, UnasmRegister, Constant> {
     type Target = (Register, Constant);
 
     fn assemble(self) -> Self::Target {
@@ -108,7 +102,7 @@ impl<OpTy> AssembleOp for BinOp<OpTy, UnasmRegister, Constant> {
     }
 }
 
-impl<OpTy> AssembleOp for BinOp<OpTy, UnasmRegister, UnasmRegister> {
+impl<OpTy> AssembleOp for BinOpData<OpTy, UnasmRegister, UnasmRegister> {
     type Target = (Register, Register);
 
     fn assemble(self) -> Self::Target {
@@ -135,8 +129,10 @@ impl AssembleOp for (UnasmRegister, UnasmRegister) {
     }
 }
 
-impl UnasmOp {
-    fn assemble(self) -> Instruction {
+impl AssembleOp for UnasmOp {
+    type Target = Instruction;
+
+    fn assemble(self) -> Self::Target {
         match self {
             Op::Add(op) => Add::from(op.assemble()).into(),
             Op::AddIndirect(op) => AddIndirect::from(op.assemble()).into(),
@@ -261,7 +257,7 @@ impl UnasmFunction {
             local_registers,
             anon_registers,
             named_args,
-            instructions: instructions.into_iter().map(Op::assemble).collect(),
+            instructions: instructions.into_iter().map(UnasmOp::assemble).collect(),
         }
     }
 }

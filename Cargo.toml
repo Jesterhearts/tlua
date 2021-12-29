@@ -1,2 +1,2 @@
 [workspace]
-members = [ "tlua", "tlua-parser" ]
+members = [ "tlua", "tlua-parser", "tlua-bytecode" ]

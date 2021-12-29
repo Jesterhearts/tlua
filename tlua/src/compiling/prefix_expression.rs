@@ -1,3 +1,4 @@
+use tlua_bytecode::OpError;
 use tlua_parser::ast::{
     expressions::Expression,
     prefix_expression::{
@@ -6,15 +7,12 @@ use tlua_parser::ast::{
     },
 };
 
-use crate::{
-    compiling::{
-        CompileError,
-        CompileExpression,
-        CompileStatement,
-        CompilerContext,
-        NodeOutput,
-    },
-    vm::OpError,
+use crate::compiling::{
+    CompileError,
+    CompileExpression,
+    CompileStatement,
+    CompilerContext,
+    NodeOutput,
 };
 
 impl CompileExpression for VarPrefixExpression<'_> {

@@ -1,13 +1,11 @@
+use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::fn_decl::FnDecl;
 
-use crate::{
-    compiling::{
-        expressions::function_defs::compile_global_fn_body,
-        CompileError,
-        CompileStatement,
-        CompilerContext,
-    },
-    vm::OpError,
+use crate::compiling::{
+    expressions::function_defs::compile_global_fn_body,
+    CompileError,
+    CompileStatement,
+    CompilerContext,
 };
 
 impl CompileStatement for FnDecl<'_> {

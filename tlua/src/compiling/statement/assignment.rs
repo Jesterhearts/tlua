@@ -1,16 +1,14 @@
+use tlua_bytecode::OpError;
 use tlua_parser::ast::{
     prefix_expression::VarPrefixExpression,
     statement::assignment::Assignment,
 };
 
-use crate::{
-    compiling::{
-        compiler::VariableTarget,
-        CompileError,
-        CompileStatement,
-        CompilerContext,
-    },
-    vm::OpError,
+use crate::compiling::{
+    compiler::VariableTarget,
+    CompileError,
+    CompileStatement,
+    CompilerContext,
 };
 
 impl CompileStatement for Assignment<'_> {

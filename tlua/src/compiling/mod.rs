@@ -1,6 +1,12 @@
 use std::collections::HashMap;
 
 use thiserror::Error;
+use tlua_bytecode::{
+    opcodes::Instruction,
+    Constant,
+    FuncId,
+    OpError,
+};
 use tlua_parser::ast::{
     expressions::{
         operator::{
@@ -11,13 +17,6 @@ use tlua_parser::ast::{
     },
     identifiers::Ident,
     statement::Statement,
-};
-
-use crate::vm::{
-    opcodes::Instruction,
-    Constant,
-    FuncId,
-    OpError,
 };
 
 pub mod block;

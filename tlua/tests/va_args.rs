@@ -2,8 +2,8 @@ use indoc::indoc;
 use pretty_assertions::assert_eq;
 use tlua::{
     compile,
-    vm::{
-        runtime::Runtime,
+    vm::runtime::{
+        Runtime,
         Value,
     },
 };

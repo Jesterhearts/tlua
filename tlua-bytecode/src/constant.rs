@@ -1,8 +1,10 @@
-use tlua_parser::ast::constant_string::ConstantString;
+pub use tlua_parser::ast::constant_string::ConstantString;
 
-use crate::vm::runtime::value::{
+use crate::{
     NumLike,
     Number,
+    StringLike,
+    Truthy,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -35,6 +37,16 @@ impl From<Constant> for bool {
     }
 }
 
+impl Truthy for Constant {
+    fn as_bool(&self) -> bool {
+        match self {
+            Constant::Nil => false,
+            Constant::Bool(b) => *b,
+            _ => true,
+        }
+    }
+}
+
 impl NumLike for Constant {
     fn as_float(&self) -> Option<f64> {
         match self {
@@ -55,14 +67,11 @@ impl NumLike for Constant {
 impl Constant {
     pub fn short_type_name(&self) -> &'static str {
         todo!()
-        // Value::from(*self).short_type_name()
     }
+}
 
-    pub fn as_bool(&self) -> bool {
-        match self {
-            Constant::Nil => false,
-            Constant::Bool(b) => *b,
-            _ => true,
-        }
+impl StringLike for ConstantString {
+    fn as_bytes(&self) -> &[u8] {
+        self.data().as_slice()
     }
 }

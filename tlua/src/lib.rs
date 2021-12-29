@@ -1,4 +1,5 @@
 use thiserror::Error;
+pub use tlua_bytecode::OpError;
 use tlua_parser::{
     ast::ASTAllocator,
     parsing::{
@@ -22,11 +23,11 @@ pub enum LuaError {
     #[error("syntax error: {0}")]
     SyntaxError(String),
     #[error("vm execution error")]
-    ExecutionError(vm::OpError),
+    ExecutionError(OpError),
 }
 
-impl From<vm::OpError> for LuaError {
-    fn from(err: vm::OpError) -> Self {
+impl From<OpError> for LuaError {
+    fn from(err: OpError) -> Self {
         Self::ExecutionError(err)
     }
 }
