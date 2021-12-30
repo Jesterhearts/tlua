@@ -131,24 +131,24 @@ impl Context<'_> {
                 }
 
                 // Comparison operations
-                Op::LessThan(_) => todo!(),
-                Op::LessThanIndirect(_) => todo!(),
-                Op::LessEqual(_) => todo!(),
-                Op::LessEqualIndirect(_) => todo!(),
-                Op::GreaterThan(_) => todo!(),
-                Op::GreaterThanIndirect(_) => todo!(),
-                Op::GreaterEqual(_) => todo!(),
-                Op::GreaterEqualIndirect(_) => todo!(),
-                Op::Equals(_) => todo!(),
-                Op::EqualsIndirect(_) => todo!(),
-                Op::NotEqual(_) => todo!(),
-                Op::NotEqualIndirect(_) => todo!(),
+                Op::LessThan(data) => data.apply(&mut self.in_scope)?,
+                Op::LessThanIndirect(data) => data.apply(&mut self.in_scope)?,
+                Op::LessEqual(data) => data.apply(&mut self.in_scope)?,
+                Op::LessEqualIndirect(data) => data.apply(&mut self.in_scope)?,
+                Op::GreaterThan(data) => data.apply(&mut self.in_scope)?,
+                Op::GreaterThanIndirect(data) => data.apply(&mut self.in_scope)?,
+                Op::GreaterEqual(data) => data.apply(&mut self.in_scope)?,
+                Op::GreaterEqualIndirect(data) => data.apply(&mut self.in_scope)?,
+                Op::Equals(data) => data.apply(&mut self.in_scope)?,
+                Op::EqualsIndirect(data) => data.apply(&mut self.in_scope)?,
+                Op::NotEqual(data) => data.apply(&mut self.in_scope)?,
+                Op::NotEqualIndirect(data) => data.apply(&mut self.in_scope)?,
 
                 // Boolean operations
-                Op::And(_) => todo!(),
-                Op::AndIndirect(_) => todo!(),
-                Op::Or(_) => todo!(),
-                Op::OrIndirect(_) => todo!(),
+                Op::And(data) => data.apply(&mut self.in_scope)?,
+                Op::AndIndirect(data) => data.apply(&mut self.in_scope)?,
+                Op::Or(data) => data.apply(&mut self.in_scope)?,
+                Op::OrIndirect(data) => data.apply(&mut self.in_scope)?,
 
                 // Unary boolean operations
                 Op::Not(Not { reg }) => {

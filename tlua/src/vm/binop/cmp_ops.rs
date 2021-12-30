@@ -1,6 +1,9 @@
 use tlua_bytecode::{
     binop::{
-        traits::OpName,
+        traits::{
+            ComparisonOpEval,
+            OpName,
+        },
         BinOpData,
         CompareOpTag,
     },
@@ -10,10 +13,7 @@ use tlua_bytecode::{
 };
 
 use crate::vm::{
-    binop::traits::{
-        ApplyBinop,
-        CompareBinop,
-    },
+    binop::traits::ApplyBinop,
     runtime::{
         value::function::ScopeSet,
         Value,
@@ -22,7 +22,7 @@ use crate::vm::{
 
 impl<OpTy> ApplyBinop for BinOpData<CompareOpTag<OpTy>, Register, Constant>
 where
-    OpTy: OpName + CompareBinop,
+    OpTy: OpName + ComparisonOpEval,
 {
     fn apply(&self, scopes: &mut ScopeSet) -> Result<(), OpError> {
         // TODO: metatables
@@ -49,7 +49,7 @@ where
 
 impl<OpTy> ApplyBinop for BinOpData<CompareOpTag<OpTy>, Register, Register>
 where
-    OpTy: OpName + CompareBinop,
+    OpTy: OpName + ComparisonOpEval,
 {
     fn apply(&self, scopes: &mut ScopeSet) -> Result<(), OpError> {
         // TODO: metatables

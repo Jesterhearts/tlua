@@ -44,7 +44,7 @@ where
 macro_rules! bool_binop_impl {
     ($name:ident => ($lhs:ident : bool, $rhs:ident : bool) => $op:expr $(,)?) => {
         #[derive(Debug, Clone, Copy, PartialEq, From, Deref)]
-        pub struct $name<LhsTy, RhsTy>(BinOpData<Self, LhsTy, RhsTy>);
+        pub struct $name<LhsTy, RhsTy>(BinOpData<BoolOpTag<Self>, LhsTy, RhsTy>);
 
         impl<LhsTy, RhsTy> From<(LhsTy, RhsTy)> for $name<LhsTy, RhsTy> {
             fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
