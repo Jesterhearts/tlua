@@ -22,6 +22,8 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct IntOpTag<OpTy: IntBinop>(PhantomData<OpTy>);
 
+/// Converts an `f64` to an `i64` if it falls within the range of `i64` and has
+/// no fractional component.
 pub fn f64inbounds(f: f64) -> Result<i64, OpError> {
     if f > i64::MIN as f64 && f < i64::MAX as f64 && f.fract() == 0.0 {
         Ok(f as i64)

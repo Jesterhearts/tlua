@@ -15,60 +15,100 @@ pub type Instruction = Op<Register>;
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub enum Op<RegisterTy> {
-    // Floating point & integer operations.
+    /// `[this] += c`, preserving types.
     Add(Add<RegisterTy, Constant>),
+    /// `[this] += [other]`
     AddIndirect(AddIndirect<RegisterTy, RegisterTy>),
+    /// `[this] -= c`, preserving types.
     Subtract(Subtract<RegisterTy, Constant>),
+    /// `[this] -= [other]`, preserving types.
     SubtractIndirect(SubtractIndirect<RegisterTy, RegisterTy>),
+    /// `[this] *= c`, preserving types.
     Times(Times<RegisterTy, Constant>),
+    /// `[this] *= [other]`, preserving types.
     TimesIndirect(TimesIndirect<RegisterTy, RegisterTy>),
+    /// `[this] %= c`, preserving types.
     Modulo(Modulo<RegisterTy, Constant>),
+    /// `[this] %= [other]`, preserving types.
     ModuloIndirect(ModuloIndirect<RegisterTy, RegisterTy>),
     // Floating point operations
+    /// `[this] = [this] / c`, producing a float.
     Divide(Divide<RegisterTy, Constant>),
+    /// `[this] = [this] / [other]`, producing a float.
     DivideIndirect(DivideIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this].exp(c)`, producing a float.
     Exponetiation(Exponetiation<RegisterTy, Constant>),
+    /// `[this] = [this].exp([other])`, producing a float.
     ExponetiationIndirect(ExponetiationIndirect<RegisterTy, RegisterTy>),
-    // Integer operations
+    /// `[this] = floor([this] / c)`, type preserving.
     IDiv(IDiv<RegisterTy, Constant>),
+    /// `[this] = floor([this] / [other])`, type preserving.
     IDivIndirect(IDivIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] & c`, producing an int.
     BitAnd(BitAnd<RegisterTy, Constant>),
+    /// `[this] = [this] & [other]`, producing an int.
     BitAndIndirect(BitAndIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] | c`, producing an int.
     BitOr(BitOr<RegisterTy, Constant>),
+    /// `[this] = [this] | [other]`, producing an int.
     BitOrIndirect(BitOrIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] ^ c`, producing an int.
     BitXor(BitXor<RegisterTy, Constant>),
+    /// `[this] = [this] ^ [other]`, producing an int.
     BitXorIndirect(BitXorIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] << c`, producing an int.
     ShiftLeft(ShiftLeft<RegisterTy, Constant>),
+    /// `[this] = [this] << [other]`, producing an int.
     ShiftLeftIndirect(ShiftLeftIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] >> c`, producing an int.
     ShiftRight(ShiftRight<RegisterTy, Constant>),
+    /// `[this] = [this] >> [other]`, producing an int.
     ShiftRightIndirect(ShiftRightIndirect<RegisterTy, RegisterTy>),
-    // Unary operations
+    /// `[this] = -[this]`, type preserving.
     UnaryMinus(UnaryMinus<RegisterTy>),
+    /// `[this] = !([this] as bool)`, producing a bool.
     Not(Not<RegisterTy>),
+    /// `[this] = ![this]`, producing an int.
     UnaryBitNot(UnaryBitNot<RegisterTy>),
-    // Comparison operations
+    /// `[this] = [this] < c`.
     LessThan(LessThan<RegisterTy, Constant>),
+    /// `[this] = [this] < [other]`.
     LessThanIndirect(LessThanIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] <= c`.
     LessEqual(LessEqual<RegisterTy, Constant>),
+    /// `[this] = [this] <= [other]`.
     LessEqualIndirect(LessEqualIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] > c`.
     GreaterThan(GreaterThan<RegisterTy, Constant>),
+    /// `[this] = [this] > [other]`.
     GreaterThanIndirect(GreaterThanIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] >= c`.
     GreaterEqual(GreaterEqual<RegisterTy, Constant>),
+    /// `[this] = [this] >= [other]`.
     GreaterEqualIndirect(GreaterEqualIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] == c`.
     Equals(Equals<RegisterTy, Constant>),
+    /// `[this] = [this] == [other]`.
     EqualsIndirect(EqualsIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] != c`.
     NotEqual(NotEqual<RegisterTy, Constant>),
+    /// `[this] = [this] != [other]`.
     NotEqualIndirect(NotEqualIndirect<RegisterTy, RegisterTy>),
-    // Boolean operations
+    /// `[this] = [this] as bool ? c : [this]`.
     And(And<RegisterTy, Constant>),
+    /// `[this] = [this] as bool ? [other] : [this]`.
     AndIndirect(AndIndirect<RegisterTy, RegisterTy>),
+    /// `[this] = [this] as bool ? [this] : c`.
     Or(Or<RegisterTy, Constant>),
+    /// `[this] = [this] as bool ? [this] : [other]`.
     OrIndirect(OrIndirect<RegisterTy, RegisterTy>),
-    // String & array operations
+    /// `[this] = [this].to_string() + c.to_string()`.
     Concat(Concat<RegisterTy>),
+    /// `[this] = [this].to_string() + [other].to_string()`.
     ConcatIndirect(ConcatIndirect<RegisterTy>),
+    /// `[this] = [this].len()`.
     Length(Length<RegisterTy>),
-    // Control flow
+    /// Immediately return from the current function with a specific error.
     Raise(Raise),
     /// Unconditionally jump to the targt instruction
     Jump(Jump),
@@ -80,9 +120,15 @@ pub enum Op<RegisterTy> {
     JumpNotRet0(JumpNotRet0),
     /// Jump to a specific instruction if the first variadic argument
     JumpNotVa0(JumpNotVa0),
-    // Register operations
+    /// `[this] = `[this].table[c]`
+    Load(Load<RegisterTy>),
+    /// `[this] = `[this].table[[other]]`
+    LoadIndirect(LoadIndirect<RegisterTy>),
+    /// Initialize a register to a constant value.
     Set(Set<RegisterTy>),
+    /// Initialize a register from another register.
     SetIndirect(SetIndirect<RegisterTy>),
+    /// Initialize a register from a variadic argument.
     SetFromVa(SetFromVa<RegisterTy>),
     /// Allocate a new function
     AllocFunc(AllocFunc<RegisterTy>),
@@ -116,8 +162,9 @@ pub enum Op<RegisterTy> {
     MapArgIndirect(MapArgIndirect<RegisterTy>),
     /// Copy the first va arg into the next register for the current call target
     MapVa0,
-    /// Copy the target value into this function's output list.
+    /// Copy the target constant value into this function's output list.
     SetRet(SetRet),
+    /// Copy the target register value into this function's output list.
     SetRetIndirect(SetRetIndirect<RegisterTy>),
     /// Copy the first va arg into this function's output list.
     SetRetVa0,
@@ -130,7 +177,6 @@ pub enum Op<RegisterTy> {
     /// Copy all return values this function's va list and then return from the
     /// function.
     CopyRetFromVaAndRet,
-    /// Copy the list of values from
     /// Stop executing this function and return.
     Ret,
     /// Copy the next available return value into the target register.
@@ -240,6 +286,18 @@ pub struct Raise {
 pub struct AllocFunc<RegTy> {
     pub dest: RegTy,
     pub id: FuncId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct Load<RegTy> {
+    pub dest: RegTy,
+    pub index: Constant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct LoadIndirect<RegTy> {
+    pub dest: RegTy,
+    pub index: RegTy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]

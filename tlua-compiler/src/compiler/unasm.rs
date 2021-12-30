@@ -189,6 +189,16 @@ impl AssembleOp for UnasmOp {
             .into(),
             Op::JumpNotRet0(op) => op.into(),
             Op::JumpNotVa0(op) => op.into(),
+            Op::Load(Load { dest, index }) => Load {
+                dest: dest.into(),
+                index,
+            }
+            .into(),
+            Op::LoadIndirect(LoadIndirect { dest, index }) => LoadIndirect {
+                dest: dest.into(),
+                index: index.into(),
+            }
+            .into(),
             Op::Set(Set { dest, source }) => Set {
                 dest: dest.into(),
                 source,

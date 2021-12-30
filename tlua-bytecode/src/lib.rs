@@ -49,6 +49,8 @@ pub enum OpError {
     DuoCmpErr { type_name: &'static str },
     #[error("Float {f:?} cannot be converted to int")]
     FloatToIntConversionFailed { f: f64 },
+    #[error("Table index is NaN")]
+    TableIndexNaN,
     #[error("Meta method {name} not found")]
     NoSuchMetaMethod { name: &'static str },
     #[error("Miscompiled bytecode ({err}) at offset {offset} in sequence")]

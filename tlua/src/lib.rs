@@ -2,7 +2,6 @@ use thiserror::Error;
 pub use tlua_bytecode::OpError;
 use tlua_parser::parsing::ChunkParseError;
 
-pub mod values;
 pub mod vm;
 
 pub use tlua_compiler::{

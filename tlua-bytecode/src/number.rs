@@ -1,6 +1,14 @@
+use std::hash::{
+    Hash,
+    Hasher,
+};
+
 use tlua_parser::ast;
 
-use crate::NumLike;
+use crate::{
+    binop::f64inbounds,
+    NumLike,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Number {
@@ -8,29 +16,60 @@ pub enum Number {
     Integer(i64),
 }
 
+impl Number {
+    /// Hashes the number.
+    ///
+    /// # Warning
+    /// You may not rely on equal hash values implying equal values. i.e. the
+    /// following may panic:
+    /// ```ignore
+    /// if Number::hash(a) == Number::hash(b) {
+    ///     assert!(a == b);
+    /// }
+    /// ```
+    pub fn hash(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::default();
+        self.hash_into(&mut hasher);
+
+        hasher.finish()
+    }
+
+    /// Hashes the number using the provided hasher.
+    ///
+    /// # Warning
+    /// You may not rely on equal hash values implying equal values. i.e. the
+    /// following may panic:
+    /// ```ignore
+    /// if Number::hash_into(a, &mut hasher) == Number::hash_into(b, &mut hasher) {
+    ///     assert!(a == b);
+    /// }
+    /// ```
+    pub fn hash_into(&self, hasher: &mut impl Hasher) {
+        match *self {
+            Number::Float(f) => {
+                if f.is_nan() {
+                    std::mem::discriminant(self).hash(hasher)
+                } else if let Ok(i) = f64inbounds(f) {
+                    std::mem::discriminant(&Number::Integer(i)).hash(hasher);
+                    i.hash(hasher)
+                } else {
+                    std::mem::discriminant(self).hash(hasher);
+                    f.to_bits().hash(hasher)
+                }
+            }
+            Number::Integer(i) => {
+                std::mem::discriminant(self).hash(hasher);
+                i.hash(hasher)
+            }
+        }
+    }
+}
+
 impl From<ast::expressions::number::Number> for Number {
     fn from(ast_num: ast::expressions::number::Number) -> Self {
         match ast_num {
             ast::expressions::number::Number::Float(f) => Self::Float(f),
             ast::expressions::number::Number::Integer(i) => Self::Integer(i),
-        }
-    }
-}
-
-impl std::hash::Hash for Number {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        match *self {
-            Number::Float(f) => {
-                // Hash is used for indexing tables.
-                debug_assert!(!f.is_nan());
-
-                if f.fract() == 0.0 && f > i64::MIN as f64 && f < i64::MIN as f64 {
-                    (f as i64).hash(state)
-                } else {
-                    f.to_bits().hash(state)
-                }
-            }
-            Number::Integer(i) => i.hash(state),
         }
     }
 }

@@ -1,6 +1,10 @@
 use std::{
     cell::RefCell,
     fmt::Debug,
+    hash::{
+        Hash,
+        Hasher,
+    },
     rc::Rc,
 };
 
@@ -16,13 +20,13 @@ use tracing_rc::{
     Trace,
 };
 
-use crate::values::LuaString;
-
 pub mod function;
+pub mod string;
 pub mod table;
 
 pub use self::{
     function::Function,
+    string::LuaString,
     table::Table,
 };
 
@@ -35,6 +39,54 @@ pub enum Value {
     Table(#[trace] Gc<Table>),
     Function(#[trace] Gc<Function>),
     Userdata(((),)),
+}
+
+impl Value {
+    /// Hashes the value.
+    ///
+    /// # Warning
+    /// You may not rely on equal hash values implying equal values. i.e. the
+    /// following may panic:
+    /// ```ignore
+    /// if Value::hash(a) == Value::hash(b) {
+    ///     assert!(a == b);
+    /// }
+    /// ```
+    pub fn hash(&self) -> u64 {
+        let mut hasher = std::collections::hash_map::DefaultHasher::default();
+        self.hash_into(&mut hasher);
+        hasher.finish()
+    }
+
+    /// Hashes the value using the provided hasher.
+    ///
+    /// # Warning
+    /// You may not rely on equal hash values implying equal values. i.e. the
+    /// following may panic:
+    /// ```ignore
+    /// if Value::hash_into(a, &mut hasher) == Value::hash_into(b, &mut hasher) {
+    ///     assert!(a == b);
+    /// }
+    /// ```
+    pub fn hash_into(&self, hasher: &mut impl Hasher) {
+        std::mem::discriminant(self).hash(hasher);
+
+        match self {
+            Value::Nil => (),
+            Value::Bool(b) => b.hash(hasher),
+            Value::Number(n) => n.hash_into(hasher),
+            Value::String(s) => s.borrow().hash(hasher),
+            Value::Table(t) => std::ptr::hash(&*t.borrow(), hasher),
+            Value::Function(f) => f.borrow().hash(hasher),
+            Value::Userdata(_) => todo!(),
+        }
+    }
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Self::Nil
+    }
 }
 
 impl PartialEq for Value {

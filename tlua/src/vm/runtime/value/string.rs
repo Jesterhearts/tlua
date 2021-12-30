@@ -6,7 +6,7 @@ use tlua_parser::ast::{
     identifiers::Ident,
 };
 
-#[derive(Clone, PartialEq, PartialOrd, Hash, Default)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct LuaString(Vec<u8>);
 
 impl std::fmt::Debug for LuaString {
@@ -98,33 +98,4 @@ impl PartialEq<&str> for LuaString {
     fn eq(&self, other: &&str) -> bool {
         self.0 == other.as_bytes()
     }
-}
-
-pub struct Thread {/* TODO(lang-5.4): This is basically rust's async state machine */}
-
-pub enum MetaMethod {
-    Add(()),
-    Sub(()),
-    Mul(()),
-    Div(()),
-    Mod(()),
-    Pow(()),
-    Unm(()),
-    Idiv(()),
-    Band(()),
-    Bor(()),
-    Bxor(()),
-    Bnot(()),
-    Shl(()),
-    Shr(()),
-    Concat(()),
-    Len(()),
-    Eq(()),
-    Lt(()),
-    Le(()),
-    Index(()),
-    NewIndex(()),
-    Call(()),
-    Gc(()),
-    Close(()),
 }

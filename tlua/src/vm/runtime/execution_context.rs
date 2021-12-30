@@ -185,6 +185,33 @@ impl Context<'_> {
                 }
 
                 // Register operations
+                Op::Load(Load { dest, index }) => {
+                    let value = match self.in_scope.load(dest) {
+                        Value::Table(t) => t
+                            .borrow()
+                            .entries
+                            .get(&TryFrom::<Value>::try_from(index.into())?)
+                            .cloned()
+                            .unwrap_or_default(),
+                        _ => todo!("metatables are unsupported"),
+                    };
+
+                    self.in_scope.store(dest, value);
+                }
+                Op::LoadIndirect(LoadIndirect { dest, index }) => {
+                    let index = self.in_scope.load(index);
+                    let value = match self.in_scope.load(dest) {
+                        Value::Table(t) => t
+                            .borrow()
+                            .entries
+                            .get(&index.try_into()?)
+                            .cloned()
+                            .unwrap_or_default(),
+                        _ => todo!("metatables are unsupported"),
+                    };
+
+                    self.in_scope.store(dest, value);
+                }
                 Op::Set(Set { dest, source }) => {
                     self.in_scope.store(dest, source.into());
                 }
