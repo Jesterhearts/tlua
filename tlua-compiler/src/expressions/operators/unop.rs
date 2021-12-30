@@ -4,7 +4,6 @@ use tlua_bytecode::{
         UnaryBitNot,
         UnaryMinus,
     },
-    OpError,
     Truthy,
 };
 use tlua_parser::ast::expressions::operator::*;
@@ -38,13 +37,7 @@ impl CompileExpression for Not<'_> {
 impl CompileExpression for BitNot<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         compiler.write_unary_op::<UnaryBitNot<UnasmRegister>, _, _>(&self.0, |v| match v {
-            tlua_bytecode::Constant::Float(f) => {
-                if f.fract() == 0.0 {
-                    f64inbounds(f).map(|i| (!i).into())
-                } else {
-                    Err(OpError::FloatToIntConversionFailed { f })
-                }
-            }
+            tlua_bytecode::Constant::Float(f) => f64inbounds(f).map(|i| (!i).into()),
             tlua_bytecode::Constant::Integer(i) => Ok((!i).into()),
             _ => Err(tlua_bytecode::OpError::InvalidType { op: "bitwise" }),
         })
