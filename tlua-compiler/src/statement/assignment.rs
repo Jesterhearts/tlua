@@ -4,7 +4,7 @@ use tlua_parser::ast::{
     statement::assignment::Assignment,
 };
 
-use crate::compiling::{
+use crate::{
     compiler::VariableTarget,
     CompileError,
     CompileStatement,

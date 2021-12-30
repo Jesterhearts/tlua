@@ -1,7 +1,7 @@
 use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::if_statement::If;
 
-use crate::compiling::{
+use crate::{
     CompileError,
     CompileStatement,
     CompilerContext,

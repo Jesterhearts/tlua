@@ -8,15 +8,15 @@ use tlua_parser::ast::{
     },
 };
 
-use crate::compiling::{
+use crate::{
     CompileExpression,
     CompilerContext,
     NodeOutput,
 };
 
-pub mod function_defs;
-pub mod operators;
-pub mod tables;
+pub(crate) mod function_defs;
+pub(crate) mod operators;
+pub(crate) mod tables;
 
 impl CompileExpression for Nil {
     fn compile(&self, _: &mut CompilerContext) -> Result<NodeOutput, super::CompileError> {

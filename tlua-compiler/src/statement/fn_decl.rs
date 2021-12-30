@@ -1,7 +1,7 @@
 use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::fn_decl::FnDecl;
 
-use crate::compiling::{
+use crate::{
     expressions::function_defs::compile_global_fn_body,
     CompileError,
     CompileStatement,

@@ -9,23 +9,21 @@ use tlua_bytecode::{
     Register,
     Truthy,
 };
+use tlua_compiler::Chunk;
 use tracing_rc::rc::Gc;
 
-use crate::{
-    compiling::Chunk,
-    vm::{
-        binop::traits::ApplyBinop,
-        runtime::{
-            value::{
-                function::{
-                    Scope,
-                    ScopeSet,
-                },
-                Function,
-                Number,
+use crate::vm::{
+    binop::traits::ApplyBinop,
+    runtime::{
+        value::{
+            function::{
+                Scope,
+                ScopeSet,
             },
-            Value,
+            Function,
+            Number,
         },
+        Value,
     },
 };
 

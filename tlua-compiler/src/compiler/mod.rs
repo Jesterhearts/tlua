@@ -22,7 +22,7 @@ use tlua_parser::ast::{
     identifiers::Ident,
 };
 
-use crate::compiling::{
+use crate::{
     Chunk,
     CompileError,
     CompileExpression,
@@ -39,14 +39,14 @@ use self::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub enum VariableTarget {
+pub(crate) enum VariableTarget {
     Ident(Ident),
     // TODO(tables)
     Register(UnasmRegister),
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum LocalVariableTarget {
+pub(crate) enum LocalVariableTarget {
     Mutable(Ident),
     Constant(Ident),
     Closable(Ident),
@@ -59,14 +59,14 @@ enum HasVaArgs {
 }
 
 #[derive(Debug, Default)]
-pub struct Compiler {
+pub(crate) struct Compiler {
     scope: Scope,
 
     functions: Vec<UnasmFunction>,
 }
 
 impl Compiler {
-    pub fn compile_ast(mut self, ast: Block) -> Result<Chunk, CompileError> {
+    pub(crate) fn compile_ast(mut self, ast: Block) -> Result<Chunk, CompileError> {
         let mut main = self.new_context();
 
         let _ = ast.compile(&mut main)?;
@@ -227,7 +227,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct MainCompilerContext<'chunk> {
+pub(crate) struct MainCompilerContext<'chunk> {
     context: CompilerContext<'chunk>,
 }
 
@@ -246,7 +246,7 @@ impl DerefMut for MainCompilerContext<'_> {
 }
 
 impl MainCompilerContext<'_> {
-    pub fn complete(self) -> UnasmFunction {
+    pub(crate) fn complete(self) -> UnasmFunction {
         let Self {
             context:
                 CompilerContext {
@@ -271,7 +271,7 @@ impl MainCompilerContext<'_> {
 /// stack is cleared before every raise instruction if the only way to create is
 /// via `write_raise`.
 #[derive(Debug)]
-pub struct CompilerContext<'function> {
+pub(crate) struct CompilerContext<'function> {
     functions: &'function mut Vec<UnasmFunction>,
 
     scope: ScopeContext<'function>,
@@ -553,7 +553,7 @@ impl CompilerContext<'_> {
 
 impl CompilerContext<'_> {
     /// Check if varargs are available in scope
-    pub fn check_varargs(&self) -> Result<(), CompileError> {
+    pub(crate) fn check_varargs(&self) -> Result<(), CompileError> {
         match self.has_va_args {
             HasVaArgs::None => Err(CompileError::NoVarArgsAvailable),
             HasVaArgs::Some => Ok(()),
@@ -562,7 +562,7 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to emit a sequence of instructions corresponding
     /// to calling a function.
-    pub fn write_call(
+    pub(crate) fn write_call(
         &mut self,
         target: UnasmRegister,
         mut args: impl ExactSizeIterator<Item = impl CompileExpression>,
@@ -647,18 +647,18 @@ impl CompilerContext<'_> {
     }
 
     /// Lookup the appropriate register for a specific identifier.
-    pub fn read_variable(&mut self, ident: Ident) -> Result<UnasmRegister, CompileError> {
+    pub(crate) fn read_variable(&mut self, ident: Ident) -> Result<UnasmRegister, CompileError> {
         Ok(self.scope.get_in_scope(ident)?.into())
     }
 
     /// Instruct the compiler to emit a sequence of instruction corresponding to
     /// raising an error with a compile-time known type.
-    pub fn write_raise(&mut self, err: OpError) {
+    pub(crate) fn write_raise(&mut self, err: OpError) {
         self.write(opcodes::Raise::from(err));
     }
 
     /// Instruct the compiler to compile a new block in its own subscope
-    pub fn write_subscope(
+    pub(crate) fn write_subscope(
         &mut self,
         mut body: impl ExactSizeIterator<Item = impl CompileStatement>,
         ret: Option<&impl CompileStatement>,
@@ -726,7 +726,7 @@ impl CompilerContext<'_> {
         result
     }
 
-    pub fn write_if_sequence(
+    pub(crate) fn write_if_sequence(
         &mut self,
         conditions: impl Iterator<Item = impl CompileExpression>,
         bodies: impl Iterator<Item = impl CompileStatement>,
@@ -847,7 +847,7 @@ impl CompilerContext<'_> {
     }
 
     /// Instruct the compiler to compile a new global function.
-    pub fn write_global_fn(
+    pub(crate) fn write_global_fn(
         &mut self,
         params: impl ExactSizeIterator<Item = Ident>,
         body: impl ExactSizeIterator<Item = impl CompileStatement>,
@@ -862,7 +862,7 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to compile a new global function with variadic
     /// arguments.
-    pub fn write_va_global_fn(
+    pub(crate) fn write_va_global_fn(
         &mut self,
         params: impl ExactSizeIterator<Item = Ident>,
         body: impl ExactSizeIterator<Item = impl CompileStatement>,
@@ -876,7 +876,7 @@ impl CompilerContext<'_> {
     }
 
     /// Instruct the compiler to compile a new local function bound to `name`.
-    pub fn write_local_fn(
+    pub(crate) fn write_local_fn(
         &mut self,
         name: Ident,
         params: impl ExactSizeIterator<Item = Ident>,
@@ -904,7 +904,7 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to compile a new local function bound to `name`
     /// with variadic arguments.
-    pub fn write_va_local_fn(
+    pub(crate) fn write_va_local_fn(
         &mut self,
         name: Ident,
         params: impl ExactSizeIterator<Item = Ident>,
@@ -926,7 +926,7 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to emit a sequence of instruction corresponding to
     /// returning some number of values from a function.
-    pub fn write_ret_stack_sequence(
+    pub(crate) fn write_ret_stack_sequence(
         &mut self,
         mut outputs: impl ExactSizeIterator<Item = impl CompileExpression>,
     ) -> Result<Option<OpError>, CompileError> {
@@ -988,7 +988,7 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to emit a sequence of instructions for local
     /// variable initialization.
-    pub fn write_assign_all_locals(
+    pub(crate) fn write_assign_all_locals(
         &mut self,
         targets: impl ExactSizeIterator<Item = LocalVariableTarget>,
         initializers: impl ExactSizeIterator<Item = impl CompileExpression>,
@@ -1005,7 +1005,7 @@ impl CompilerContext<'_> {
     /// will be used. If a function with multiple return values is the _last_
     /// item in the list, it will yield up to all of its values to initialize
     /// each variable.
-    pub fn write_assign_all(
+    pub(crate) fn write_assign_all(
         &mut self,
         targets: impl ExactSizeIterator<Item = VariableTarget>,
         initializers: impl ExactSizeIterator<Item = impl CompileExpression>,
@@ -1015,7 +1015,7 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to emit a sequence of instructions corresponding
     /// to a binary operation on the result of two nodes.
-    pub fn write_numeric_binop<Op, OpIndirect, Lhs, Rhs>(
+    pub(crate) fn write_numeric_binop<Op, OpIndirect, Lhs, Rhs>(
         &mut self,
         lhs: Lhs,
         rhs: Rhs,
@@ -1031,7 +1031,7 @@ impl CompilerContext<'_> {
         })
     }
 
-    pub fn write_cmp_binop<Op, OpIndirect, Lhs, Rhs>(
+    pub(crate) fn write_cmp_binop<Op, OpIndirect, Lhs, Rhs>(
         &mut self,
         lhs: Lhs,
         rhs: Rhs,
@@ -1072,7 +1072,7 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to emit a sequence of instructions corresponding
     /// to a binary operation on the result of two nodes.
-    pub fn write_boolean_binop<Op, OpIndirect, Lhs, Rhs>(
+    pub(crate) fn write_boolean_binop<Op, OpIndirect, Lhs, Rhs>(
         &mut self,
         lhs: Lhs,
         rhs: Rhs,
@@ -1087,7 +1087,7 @@ impl CompilerContext<'_> {
     }
 
     // TODO(unary-ops)
-    pub fn write_unary_op<Op, Operand, ConstEval>(
+    pub(crate) fn write_unary_op<Op, Operand, ConstEval>(
         &mut self,
         operand: Operand,
         consteval: ConstEval,

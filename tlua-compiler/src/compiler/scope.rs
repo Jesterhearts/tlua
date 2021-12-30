@@ -9,7 +9,7 @@ use std::{
 
 use tlua_parser::ast::identifiers::Ident;
 
-use crate::compiling::{
+use crate::{
     compiler::{
         unasm::{
             AnonymousRegister,

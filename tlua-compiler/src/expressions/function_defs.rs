@@ -1,14 +1,14 @@
 use tlua_bytecode::FuncId;
 use tlua_parser::ast::expressions::function_defs::FnBody;
 
-use crate::compiling::{
+use crate::{
     CompileError,
     CompileExpression,
     CompilerContext,
     NodeOutput,
 };
 
-pub fn compile_global_fn_body(
+pub(crate) fn compile_global_fn_body(
     body: &FnBody,
     compiler: &mut CompilerContext,
 ) -> Result<FuncId, CompileError> {

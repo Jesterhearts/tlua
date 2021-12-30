@@ -4,7 +4,7 @@ use tlua_parser::ast::statement::variables::{
     LocalVarList,
 };
 
-use crate::compiling::{
+use crate::{
     compiler::LocalVariableTarget,
     CompileError,
     CompileStatement,

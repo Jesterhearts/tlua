@@ -4,7 +4,7 @@ use tlua_bytecode::{
 };
 use tlua_parser::ast::expressions::operator::*;
 
-use crate::compiling::{
+use crate::{
     compiler::unasm::UnasmRegister,
     CompileError,
     CompileExpression,
@@ -152,7 +152,7 @@ mod tests {
         Nil,
     };
 
-    use crate::compiling::{
+    use crate::{
         compiler::Compiler,
         CompileExpression,
         NodeOutput,

@@ -1,6 +1,6 @@
 use tlua_parser::ast::expressions::tables::TableConstructor;
 
-use crate::compiling::{
+use crate::{
     CompileError,
     CompileExpression,
     CompilerContext,

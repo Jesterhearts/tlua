@@ -11,9 +11,9 @@ use tlua_bytecode::{
     Register,
 };
 
-use crate::compiling::Function;
+use crate::Function;
 
-pub trait AssembleOp {
+pub(crate) trait AssembleOp {
     type Target;
 
     fn assemble(self) -> Self::Target;
@@ -29,7 +29,7 @@ impl From<AnonymousRegister> for Register {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct OffsetRegister {
+pub(crate) struct OffsetRegister {
     pub(super) source_scope: u16,
     pub(super) offset: u16,
 }
@@ -44,10 +44,10 @@ impl From<OffsetRegister> for Register {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deref)]
-pub struct ConstantRegister(pub(super) OffsetRegister);
+pub(crate) struct ConstantRegister(pub(super) OffsetRegister);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From)]
-pub enum LocalRegister {
+pub(crate) enum LocalRegister {
     Mutable(OffsetRegister),
     Constant(ConstantRegister),
 }
@@ -62,10 +62,10 @@ impl From<LocalRegister> for Register {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From)]
-pub struct AnonymousRegister(u16);
+pub(crate) struct AnonymousRegister(u16);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From)]
-pub enum UnasmRegister {
+pub(crate) enum UnasmRegister {
     Anonymous(AnonymousRegister),
     Local(LocalRegister),
 }
@@ -91,7 +91,7 @@ impl From<UnasmRegister> for Register {
     }
 }
 
-pub type UnasmOp = Op<UnasmRegister>;
+pub(crate) type UnasmOp = Op<UnasmRegister>;
 
 impl<OpTy> AssembleOp for BinOpData<OpTy, UnasmRegister, Constant> {
     type Target = (Register, Constant);
@@ -237,15 +237,15 @@ impl AssembleOp for UnasmOp {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct UnasmFunction {
-    pub named_args: usize,
-    pub anon_registers: usize,
-    pub local_registers: usize,
-    pub instructions: Vec<UnasmOp>,
+pub(crate) struct UnasmFunction {
+    pub(crate) named_args: usize,
+    pub(crate) anon_registers: usize,
+    pub(crate) local_registers: usize,
+    pub(crate) instructions: Vec<UnasmOp>,
 }
 
 impl UnasmFunction {
-    pub fn into_function(self) -> Function {
+    pub(crate) fn into_function(self) -> Function {
         let Self {
             instructions,
             named_args,

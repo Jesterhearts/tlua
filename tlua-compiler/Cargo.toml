@@ -1,12 +1,11 @@
 [package]
-name = "tlua"
+name = "tlua-compiler"
 version = "0.1.0"
 edition = "2021"
-readme = "../README.md"
+publish = false
 
 [features]
 trace_mem = []
-trace_execution = []
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,22 +13,17 @@ trace_execution = []
 derive_more = '^0.99'
 take_mut = '^0.2'
 thiserror = '^1.0'
-tracing-rc = '^0.1'
+
+[dependencies.tlua-bytecode]
+path = "../tlua-bytecode"
+
+[dependencies.tlua-parser]
+path = "../tlua-parser"
 
 [dependencies.tracing]
 version = '^0.1'
 features = [ "attributes" ]
 
-[dependencies.tlua-bytecode]
-path = "../tlua-bytecode"
-
-[dependencies.tlua-compiler]
-path = "../tlua-compiler"
-
-[dependencies.tlua-parser]
-path = "../tlua-parser"
-
 [dev-dependencies]
 anyhow = '^1.0'
-indoc = '^1.0'
 pretty_assertions = '^1.0'

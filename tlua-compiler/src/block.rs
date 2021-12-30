@@ -10,7 +10,7 @@ use tlua_parser::{
     list::List,
 };
 
-use crate::compiling::{
+use crate::{
     CompileError,
     CompileStatement,
     CompilerContext,

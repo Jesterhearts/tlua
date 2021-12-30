@@ -7,31 +7,40 @@ use tlua_bytecode::{
     FuncId,
     OpError,
 };
-use tlua_parser::ast::{
-    expressions::{
-        operator::{
-            BinaryOperator,
-            UnaryOperator,
+use tlua_parser::{
+    ast::{
+        expressions::{
+            operator::{
+                BinaryOperator,
+                UnaryOperator,
+            },
+            Expression,
         },
-        Expression,
+        identifiers::Ident,
+        statement::Statement,
+        ASTAllocator,
     },
-    identifiers::Ident,
-    statement::Statement,
+    parsing::{
+        parse_chunk,
+        ChunkParseError,
+    },
 };
+use tracing::instrument;
 
-pub mod block;
-pub mod compiler;
-pub mod expressions;
-pub mod prefix_expression;
-pub mod statement;
+mod block;
+mod compiler;
+mod expressions;
+mod prefix_expression;
+mod statement;
 
 use self::compiler::{
     unasm::UnasmRegister,
     CompilerContext,
 };
+use crate::compiler::Compiler;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum NodeOutput {
+enum NodeOutput {
     Function(FuncId),
     Constant(Constant),
     Register(UnasmRegister),
@@ -46,8 +55,10 @@ impl Default for NodeOutput {
     }
 }
 
-#[derive(Debug, Clone, Copy, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum CompileError {
+    #[error("Error parsing lua source: {0:?}")]
+    ParseError(ChunkParseError),
     #[error("Cannot use ... outside of a vararg function")]
     NoVarArgsAvailable,
     #[error("Allocated globals exceeded the maximum of {max:}")]
@@ -58,7 +69,7 @@ pub enum CompileError {
     ScopeNestingTooDeep { max: usize },
 }
 
-pub trait CompileExpression {
+trait CompileExpression {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError>;
 }
 
@@ -120,7 +131,7 @@ impl CompileExpression for BinaryOperator<'_> {
     }
 }
 
-pub trait CompileStatement {
+trait CompileStatement {
     // TODO(compiler-opt): For e.g. if statements, the compiler could use knowledge
     // of ret statements to omit instructions.
     // This would require changing the result of this to an enum of:
@@ -180,4 +191,15 @@ pub struct Chunk {
     pub globals_map: HashMap<Ident, usize>,
     pub functions: Vec<Function>,
     pub main: Function,
+}
+
+#[instrument(level = "trace", name="compile", skip(src), fields(src_bytes = src.as_bytes().len()))]
+pub fn compile(src: &str) -> Result<Chunk, CompileError> {
+    let alloc = ASTAllocator::default();
+
+    let ast = parse_chunk(src, &alloc).map_err(CompileError::ParseError)?;
+
+    let compiler = Compiler::default();
+
+    compiler.compile_ast(ast)
 }

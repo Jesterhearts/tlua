@@ -7,7 +7,7 @@ use tlua_parser::ast::{
     },
 };
 
-use crate::compiling::{
+use crate::{
     CompileError,
     CompileExpression,
     CompileStatement,

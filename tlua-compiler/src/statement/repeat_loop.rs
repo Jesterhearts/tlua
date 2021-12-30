@@ -1,13 +1,13 @@
 use tlua_bytecode::OpError;
-use tlua_parser::ast::statement::foreach_loop::ForEachLoop;
+use tlua_parser::ast::statement::repeat_loop::RepeatLoop;
 
-use crate::compiling::{
+use crate::{
     CompileError,
     CompileStatement,
     CompilerContext,
 };
 
-impl CompileStatement for ForEachLoop<'_> {
+impl CompileStatement for RepeatLoop<'_> {
     fn compile(&self, _compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
         todo!()
     }

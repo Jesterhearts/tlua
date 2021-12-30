@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
+use tlua_compiler::Chunk;
 use tlua_parser::ast::identifiers::Ident;
 use tracing_rc::rc::collect_full;
 
 use crate::{
-    compiling::Chunk,
     vm::runtime::value::function::{
         Scope,
         ScopeSet,
