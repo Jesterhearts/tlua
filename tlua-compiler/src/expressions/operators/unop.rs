@@ -1,6 +1,9 @@
 use tlua_bytecode::{
     binop::f64inbounds,
-    opcodes::UnaryMinus,
+    opcodes::{
+        UnaryBitNot,
+        UnaryMinus,
+    },
     OpError,
     Truthy,
 };
@@ -34,7 +37,7 @@ impl CompileExpression for Not<'_> {
 
 impl CompileExpression for BitNot<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        compiler.write_unary_op::<UnaryMinus<UnasmRegister>, _, _>(&self.0, |v| match v {
+        compiler.write_unary_op::<UnaryBitNot<UnasmRegister>, _, _>(&self.0, |v| match v {
             tlua_bytecode::Constant::Float(f) => {
                 if f.fract() == 0.0 {
                     f64inbounds(f).map(|i| (!i).into())

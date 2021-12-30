@@ -29,6 +29,11 @@ impl Runtime {
         self.globals.insert(name.into(), value.into());
     }
 
+    /// Reads the value associated with a global variable.
+    pub fn load_global(&self, name: &str) -> Option<&Value> {
+        self.globals.get(&name.into())
+    }
+
     /// Execute the provided chunk & run it until it completes or returns an
     /// error.
     pub fn execute(&mut self, chunk: &Chunk) -> Result<Vec<Value>, LuaError> {
@@ -43,13 +48,21 @@ impl Runtime {
         let current = Scope::new(chunk.main.local_registers);
         let anon = vec![Value::Nil; chunk.main.anon_registers];
 
-        let global_scope = vec![global_scope];
+        let available_scope = vec![global_scope.clone()];
         let execution_context = execution_context::Context::new(
-            ScopeSet::new(global_scope, current, anon, vec![]),
+            ScopeSet::new(available_scope, current, anon, vec![]),
             chunk,
         );
 
         let result = execution_context.execute()?;
+
+        // TODO(perf): This can consume all the values if we force globals_map to be
+        // ordered (e.g. with indexmap).
+        let values = global_scope.into_values();
+        for (&ident, &idx) in chunk.globals_map.iter() {
+            self.globals.insert(ident, values[idx].borrow().clone());
+        }
+
         collect_full();
 
         Ok(result)

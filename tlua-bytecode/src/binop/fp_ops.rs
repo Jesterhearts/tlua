@@ -149,7 +149,7 @@ float_binop!(Divide => {
 
 float_binop!(IDiv => {
     (lhs: int, rhs: int) =>  Number::Integer(lhs / rhs),
-    (lhs: float, rhs: float) => Number::Float((lhs + rhs).floor()),
+    (lhs: float, rhs: float) => Number::Float((lhs / rhs).floor()),
 });
 
 float_binop!(Modulo => {

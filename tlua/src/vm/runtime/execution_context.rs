@@ -122,7 +122,13 @@ impl Context<'_> {
                         reg,
                         Value::Number(Number::Integer(match self.in_scope.load(reg) {
                             Value::Number(operand) => match operand {
-                                Number::Float(f) => !f64inbounds(f)?,
+                                Number::Float(f) => {
+                                    if f.fract() == 0.0 {
+                                        !f64inbounds(f)?
+                                    } else {
+                                        return Err(OpError::FloatToIntConversionFailed { f });
+                                    }
+                                }
                                 Number::Integer(i) => !i,
                             },
                             _ => todo!(),

@@ -32,6 +32,10 @@ impl Scope {
             registers: Rc::new(vec![RefCell::new(Value::Nil); size]),
         }
     }
+
+    pub fn into_values(mut self) -> Vec<RefCell<Value>> {
+        Rc::make_mut(&mut self.registers).drain(..).collect()
+    }
 }
 
 impl Trace for Scope {
