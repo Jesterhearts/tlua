@@ -16,6 +16,18 @@ pub enum Constant {
     String(ConstantString),
 }
 
+impl From<f64> for Constant {
+    fn from(f: f64) -> Self {
+        Self::Float(f)
+    }
+}
+
+impl From<i64> for Constant {
+    fn from(i: i64) -> Self {
+        Self::Integer(i)
+    }
+}
+
 impl From<Number> for Constant {
     fn from(n: Number) -> Self {
         match n {
