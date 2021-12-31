@@ -4,7 +4,6 @@ use thiserror::Error;
 use tlua_bytecode::{
     opcodes::Instruction,
     Constant,
-    FuncId,
     OpError,
 };
 use tlua_parser::{
@@ -41,7 +40,6 @@ use crate::compiler::Compiler;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum NodeOutput {
-    Function(FuncId),
     Constant(Constant),
     Register(UnasmRegister),
     ReturnValues,

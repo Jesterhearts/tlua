@@ -204,8 +204,7 @@ mod tests {
     }
 
     #[test]
-    // TODO(lang-5.4): Needs different handling than the rest of the cmp ops
-    #[ignore]
+    #[ignore = "TODO(lang-5.4): Needs different handling than the rest of the cmp ops"]
     fn compiles_constant_eq_types_dif_false() -> anyhow::Result<()> {
         let ast = Equals {
             lhs: &Expression::Number(Number::Integer(1)),

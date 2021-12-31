@@ -15,7 +15,13 @@ use crate::{
 pub mod execution_context;
 pub mod value;
 
-pub use self::value::Value;
+pub use tracing_rc::rc::Gc;
+
+pub use self::value::{
+    Function,
+    Table,
+    Value,
+};
 
 #[derive(Debug, Default)]
 pub struct Runtime {

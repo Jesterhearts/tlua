@@ -421,7 +421,8 @@ mod tests {
             PrefixExpression::FnCall(FnCallPrefixExpression::Call {
                 head: HeadAtom::Name("a".into()),
                 args: FunctionAtom::Call(FnArgs::TableConstructor(TableConstructor {
-                    fields: Default::default()
+                    indexed_fields: Default::default(),
+                    arraylike_fields: Default::default(),
                 }))
             })
         );
@@ -488,7 +489,8 @@ mod tests {
                 args: FunctionAtom::MethodCall {
                     name: "foo".into(),
                     args: FnArgs::TableConstructor(TableConstructor {
-                        fields: Default::default()
+                        indexed_fields: Default::default(),
+                        arraylike_fields: Default::default(),
                     })
                 }
             })

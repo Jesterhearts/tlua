@@ -29,7 +29,7 @@ pub(crate) fn compile_global_fn_body(
 
 impl CompileExpression for FnBody<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        let func_id = compile_global_fn_body(self, compiler)?;
-        Ok(NodeOutput::Function(func_id))
+        let _func_id = compile_global_fn_body(self, compiler)?;
+        todo!()
     }
 }

@@ -114,7 +114,7 @@ fn parse_non_op_expr<'src, 'chunk>(
         ),
         map(
             |input| TableConstructor::parse(input, alloc),
-            Expression::TableConstructor,
+            |ctor| Expression::TableConstructor(alloc.alloc(ctor)),
         ),
     ))(input)
 }
@@ -156,8 +156,9 @@ mod tests {
             final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
         assert_eq!(
             result,
-            Expression::TableConstructor(TableConstructor {
-                fields: Default::default()
+            Expression::TableConstructor(&TableConstructor {
+                indexed_fields: Default::default(),
+                arraylike_fields: Default::default(),
             })
         );
 

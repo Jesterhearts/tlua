@@ -94,8 +94,8 @@ impl LuaString {
     }
 }
 
-impl PartialEq<&str> for LuaString {
-    fn eq(&self, other: &&str) -> bool {
+impl PartialEq<str> for LuaString {
+    fn eq(&self, other: &str) -> bool {
         self.0 == other.as_bytes()
     }
 }

@@ -169,12 +169,21 @@ where
         register
     }
 
+    /// Indicate the the register should be initialized by allocating a
+    /// function.
     fn init_alloc_fn(self, compiler: &mut CompilerContext, value: FuncId) -> RegisterTy {
         let register = self.no_init_needed();
         compiler.write(opcodes::AllocFunc::from((
             UnasmRegister::from(register),
             value,
         )));
+        register
+    }
+
+    /// Indicate the the register shoudl be initialized by allocating a table
+    fn init_alloc_table(self, compiler: &mut CompilerContext) -> RegisterTy {
+        let register = self.no_init_needed();
+        compiler.write(opcodes::AllocTable::from(UnasmRegister::from(register)));
         register
     }
 
@@ -377,7 +386,6 @@ impl CompilerContext<'_> {
                 NodeOutput::ReturnValues => dest.map(self)?.init_from_ret(self),
                 NodeOutput::VAStack => dest.map(self)?.init_from_va(self, 0),
                 NodeOutput::Err(err) => return Ok(Some(err)),
-                NodeOutput::Function(_) => todo!(),
             };
         }
 
@@ -542,7 +550,6 @@ impl CompilerContext<'_> {
             }
             (NodeOutput::Err(err), _) | (_, NodeOutput::Err(err)) => Ok(NodeOutput::Err(err)),
             (NodeOutput::VAStack, _) | (_, NodeOutput::VAStack) => todo!(),
-            (NodeOutput::Function(_), _) | (_, NodeOutput::Function(_)) => todo!(),
         }
     }
 
@@ -601,7 +608,6 @@ impl CompilerContext<'_> {
                     arg_srcs.push(ArgSrc::Va0);
                 }
                 NodeOutput::Err(err) => return Ok(Some(err)),
-                NodeOutput::Function(_) => todo!(),
             };
         }
 
@@ -637,7 +643,6 @@ impl CompilerContext<'_> {
                 return Ok(None);
             }
             NodeOutput::Err(err) => return Ok(Some(err)),
-            NodeOutput::Function(_) => todo!(),
         }
 
         self.write(opcodes::StartCall::from(target));
@@ -833,7 +838,6 @@ impl CompilerContext<'_> {
                 // If evaluating the condition would statically raise, we can skip compiling the
                 // rest of the sequence, since it's unreachable.
                 NodeOutput::Err(err) => return Ok(Some(err)),
-                NodeOutput::Function(_) => todo!(),
             }
         }
 
@@ -924,6 +928,39 @@ impl CompilerContext<'_> {
         Ok(())
     }
 
+    /// Instruct the compiler to emit the instructions required to initialize a
+    /// table.
+    pub(crate) fn init_table(&mut self) -> AnonymousRegister {
+        self.scope.new_anonymous().init_alloc_table(self)
+    }
+
+    /// Instruct the compiler to emit the instructions required to set a value
+    /// in a table based on an index.
+    pub(crate) fn assign_to_array(
+        &mut self,
+        _table: UnasmRegister,
+        _index: usize,
+        value: impl CompileExpression,
+    ) -> Result<(), CompileError> {
+        let _value = value.compile(self)?;
+
+        todo!()
+    }
+
+    /// Instruct the compiler to emit the instructions required to set a value
+    /// in a table based on an expression.
+    pub(crate) fn assign_to_table(
+        &mut self,
+        _table: UnasmRegister,
+        index: impl CompileExpression,
+        value: impl CompileExpression,
+    ) -> Result<(), CompileError> {
+        let _index = index.compile(self)?;
+        let _value = value.compile(self)?;
+
+        todo!()
+    }
+
     /// Instruct the compiler to emit a sequence of instruction corresponding to
     /// returning some number of values from a function.
     pub(crate) fn write_ret_stack_sequence(
@@ -956,7 +993,6 @@ impl CompilerContext<'_> {
                     self.write(opcodes::Op::SetRetFromRet0);
                 }
                 NodeOutput::VAStack => self.write(opcodes::Op::SetRetVa0),
-                NodeOutput::Function(_) => todo!(),
             }
         }
 
@@ -980,7 +1016,6 @@ impl CompilerContext<'_> {
             NodeOutput::Err(err) => {
                 return Ok(Some(err));
             }
-            NodeOutput::Function(_) => todo!(),
         }
 
         Ok(None)
@@ -1131,7 +1166,6 @@ impl CompilerContext<'_> {
                 Ok(NodeOutput::Register(reg.into()))
             }
             NodeOutput::Err(err) => Ok(NodeOutput::Err(err)),
-            NodeOutput::Function(_) => todo!(),
         }
     }
 }

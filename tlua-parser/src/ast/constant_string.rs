@@ -1,8 +1,16 @@
 use derive_more::Deref;
 use internment::LocalIntern;
 
+use crate::ast::identifiers::Ident;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deref)]
-pub struct ConstantString(LocalIntern<Vec<u8>>);
+pub struct ConstantString(pub(crate) LocalIntern<Vec<u8>>);
+
+impl From<Ident> for ConstantString {
+    fn from(ident: Ident) -> Self {
+        Self(ident.0)
+    }
+}
 
 impl ConstantString {
     pub fn new(data: Vec<u8>) -> Self {

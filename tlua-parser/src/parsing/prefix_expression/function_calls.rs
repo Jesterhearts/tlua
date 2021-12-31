@@ -115,7 +115,8 @@ mod tests {
         assert_eq!(
             result,
             FnArgs::TableConstructor(TableConstructor {
-                fields: Default::default()
+                indexed_fields: Default::default(),
+                arraylike_fields: Default::default(),
             })
         );
 

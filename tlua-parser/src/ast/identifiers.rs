@@ -3,7 +3,7 @@ use std::ops::Deref;
 use internment::LocalIntern;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Ident(LocalIntern<Vec<u8>>);
+pub struct Ident(pub(crate) LocalIntern<Vec<u8>>);
 
 impl Deref for Ident {
     type Target = [u8];

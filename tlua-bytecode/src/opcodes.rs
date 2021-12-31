@@ -132,6 +132,8 @@ pub enum Op<RegisterTy> {
     SetFromVa(SetFromVa<RegisterTy>),
     /// Allocate a new function
     AllocFunc(AllocFunc<RegisterTy>),
+    /// Allocate a new function
+    AllocTable(AllocTable<RegisterTy>),
     /// Push a new scope as the current local scope.
     PushScope(ScopeDescriptor),
     /// Discard the current scope and restore the most recently pushed scope.
@@ -286,6 +288,11 @@ pub struct Raise {
 pub struct AllocFunc<RegTy> {
     pub dest: RegTy,
     pub id: FuncId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct AllocTable<RegTy> {
+    pub dest: RegTy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]

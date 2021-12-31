@@ -219,6 +219,7 @@ impl AssembleOp for UnasmOp {
                 id,
             }
             .into(),
+            Op::AllocTable(AllocTable { dest }) => AllocTable { dest: dest.into() }.into(),
             Op::PushScope(descriptor) => descriptor.into(),
             Op::PopScope => Op::PopScope,
             Op::StartCall(StartCall { target }) => StartCall {

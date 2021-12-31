@@ -37,7 +37,7 @@ pub enum Expression<'chunk> {
     Number(Number),
     String(ConstantString),
     FnDef(&'chunk FnBody<'chunk>),
-    TableConstructor(TableConstructor<'chunk>),
+    TableConstructor(&'chunk TableConstructor<'chunk>),
     VarArgs(VarArgs),
     BinaryOp(BinaryOperator<'chunk>),
     UnaryOp(UnaryOperator<'chunk>),

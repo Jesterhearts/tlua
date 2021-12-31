@@ -23,6 +23,7 @@ use crate::vm::{
             Function,
             Number,
         },
+        Table,
         Value,
     },
 };
@@ -240,6 +241,11 @@ impl Context<'_> {
                 // Allocate values
                 Op::AllocFunc(AllocFunc { dest, id }) => {
                     let func = Value::Function(Gc::new(Function::new(&self.in_scope, id)));
+                    self.in_scope.store(dest, func);
+                }
+
+                Op::AllocTable(AllocTable { dest }) => {
+                    let func = Value::Table(Gc::new(Table::default()));
                     self.in_scope.store(dest, func);
                 }
 
