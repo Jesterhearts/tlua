@@ -95,7 +95,7 @@ impl PartialEq for Value {
             (Self::Bool(l0), Self::Bool(r0)) => l0 == r0,
             (Self::Number(l0), Self::Number(r0)) => l0 == r0,
             (Self::String(l0), Self::String(r0)) => l0 == r0,
-            (Self::Table(_), Self::Table(_)) => todo!(),
+            (Self::Table(l0), Self::Table(r0)) => l0 == r0,
             (Self::Userdata(_), Self::Userdata(_)) => todo!(),
             (Self::Function(_), Self::Function(_)) => todo!(),
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
@@ -112,6 +112,12 @@ impl From<Constant> for Value {
             Constant::Integer(i) => i.into(),
             Constant::String(s) => Self::String(Rc::new(RefCell::new(s.into()))),
         }
+    }
+}
+
+impl From<&str> for Value {
+    fn from(s: &str) -> Self {
+        Self::String(Rc::new(RefCell::new(s.into())))
     }
 }
 

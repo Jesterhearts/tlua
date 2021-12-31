@@ -11,102 +11,104 @@ use crate::{
     OpError,
 };
 
+/// An opcode using the bytecode's representation of a register.
 pub type Instruction = Op<Register>;
 
+/// The full list of opcodes supported in tlua's bytecode format. This is
+/// generic over the register type to allow intermediate forms of bytecode.
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub enum Op<RegisterTy> {
-    /// `[this] += c`, preserving types.
+    /// `[dest] += c`, preserving types.
     Add(Add<RegisterTy, Constant>),
-    /// `[this] += [other]`
+    /// `[dest] += [src]`
     AddIndirect(AddIndirect<RegisterTy, RegisterTy>),
-    /// `[this] -= c`, preserving types.
+    /// `[dest] -= c`, preserving types.
     Subtract(Subtract<RegisterTy, Constant>),
-    /// `[this] -= [other]`, preserving types.
+    /// `[dest] -= [src]`, preserving types.
     SubtractIndirect(SubtractIndirect<RegisterTy, RegisterTy>),
-    /// `[this] *= c`, preserving types.
+    /// `[dest] *= c`, preserving types.
     Times(Times<RegisterTy, Constant>),
-    /// `[this] *= [other]`, preserving types.
+    /// `[dest] *= [src]`, preserving types.
     TimesIndirect(TimesIndirect<RegisterTy, RegisterTy>),
-    /// `[this] %= c`, preserving types.
+    /// `[dest] %= c`, preserving types.
     Modulo(Modulo<RegisterTy, Constant>),
-    /// `[this] %= [other]`, preserving types.
+    /// `[dest] %= [src]`, preserving types.
     ModuloIndirect(ModuloIndirect<RegisterTy, RegisterTy>),
-    // Floating point operations
-    /// `[this] = [this] / c`, producing a float.
+    /// `[dest] = [dest] / c`, producing a float.
     Divide(Divide<RegisterTy, Constant>),
-    /// `[this] = [this] / [other]`, producing a float.
+    /// `[dest] = [dest] / [src]`, producing a float.
     DivideIndirect(DivideIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this].exp(c)`, producing a float.
+    /// `[dest] = [dest].exp(c)`, producing a float.
     Exponetiation(Exponetiation<RegisterTy, Constant>),
-    /// `[this] = [this].exp([other])`, producing a float.
+    /// `[dest] = [dest].exp([src])`, producing a float.
     ExponetiationIndirect(ExponetiationIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = floor([this] / c)`, type preserving.
+    /// `[dest] = floor([dest] / c)`, type preserving.
     IDiv(IDiv<RegisterTy, Constant>),
-    /// `[this] = floor([this] / [other])`, type preserving.
+    /// `[dest] = floor([dest] / [src])`, type preserving.
     IDivIndirect(IDivIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] & c`, producing an int.
+    /// `[dest] = [dest] & c`, producing an int.
     BitAnd(BitAnd<RegisterTy, Constant>),
-    /// `[this] = [this] & [other]`, producing an int.
+    /// `[dest] = [dest] & [src]`, producing an int.
     BitAndIndirect(BitAndIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] | c`, producing an int.
+    /// `[dest] = [dest] | c`, producing an int.
     BitOr(BitOr<RegisterTy, Constant>),
-    /// `[this] = [this] | [other]`, producing an int.
+    /// `[dest] = [dest] | [src]`, producing an int.
     BitOrIndirect(BitOrIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] ^ c`, producing an int.
+    /// `[dest] = [dest] ^ c`, producing an int.
     BitXor(BitXor<RegisterTy, Constant>),
-    /// `[this] = [this] ^ [other]`, producing an int.
+    /// `[dest] = [dest] ^ [src]`, producing an int.
     BitXorIndirect(BitXorIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] << c`, producing an int.
+    /// `[dest] = [dest] << c`, producing an int.
     ShiftLeft(ShiftLeft<RegisterTy, Constant>),
-    /// `[this] = [this] << [other]`, producing an int.
+    /// `[dest] = [dest] << [src]`, producing an int.
     ShiftLeftIndirect(ShiftLeftIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] >> c`, producing an int.
+    /// `[dest] = [dest] >> c`, producing an int.
     ShiftRight(ShiftRight<RegisterTy, Constant>),
-    /// `[this] = [this] >> [other]`, producing an int.
+    /// `[dest] = [dest] >> [src]`, producing an int.
     ShiftRightIndirect(ShiftRightIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = -[this]`, type preserving.
+    /// `[dest] = -[dest]`, type preserving.
     UnaryMinus(UnaryMinus<RegisterTy>),
-    /// `[this] = !([this] as bool)`, producing a bool.
+    /// `[dest] = !([dest] as bool)`, producing a bool.
     Not(Not<RegisterTy>),
-    /// `[this] = ![this]`, producing an int.
+    /// `[dest] = ![dest]`, producing an int.
     UnaryBitNot(UnaryBitNot<RegisterTy>),
-    /// `[this] = [this] < c`.
+    /// `[dest] = [dest] < c`.
     LessThan(LessThan<RegisterTy, Constant>),
-    /// `[this] = [this] < [other]`.
+    /// `[dest] = [dest] < [src]`.
     LessThanIndirect(LessThanIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] <= c`.
+    /// `[dest] = [dest] <= c`.
     LessEqual(LessEqual<RegisterTy, Constant>),
-    /// `[this] = [this] <= [other]`.
+    /// `[dest] = [dest] <= [src]`.
     LessEqualIndirect(LessEqualIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] > c`.
+    /// `[dest] = [dest] > c`.
     GreaterThan(GreaterThan<RegisterTy, Constant>),
-    /// `[this] = [this] > [other]`.
+    /// `[dest] = [dest] > [src]`.
     GreaterThanIndirect(GreaterThanIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] >= c`.
+    /// `[dest] = [dest] >= c`.
     GreaterEqual(GreaterEqual<RegisterTy, Constant>),
-    /// `[this] = [this] >= [other]`.
+    /// `[dest] = [dest] >= [src]`.
     GreaterEqualIndirect(GreaterEqualIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] == c`.
+    /// `[dest] = [dest] == c`.
     Equals(Equals<RegisterTy, Constant>),
-    /// `[this] = [this] == [other]`.
+    /// `[dest] = [dest] == [src]`.
     EqualsIndirect(EqualsIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] != c`.
+    /// `[dest] = [dest] != c`.
     NotEqual(NotEqual<RegisterTy, Constant>),
-    /// `[this] = [this] != [other]`.
+    /// `[dest] = [dest] != [src]`.
     NotEqualIndirect(NotEqualIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] as bool ? c : [this]`.
+    /// `[dest] = [dest] as bool ? c : [dest]`.
     And(And<RegisterTy, Constant>),
-    /// `[this] = [this] as bool ? [other] : [this]`.
+    /// `[dest] = [dest] as bool ? [src] : [dest]`.
     AndIndirect(AndIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this] as bool ? [this] : c`.
+    /// `[dest] = [dest] as bool ? [dest] : c`.
     Or(Or<RegisterTy, Constant>),
-    /// `[this] = [this] as bool ? [this] : [other]`.
+    /// `[dest] = [dest] as bool ? [dest] : [src]`.
     OrIndirect(OrIndirect<RegisterTy, RegisterTy>),
-    /// `[this] = [this].to_string() + c.to_string()`.
+    /// `[dest] = [dest].to_string() + c.to_string()`.
     Concat(Concat<RegisterTy>),
-    /// `[this] = [this].to_string() + [other].to_string()`.
+    /// `[dest] = [dest].to_string() + [src].to_string()`.
     ConcatIndirect(ConcatIndirect<RegisterTy>),
-    /// `[this] = [this].len()`.
+    /// `[dest] = [dest].len()`.
     Length(Length<RegisterTy>),
     /// Immediately return from the current function with a specific error.
     Raise(Raise),
@@ -120,10 +122,22 @@ pub enum Op<RegisterTy> {
     JumpNotRet0(JumpNotRet0),
     /// Jump to a specific instruction if the first variadic argument
     JumpNotVa0(JumpNotVa0),
-    /// `[this] = `[this].table[c]`
+    /// `[dest] = `[dest].table[c]`
     Load(Load<RegisterTy>),
-    /// `[this] = `[this].table[[other]]`
+    /// `[dest] = `[dest].table[[src]]`
     LoadIndirect(LoadIndirect<RegisterTy>),
+    /// `[dest].table[c]` = `[src]`
+    Store(Store<RegisterTy>),
+    /// `[dest].table[c1]` = `c2`
+    StoreConstant(StoreConstant<RegisterTy>),
+    /// `[dest].table[c1]` = `va[c2]`
+    StoreFromVa(StoreFromVa<RegisterTy>),
+    /// `[dest].table[[index]]` = `[src]`
+    StoreIndirect(StoreIndirect<RegisterTy>),
+    /// `[dest].table[[index]]` = `c`
+    StoreConstantIndirect(StoreConstantIndirect<RegisterTy>),
+    /// `[dest].table[[index]]` = `va[c]`
+    StoreFromVaIndirect(StoreFromVaIndirect<RegisterTy>),
     /// Initialize a register to a constant value.
     Set(Set<RegisterTy>),
     /// Initialize a register from another register.
@@ -293,6 +307,48 @@ pub struct AllocFunc<RegTy> {
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct AllocTable<RegTy> {
     pub dest: RegTy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct Store<RegTy> {
+    pub dest: RegTy,
+    pub index: Constant,
+    pub src: RegTy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct StoreConstant<RegTy> {
+    pub dest: RegTy,
+    pub index: Constant,
+    pub src: Constant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct StoreFromVa<RegTy> {
+    pub dest: RegTy,
+    pub index: Constant,
+    pub va_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct StoreIndirect<RegTy> {
+    pub dest: RegTy,
+    pub index: RegTy,
+    pub src: RegTy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct StoreConstantIndirect<RegTy> {
+    pub dest: RegTy,
+    pub index: RegTy,
+    pub src: Constant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct StoreFromVaIndirect<RegTy> {
+    pub dest: RegTy,
+    pub index: RegTy,
+    pub va_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]

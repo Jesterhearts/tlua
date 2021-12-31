@@ -199,6 +199,52 @@ impl AssembleOp for UnasmOp {
                 index: index.into(),
             }
             .into(),
+            Op::Store(Store { dest, src, index }) => Store {
+                dest: dest.into(),
+                src: src.into(),
+                index,
+            }
+            .into(),
+            Op::StoreConstant(StoreConstant { dest, src, index }) => StoreConstant {
+                dest: dest.into(),
+                src,
+                index,
+            }
+            .into(),
+            Op::StoreFromVa(StoreFromVa {
+                dest,
+                va_index,
+                index,
+            }) => StoreFromVa {
+                dest: dest.into(),
+                va_index,
+                index,
+            }
+            .into(),
+            Op::StoreIndirect(StoreIndirect { dest, src, index }) => StoreIndirect {
+                dest: dest.into(),
+                src: src.into(),
+                index: index.into(),
+            }
+            .into(),
+            Op::StoreConstantIndirect(StoreConstantIndirect { dest, src, index }) => {
+                StoreConstantIndirect {
+                    dest: dest.into(),
+                    src,
+                    index: index.into(),
+                }
+                .into()
+            }
+            Op::StoreFromVaIndirect(StoreFromVaIndirect {
+                dest,
+                va_index,
+                index,
+            }) => StoreFromVaIndirect {
+                dest: dest.into(),
+                va_index,
+                index: index.into(),
+            }
+            .into(),
             Op::Set(Set { dest, source }) => Set {
                 dest: dest.into(),
                 source,

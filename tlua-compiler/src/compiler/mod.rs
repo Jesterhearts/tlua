@@ -553,6 +553,48 @@ impl CompilerContext<'_> {
         }
     }
 
+    fn write_store_table_constant_idx(
+        &mut self,
+        table: UnasmRegister,
+        index: Constant,
+        value: NodeOutput,
+    ) {
+        match value {
+            NodeOutput::Constant(c) => {
+                self.write(opcodes::StoreConstant::from((table, index, c)));
+            }
+            NodeOutput::Register(reg) => {
+                self.write(opcodes::Store::from((table, index, reg)));
+            }
+            NodeOutput::ReturnValues => todo!(),
+            NodeOutput::VAStack => {
+                self.write(opcodes::StoreFromVa::from((table, index, 0)));
+            }
+            NodeOutput::Err(_) => unreachable!("Errors should already be handled."),
+        }
+    }
+
+    fn write_store_table_indirect(
+        &mut self,
+        table: UnasmRegister,
+        index: UnasmRegister,
+        value: NodeOutput,
+    ) {
+        match value {
+            NodeOutput::Constant(c) => {
+                self.write(opcodes::StoreConstantIndirect::from((table, index, c)));
+            }
+            NodeOutput::Register(reg) => {
+                self.write(opcodes::StoreIndirect::from((table, index, reg)));
+            }
+            NodeOutput::ReturnValues => todo!(),
+            NodeOutput::VAStack => {
+                self.write(opcodes::StoreFromVaIndirect::from((table, index, 0)));
+            }
+            NodeOutput::Err(_) => unreachable!("Errors should already be handled."),
+        }
+    }
+
     fn write(&mut self, opcode: impl Into<UnasmOp>) {
         self.function.instructions.push(opcode.into());
     }
@@ -930,20 +972,37 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to emit the instructions required to initialize a
     /// table.
-    pub(crate) fn init_table(&mut self) -> AnonymousRegister {
-        self.scope.new_anonymous().init_alloc_table(self)
+    pub(crate) fn init_table(&mut self) -> UnasmRegister {
+        self.scope.new_anonymous().init_alloc_table(self).into()
     }
 
     /// Instruct the compiler to emit the instructions required to set a value
     /// in a table based on an index.
     pub(crate) fn assign_to_array(
         &mut self,
-        _table: UnasmRegister,
-        _index: usize,
-        value: impl CompileExpression,
+        table: UnasmRegister,
+        index: usize,
+        value: NodeOutput,
     ) -> Result<(), CompileError> {
-        let _value = value.compile(self)?;
+        let index = Constant::from(i64::try_from(index).map_err(|_| {
+            CompileError::TooManyTableEntries {
+                max: i64::MAX as usize,
+            }
+        })?);
 
+        self.write_store_table_constant_idx(table, index, value);
+
+        Ok(())
+    }
+
+    /// Instruct the compiler to emit the instructions required copy a list of
+    /// va arguments to the arraylike indicides of a table starting at
+    /// `start_index`.
+    pub(crate) fn copy_va_to_array(
+        &mut self,
+        _table: UnasmRegister,
+        _start_index: usize,
+    ) -> Result<(), CompileError> {
         todo!()
     }
 
@@ -951,14 +1010,55 @@ impl CompilerContext<'_> {
     /// in a table based on an expression.
     pub(crate) fn assign_to_table(
         &mut self,
-        _table: UnasmRegister,
+        table: UnasmRegister,
         index: impl CompileExpression,
         value: impl CompileExpression,
-    ) -> Result<(), CompileError> {
-        let _index = index.compile(self)?;
-        let _value = value.compile(self)?;
+    ) -> Result<Option<OpError>, CompileError> {
+        let index = index.compile(self)?;
+        let value = value.compile(self)?;
 
-        todo!()
+        match (index, value) {
+            (
+                NodeOutput::Constant(index),
+                value @ NodeOutput::Constant(_)
+                | value @ NodeOutput::Register(_)
+                | value @ NodeOutput::ReturnValues
+                | value @ NodeOutput::VAStack,
+            ) => {
+                self.write_store_table_constant_idx(table, index, value);
+                Ok(None)
+            }
+            (
+                NodeOutput::Register(index),
+                value @ NodeOutput::Constant(_)
+                | value @ NodeOutput::Register(_)
+                | value @ NodeOutput::ReturnValues
+                | value @ NodeOutput::VAStack,
+            ) => {
+                self.write_store_table_indirect(table, index, value);
+                Ok(None)
+            }
+            (
+                NodeOutput::ReturnValues,
+                _value @ NodeOutput::Constant(_)
+                | _value @ NodeOutput::Register(_)
+                | _value @ NodeOutput::ReturnValues
+                | _value @ NodeOutput::VAStack,
+            ) => todo!(),
+            (
+                NodeOutput::VAStack,
+                value @ NodeOutput::Constant(_)
+                | value @ NodeOutput::Register(_)
+                | value @ NodeOutput::ReturnValues
+                | value @ NodeOutput::VAStack,
+            ) => {
+                let index = self.scope.new_anonymous().init_from_va(self, 0);
+                self.write_store_table_indirect(table, index.into(), value);
+                Ok(None)
+            }
+            (NodeOutput::Err(err), _) => Ok(Some(err)),
+            (_, NodeOutput::Err(err)) => Ok(Some(err)),
+        }
     }
 
     /// Instruct the compiler to emit a sequence of instruction corresponding to

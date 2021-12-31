@@ -1,5 +1,8 @@
 use crate::{
-    ast::expressions::Expression,
+    ast::{
+        expressions::Expression,
+        identifiers::Ident,
+    },
     list::List,
 };
 
@@ -13,13 +16,25 @@ use crate::{
 /// ```
 /// Your final table will always contain `{10, 11}` as of Lua 5.4
 #[derive(Debug, PartialEq)]
-pub struct TableConstructor<'chunk> {
-    /// `{ ['Exp'] ='Exp' }`
+pub enum Field<'chunk> {
     /// `{ 'Name' ='Exp' }`
-    pub indexed_fields: List<'chunk, (Expression<'chunk>, Expression<'chunk>)>,
+    Named {
+        name: Ident,
+        expression: Expression<'chunk>,
+    },
+    /// `{ ['Exp'] ='Exp' }`
+    Indexed {
+        index: Expression<'chunk>,
+        expression: Expression<'chunk>,
+    },
     /// `{ 'Exp' }`
     ///
     /// `{ 'Exp1', 'Exp2' } ` behaves like `['Exp1', 'Exp2']` with 1-based
     /// indexing.
-    pub arraylike_fields: List<'chunk, Expression<'chunk>>,
+    Arraylike { expression: Expression<'chunk> },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct TableConstructor<'chunk> {
+    pub fields: List<'chunk, Field<'chunk>>,
 }

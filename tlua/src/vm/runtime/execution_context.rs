@@ -185,7 +185,7 @@ impl Context<'_> {
                     }
                 }
 
-                // Register operations
+                // Table operations
                 Op::Load(Load { dest, index }) => {
                     let value = match self.in_scope.load(dest) {
                         Value::Table(t) => t
@@ -213,6 +213,77 @@ impl Context<'_> {
 
                     self.in_scope.store(dest, value);
                 }
+
+                // TODO(cleanup): These can have generic behavior across their arguments.
+                Op::Store(Store { dest, src, index }) => {
+                    let value = self.in_scope.load(src);
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => t
+                            .borrow_mut()
+                            .entries
+                            .insert(TryFrom::<Value>::try_from(index.into())?, value),
+                        _ => todo!("metatables are unsupported"),
+                    };
+                }
+                Op::StoreConstant(StoreConstant { dest, index, src }) => {
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => t
+                            .borrow_mut()
+                            .entries
+                            .insert(TryFrom::<Value>::try_from(index.into())?, src.into()),
+                        _ => todo!("metatables are unsupported"),
+                    };
+                }
+                Op::StoreFromVa(StoreFromVa {
+                    dest,
+                    index,
+                    va_index,
+                }) => {
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => t.borrow_mut().entries.insert(
+                            TryFrom::<Value>::try_from(index.into())?,
+                            self.in_scope.load_va(va_index),
+                        ),
+                        _ => todo!("metatables are unsupported"),
+                    };
+                }
+
+                Op::StoreIndirect(StoreIndirect { dest, src, index }) => {
+                    let index = self.in_scope.load(index);
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => t
+                            .borrow_mut()
+                            .entries
+                            .insert(TryFrom::<Value>::try_from(index)?, self.in_scope.load(src)),
+                        _ => todo!("metatables are unsupported"),
+                    };
+                }
+                Op::StoreConstantIndirect(StoreConstantIndirect { dest, index, src }) => {
+                    let index = self.in_scope.load(index);
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => t
+                            .borrow_mut()
+                            .entries
+                            .insert(TryFrom::<Value>::try_from(index)?, src.into()),
+                        _ => todo!("metatables are unsupported"),
+                    };
+                }
+                Op::StoreFromVaIndirect(StoreFromVaIndirect {
+                    dest,
+                    index,
+                    va_index,
+                }) => {
+                    let index = self.in_scope.load(index);
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => t.borrow_mut().entries.insert(
+                            TryFrom::<Value>::try_from(index)?,
+                            self.in_scope.load_va(va_index),
+                        ),
+                        _ => todo!("metatables are unsupported"),
+                    };
+                }
+
+                // Register operations
                 Op::Set(Set { dest, source }) => {
                     self.in_scope.store(dest, source.into());
                 }

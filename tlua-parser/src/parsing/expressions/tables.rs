@@ -15,13 +15,14 @@ use nom::{
 use tracing::instrument;
 
 use crate::{
-    ast::{
-        expressions::{
-            tables::TableConstructor,
-            Expression,
+    ast::expressions::{
+        tables::{
+            Field,
+            TableConstructor,
         },
-        identifiers::Ident,
+        Expression,
     },
+    list::List,
     parsing::{
         identifiers::parse_identifier,
         lua_whitespace0,
@@ -31,21 +32,6 @@ use crate::{
         Span,
     },
 };
-
-#[derive(Debug, PartialEq)]
-enum Field<'chunk> {
-    Arraylike {
-        expression: Expression<'chunk>,
-    },
-    Named {
-        name: Ident,
-        expression: Expression<'chunk>,
-    },
-    Indexed {
-        index: Expression<'chunk>,
-        expression: Expression<'chunk>,
-    },
-}
 
 impl<'chunk> Parse<'chunk> for Field<'chunk> {
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
@@ -85,10 +71,13 @@ impl<'chunk> Parse<'chunk> for Field<'chunk> {
 impl<'chunk> Parse<'chunk> for TableConstructor<'chunk> {
     #[instrument(level = "trace", name = "table", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        delimited(
-            pair(tag("{"), lua_whitespace0),
-            |input| parse_table_ctor(input, alloc),
-            pair(lua_whitespace0, tag("}")),
+        map(
+            delimited(
+                pair(tag("{"), lua_whitespace0),
+                |input| parse_table_ctor(input, alloc),
+                pair(lua_whitespace0, tag("}")),
+            ),
+            |fields| TableConstructor { fields },
         )(input)
     }
 }
@@ -96,39 +85,14 @@ impl<'chunk> Parse<'chunk> for TableConstructor<'chunk> {
 fn parse_table_ctor<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, TableConstructor<'chunk>> {
+) -> ParseResult<'src, List<'chunk, Field<'chunk>>> {
     let (remain, maybe_head) = opt(|input| Field::parse(input, alloc))(input)?;
     input = remain;
 
-    let mut result = TableConstructor {
-        arraylike_fields: Default::default(),
-        indexed_fields: Default::default(),
-    };
+    let mut result = List::default();
 
-    let (mut arraylike_cursor, mut indexed_cursor) = if let Some(head) = maybe_head {
-        match head {
-            Field::Arraylike { expression } => (
-                result
-                    .arraylike_fields
-                    .cursor_mut()
-                    .alloc_insert_advance(alloc, expression),
-                result.indexed_fields.cursor_mut(),
-            ),
-            Field::Named { name, expression } => (
-                result.arraylike_fields.cursor_mut(),
-                result
-                    .indexed_fields
-                    .cursor_mut()
-                    .alloc_insert_advance(alloc, (Expression::String(name.into()), expression)),
-            ),
-            Field::Indexed { index, expression } => (
-                result.arraylike_fields.cursor_mut(),
-                result
-                    .indexed_fields
-                    .cursor_mut()
-                    .alloc_insert_advance(alloc, (index, expression)),
-            ),
-        }
+    let mut current = if let Some(head) = maybe_head {
+        result.cursor_mut().alloc_insert_advance(alloc, head)
     } else {
         let (remain, _) = opt(one_of(",;"))(input)?;
         return Ok((remain, result));
@@ -141,20 +105,8 @@ fn parse_table_ctor<'src, 'chunk>(
         ))(input)?;
         input = remain;
 
-        if let Some(next) = maybe_next {
-            match next {
-                Field::Arraylike { expression } => {
-                    arraylike_cursor = arraylike_cursor.alloc_insert_advance(alloc, expression);
-                }
-                Field::Named { name, expression } => {
-                    indexed_cursor = indexed_cursor
-                        .alloc_insert_advance(alloc, (Expression::String(name.into()), expression));
-                }
-                Field::Indexed { index, expression } => {
-                    indexed_cursor =
-                        indexed_cursor.alloc_insert_advance(alloc, (index, expression));
-                }
-            }
+        current = if let Some(next) = maybe_next {
+            current.alloc_insert_advance(alloc, next)
         } else {
             break;
         };
@@ -198,8 +150,7 @@ mod tests {
         assert_eq!(
             result,
             TableConstructor {
-                indexed_fields: Default::default(),
-                arraylike_fields: Default::default(),
+                fields: Default::default(),
             }
         );
 
@@ -217,8 +168,7 @@ mod tests {
         assert_eq!(
             result,
             TableConstructor {
-                indexed_fields: Default::default(),
-                arraylike_fields: Default::default(),
+                fields: Default::default(),
             }
         );
         Ok(())
@@ -291,19 +241,21 @@ mod tests {
         assert_eq!(
             result,
             TableConstructor {
-                arraylike_fields: List::from_slice(&mut [
-                    ListNode::new(Expression::Number(Number::Integer(10))),
-                    ListNode::new(Expression::Number(Number::Integer(14))),
-                ]),
-                indexed_fields: List::from_slice(&mut [
-                    ListNode::new((
-                        Expression::Number(Number::Integer(11)),
-                        Expression::Number(Number::Integer(12))
-                    )),
-                    ListNode::new((
-                        Expression::String("a".into()),
-                        Expression::Number(Number::Integer(13))
-                    ))
+                fields: List::from_slice(&mut [
+                    ListNode::new(Field::Arraylike {
+                        expression: Expression::Number(Number::Integer(10))
+                    }),
+                    ListNode::new(Field::Indexed {
+                        index: Expression::Number(Number::Integer(11)),
+                        expression: Expression::Number(Number::Integer(12)),
+                    }),
+                    ListNode::new(Field::Named {
+                        name: "a".into(),
+                        expression: Expression::Number(Number::Integer(13)),
+                    }),
+                    ListNode::new(Field::Arraylike {
+                        expression: Expression::Number(Number::Integer(14))
+                    }),
                 ]),
             }
         );

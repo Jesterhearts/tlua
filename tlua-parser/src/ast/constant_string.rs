@@ -12,6 +12,12 @@ impl From<Ident> for ConstantString {
     }
 }
 
+impl From<&'_ Ident> for ConstantString {
+    fn from(ident: &Ident) -> Self {
+        Self(ident.0)
+    }
+}
+
 impl ConstantString {
     pub fn new(data: Vec<u8>) -> Self {
         Self(LocalIntern::new(data))

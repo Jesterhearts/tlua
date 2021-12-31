@@ -128,6 +128,7 @@ impl ScopeSet {
         self.results.extend(other.into_iter());
     }
 
+    // TODO(perf): This shouldn't be cloning its values.
     #[track_caller]
     pub fn load(&self, addr: Register) -> Value {
         if let Some(scope) = addr.scope {

@@ -65,10 +65,18 @@ pub enum CompileError {
     TooManyLocals { max: usize },
     #[error("The level of scope nesting has exceeded the maximum depth of {max:}")]
     ScopeNestingTooDeep { max: usize },
+    #[error("The specified table index exceeds the max entries.")]
+    TooManyTableEntries { max: usize },
 }
 
 trait CompileExpression {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError>;
+}
+
+impl CompileExpression for Ident {
+    fn compile(&self, _: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
+        Ok(NodeOutput::Constant(Constant::String(self.into())))
+    }
 }
 
 impl CompileExpression for Expression<'_> {
