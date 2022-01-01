@@ -1130,26 +1130,10 @@ impl CompilerContext<'_> {
                     Ok(NodeOutput::Err(err))
                 }
             },
-            NodeOutput::Register(reg) => {
-                let reg = match reg {
-                    UnasmRegister::Anonymous(reg) => reg,
-                    UnasmRegister::Local(local) => {
-                        self.scope.new_anonymous().init_from_reg(self, local.into())
-                    }
-                };
-                self.write(Op::from(reg.into()));
-
-                Ok(NodeOutput::Register(reg.into()))
-            }
-            NodeOutput::ReturnValues => {
-                let reg = self.scope.new_anonymous().init_from_ret(self);
-
-                self.write(Op::from(reg.into()));
-
-                Ok(NodeOutput::Register(reg.into()))
-            }
-            NodeOutput::VAStack => {
-                let reg = self.scope.new_anonymous().init_from_va(self, 0);
+            reg @ NodeOutput::Register(_)
+            | reg @ NodeOutput::ReturnValues
+            | reg @ NodeOutput::VAStack => {
+                let reg = self.write_move_to_reg(reg);
 
                 self.write(Op::from(reg.into()));
 
