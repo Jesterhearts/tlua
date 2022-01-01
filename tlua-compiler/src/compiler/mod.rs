@@ -446,113 +446,6 @@ impl CompilerContext<'_> {
         Ok(None)
     }
 
-    fn write_binop<Op, OpIndirect, Lhs, Rhs, ConstEval>(
-        &mut self,
-        lhs: Lhs,
-        rhs: Rhs,
-        consteval: ConstEval,
-    ) -> Result<NodeOutput, CompileError>
-    where
-        Op: From<(UnasmRegister, Constant)> + Into<UnasmOp>,
-        OpIndirect: From<(UnasmRegister, UnasmRegister)> + Into<UnasmOp>,
-        Lhs: CompileExpression,
-        Rhs: CompileExpression,
-        ConstEval: FnOnce(Constant, Constant) -> Result<Constant, OpError>,
-    {
-        let lhs = lhs.compile(self)?;
-        let rhs = rhs.compile(self)?;
-
-        // TODO(compiler-opt): Technically, more efficient use could be made of
-        // registers here by checking if the operation is commutative and
-        // swapping constants to the right or existing anonymous registers to
-        // the left.
-        match (lhs, rhs) {
-            (NodeOutput::Constant(lhs), NodeOutput::Constant(rhs)) => match consteval(lhs, rhs) {
-                Ok(constant) => Ok(NodeOutput::Constant(constant)),
-                Err(err) => {
-                    self.write_raise(err);
-                    Ok(NodeOutput::Err(err))
-                }
-            },
-            (NodeOutput::Constant(lhs), NodeOutput::Register(rhs)) => {
-                let lhs = self.scope.new_anonymous().init_from_const(self, lhs);
-
-                self.write(OpIndirect::from((lhs.into(), rhs)));
-
-                Ok(NodeOutput::Register(lhs.into()))
-            }
-            (NodeOutput::Constant(lhs), NodeOutput::ReturnValues) => {
-                let rhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                let lhs = self.scope.new_anonymous().init_from_const(self, lhs).into();
-
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::Register(lhs), NodeOutput::Constant(rhs)) => {
-                let lhs = match lhs {
-                    UnasmRegister::Anonymous(_) => lhs,
-                    UnasmRegister::Local(_) => {
-                        self.scope.new_anonymous().init_from_reg(self, lhs).into()
-                    }
-                };
-                self.write(Op::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::Register(lhs), NodeOutput::Register(rhs)) => {
-                let lhs = match lhs {
-                    UnasmRegister::Anonymous(_) => lhs,
-                    UnasmRegister::Local(_) => {
-                        self.scope.new_anonymous().init_from_reg(self, lhs).into()
-                    }
-                };
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::Register(lhs), NodeOutput::ReturnValues) => {
-                let rhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                let lhs = match lhs {
-                    UnasmRegister::Anonymous(_) => lhs,
-                    UnasmRegister::Local(_) => {
-                        self.scope.new_anonymous().init_from_reg(self, lhs).into()
-                    }
-                };
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::ReturnValues, NodeOutput::Constant(rhs)) => {
-                let lhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                self.write(Op::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::ReturnValues, NodeOutput::Register(rhs)) => {
-                let lhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::ReturnValues, NodeOutput::ReturnValues) => {
-                let lhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                let rhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::Err(err), _) | (_, NodeOutput::Err(err)) => Ok(NodeOutput::Err(err)),
-            (NodeOutput::VAStack, _) | (_, NodeOutput::VAStack) => todo!(),
-        }
-    }
-
     fn write_store_table_constant_idx(
         &mut self,
         table: UnasmRegister,
@@ -1150,78 +1043,113 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to emit a sequence of instructions corresponding
     /// to a binary operation on the result of two nodes.
-    pub(crate) fn write_numeric_binop<Op, OpIndirect, Lhs, Rhs>(
+    pub(crate) fn write_binop<Op, OpIndirect, Lhs, Rhs, ConstEval>(
         &mut self,
         lhs: Lhs,
         rhs: Rhs,
+        consteval: ConstEval,
     ) -> Result<NodeOutput, CompileError>
     where
-        Op: NumericOpEval + From<(UnasmRegister, Constant)> + Into<UnasmOp>,
+        Op: From<(UnasmRegister, Constant)> + Into<UnasmOp>,
         OpIndirect: From<(UnasmRegister, UnasmRegister)> + Into<UnasmOp>,
         Lhs: CompileExpression,
         Rhs: CompileExpression,
+        ConstEval: FnOnce(Constant, Constant) -> Result<Constant, OpError>,
     {
-        self.write_binop::<Op, OpIndirect, _, _, _>(lhs, rhs, |lhs, rhs| {
-            Op::evaluate(lhs, rhs).map(|num| num.into())
-        })
+        let lhs = lhs.compile(self)?;
+        let rhs = rhs.compile(self)?;
+
+        // TODO(compiler-opt): Technically, more efficient use could be made of
+        // registers here by checking if the operation is commutative and
+        // swapping constants to the right or existing anonymous registers to
+        // the left.
+        match (lhs, rhs) {
+            (NodeOutput::Constant(lhs), NodeOutput::Constant(rhs)) => match consteval(lhs, rhs) {
+                Ok(constant) => Ok(NodeOutput::Constant(constant)),
+                Err(err) => {
+                    self.write_raise(err);
+                    Ok(NodeOutput::Err(err))
+                }
+            },
+            (NodeOutput::Constant(lhs), NodeOutput::Register(rhs)) => {
+                let lhs = self.scope.new_anonymous().init_from_const(self, lhs);
+
+                self.write(OpIndirect::from((lhs.into(), rhs)));
+
+                Ok(NodeOutput::Register(lhs.into()))
+            }
+            (NodeOutput::Constant(lhs), NodeOutput::ReturnValues) => {
+                let rhs = self.scope.new_anonymous().init_from_ret(self).into();
+
+                let lhs = self.scope.new_anonymous().init_from_const(self, lhs).into();
+
+                self.write(OpIndirect::from((lhs, rhs)));
+
+                Ok(NodeOutput::Register(lhs))
+            }
+            (NodeOutput::Register(lhs), NodeOutput::Constant(rhs)) => {
+                let lhs = match lhs {
+                    UnasmRegister::Anonymous(_) => lhs,
+                    UnasmRegister::Local(_) => {
+                        self.scope.new_anonymous().init_from_reg(self, lhs).into()
+                    }
+                };
+                self.write(Op::from((lhs, rhs)));
+
+                Ok(NodeOutput::Register(lhs))
+            }
+            (NodeOutput::Register(lhs), NodeOutput::Register(rhs)) => {
+                let lhs = match lhs {
+                    UnasmRegister::Anonymous(_) => lhs,
+                    UnasmRegister::Local(_) => {
+                        self.scope.new_anonymous().init_from_reg(self, lhs).into()
+                    }
+                };
+                self.write(OpIndirect::from((lhs, rhs)));
+
+                Ok(NodeOutput::Register(lhs))
+            }
+            (NodeOutput::Register(lhs), NodeOutput::ReturnValues) => {
+                let rhs = self.scope.new_anonymous().init_from_ret(self).into();
+
+                let lhs = match lhs {
+                    UnasmRegister::Anonymous(_) => lhs,
+                    UnasmRegister::Local(_) => {
+                        self.scope.new_anonymous().init_from_reg(self, lhs).into()
+                    }
+                };
+                self.write(OpIndirect::from((lhs, rhs)));
+
+                Ok(NodeOutput::Register(lhs))
+            }
+            (NodeOutput::ReturnValues, NodeOutput::Constant(rhs)) => {
+                let lhs = self.scope.new_anonymous().init_from_ret(self).into();
+
+                self.write(Op::from((lhs, rhs)));
+
+                Ok(NodeOutput::Register(lhs))
+            }
+            (NodeOutput::ReturnValues, NodeOutput::Register(rhs)) => {
+                let lhs = self.scope.new_anonymous().init_from_ret(self).into();
+
+                self.write(OpIndirect::from((lhs, rhs)));
+
+                Ok(NodeOutput::Register(lhs))
+            }
+            (NodeOutput::ReturnValues, NodeOutput::ReturnValues) => {
+                let lhs = self.scope.new_anonymous().init_from_ret(self).into();
+
+                let rhs = self.scope.new_anonymous().init_from_ret(self).into();
+
+                self.write(OpIndirect::from((lhs, rhs)));
+
+                Ok(NodeOutput::Register(lhs))
+            }
+            (NodeOutput::Err(err), _) | (_, NodeOutput::Err(err)) => Ok(NodeOutput::Err(err)),
+            (NodeOutput::VAStack, _) | (_, NodeOutput::VAStack) => todo!(),
+        }
     }
 
-    pub(crate) fn write_cmp_binop<Op, OpIndirect, Lhs, Rhs>(
-        &mut self,
-        lhs: Lhs,
-        rhs: Rhs,
-    ) -> Result<NodeOutput, CompileError>
-    where
-        Op: ComparisonOpEval + From<(UnasmRegister, Constant)> + Into<UnasmOp>,
-        OpIndirect: From<(UnasmRegister, UnasmRegister)> + Into<UnasmOp>,
-        Lhs: CompileExpression,
-        Rhs: CompileExpression,
-    {
-        self.write_binop::<Op, OpIndirect, _, _, _>(lhs, rhs, |lhs, rhs| match (lhs, rhs) {
-            (Constant::Nil, Constant::Nil) => Op::apply_nils().map(Constant::from),
-            (Constant::Bool(lhs), Constant::Bool(rhs)) => {
-                Op::apply_bools(lhs, rhs).map(Constant::from)
-            }
-            (Constant::Float(lhs), Constant::Float(rhs)) => {
-                Ok(Op::apply_numbers(lhs.into(), rhs.into()).into())
-            }
-            (Constant::Float(lhs), Constant::Integer(rhs)) => {
-                Ok(Op::apply_numbers(lhs.into(), rhs.into()).into())
-            }
-            (Constant::Integer(lhs), Constant::Integer(rhs)) => {
-                Ok(Op::apply_numbers(lhs.into(), rhs.into()).into())
-            }
-            (Constant::Integer(lhs), Constant::Float(rhs)) => {
-                Ok(Op::apply_numbers(lhs.into(), rhs.into()).into())
-            }
-            (Constant::String(lhs), Constant::String(rhs)) => {
-                Ok(Op::apply_strings(&lhs, &rhs).into())
-            }
-            // TODO(lang-5.4): This should be truthy for eq/ne.
-            (lhs, rhs) => Err(OpError::CmpErr {
-                lhs: lhs.short_type_name(),
-                rhs: rhs.short_type_name(),
-            }),
-        })
-    }
-
-    /// Instruct the compiler to emit a sequence of instructions corresponding
-    /// to a binary operation on the result of two nodes.
-    pub(crate) fn write_boolean_binop<Op, OpIndirect, Lhs, Rhs>(
-        &mut self,
-        lhs: Lhs,
-        rhs: Rhs,
-    ) -> Result<NodeOutput, CompileError>
-    where
-        Op: BooleanOpEval + From<(UnasmRegister, Constant)> + Into<UnasmOp>,
-        OpIndirect: From<(UnasmRegister, UnasmRegister)> + Into<UnasmOp>,
-        Lhs: CompileExpression,
-        Rhs: CompileExpression,
-    {
-        self.write_binop::<Op, OpIndirect, _, _, _>(lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
-    }
-
-    // TODO(unary-ops)
     pub(crate) fn write_unary_op<Op, Operand, ConstEval>(
         &mut self,
         operand: Operand,
