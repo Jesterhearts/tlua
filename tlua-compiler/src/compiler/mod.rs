@@ -686,7 +686,7 @@ impl CompilerContext<'_> {
         let mut conditions = conditions.peekable();
         let mut bodies = bodies.peekable();
 
-        let mut pending_exit = None;
+        let mut pending_exit_location = None;
         let cleanup_pending = |pending, compiler: &mut CompilerContext| {
             if let Some(pending) = pending {
                 compiler.function.instructions[pending] = opcodes::Jump {
@@ -694,12 +694,12 @@ impl CompilerContext<'_> {
                 }
                 .into();
             }
-            compiler.function.instructions.len()
         };
 
         let cleanup_add_pending_block_exit = |pending, compiler: &mut CompilerContext| {
-            let pending = cleanup_pending(pending, compiler);
+            cleanup_pending(pending, compiler);
 
+            let pending = compiler.function.instructions.len();
             compiler.write(opcodes::Raise {
                 err: OpError::ByteCodeError {
                     err: ByteCodeError::MissingJump,
@@ -715,76 +715,54 @@ impl CompilerContext<'_> {
                 bodies.next().expect("Saw a body"),
             );
 
-            match cond.compile(self)? {
-                NodeOutput::Constant(c) => {
-                    if c.as_bool() {
-                        // No other branches are reachable.
-                        body.compile(self)?;
-                        cleanup_pending(pending_exit, self);
-                        return Ok(None);
-                    } else {
-                        // The body is statically unreachable, skip it.
-                        continue;
-                    }
-                }
-                NodeOutput::Register(reg) => {
-                    let jump_location = self.function.instructions.len();
-                    self.write(opcodes::Raise {
-                        err: OpError::ByteCodeError {
-                            err: ByteCodeError::MissingJump,
-                            offset: jump_location,
-                        },
-                    });
+            let cond_value = cond.compile(self)?;
 
+            if let NodeOutput::Constant(c) = cond_value {
+                if c.as_bool() {
+                    // No other branches are reachable.
                     body.compile(self)?;
-
-                    pending_exit = Some(cleanup_add_pending_block_exit(pending_exit, self));
-
-                    self.function.instructions[jump_location] = opcodes::JumpNot {
-                        cond: reg,
-                        target: self.function.instructions.len(),
-                    }
-                    .into();
+                    cleanup_pending(pending_exit_location, self);
+                    return Ok(None);
+                } else {
+                    // The body is statically unreachable, skip it.
+                    continue;
                 }
-                NodeOutput::ReturnValues => {
-                    let jump_location = self.function.instructions.len();
-                    self.write(opcodes::Raise {
-                        err: OpError::ByteCodeError {
-                            err: ByteCodeError::MissingJump,
-                            offset: jump_location,
-                        },
-                    });
-
-                    body.compile(self)?;
-
-                    pending_exit = Some(cleanup_add_pending_block_exit(pending_exit, self));
-
-                    self.function.instructions[jump_location] = opcodes::JumpNotRet0 {
-                        target: self.function.instructions.len(),
-                    }
-                    .into();
-                }
-                NodeOutput::VAStack => {
-                    let jump_location = self.function.instructions.len();
-                    self.write(opcodes::Raise {
-                        err: OpError::ByteCodeError {
-                            err: ByteCodeError::MissingJump,
-                            offset: jump_location,
-                        },
-                    });
-
-                    body.compile(self)?;
-
-                    pending_exit = Some(cleanup_add_pending_block_exit(pending_exit, self));
-
-                    self.function.instructions[jump_location] = opcodes::JumpNotVa0 {
-                        target: self.function.instructions.len(),
-                    }
-                    .into();
-                }
+            } else if let NodeOutput::Err(err) = cond_value {
                 // If evaluating the condition would statically raise, we can skip compiling the
                 // rest of the sequence, since it's unreachable.
-                NodeOutput::Err(err) => return Ok(Some(err)),
+                return Ok(Some(err));
+            }
+
+            let jump_location = self.function.instructions.len();
+            self.write(opcodes::Raise {
+                err: OpError::ByteCodeError {
+                    err: ByteCodeError::MissingJump,
+                    offset: jump_location,
+                },
+            });
+
+            body.compile(self)?;
+
+            pending_exit_location =
+                Some(cleanup_add_pending_block_exit(pending_exit_location, self));
+
+            self.function.instructions[jump_location] = match cond_value {
+                NodeOutput::Register(reg) => opcodes::JumpNot {
+                    cond: reg,
+                    target: self.function.instructions.len(),
+                }
+                .into(),
+                NodeOutput::ReturnValues => opcodes::JumpNotRet0 {
+                    target: self.function.instructions.len(),
+                }
+                .into(),
+                NodeOutput::VAStack => opcodes::JumpNotVa0 {
+                    target: self.function.instructions.len(),
+                }
+                .into(),
+                NodeOutput::Err(_) | NodeOutput::Constant(_) => {
+                    unreachable!("Constant conditions should already be handled.")
+                }
             }
         }
 
@@ -792,7 +770,7 @@ impl CompilerContext<'_> {
         if let Some(last) = bodies.next() {
             last.compile(self)?;
         }
-        cleanup_pending(pending_exit, self);
+        cleanup_pending(pending_exit_location, self);
 
         Ok(None)
     }
