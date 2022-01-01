@@ -5,11 +5,6 @@ use std::ops::{
 
 use derive_more::From;
 use tlua_bytecode::{
-    binop::traits::{
-        BooleanOpEval,
-        ComparisonOpEval,
-        NumericOpEval,
-    },
     opcodes,
     ByteCodeError,
     Constant,
@@ -444,6 +439,23 @@ impl CompilerContext<'_> {
         }
 
         Ok(None)
+    }
+
+    fn write_move_to_reg(&mut self, value: NodeOutput) -> AnonymousRegister {
+        if let NodeOutput::Register(UnasmRegister::Anonymous(reg)) = value {
+            reg
+        } else {
+            let reg = self.scope.new_anonymous();
+            match value {
+                NodeOutput::Constant(c) => reg.init_from_const(self, c),
+                NodeOutput::Register(r) => reg.init_from_reg(self, r),
+                NodeOutput::ReturnValues => reg.init_from_ret(self),
+                NodeOutput::VAStack => reg.init_from_va(self, 0),
+                NodeOutput::Err(_) => {
+                    unreachable!("Errors should not be handled by storing them in registers.")
+                }
+            }
+        }
     }
 
     fn write_store_table_constant_idx(
@@ -922,31 +934,17 @@ impl CompilerContext<'_> {
                 Ok(None)
             }
             (
-                NodeOutput::Register(index),
+                index @ NodeOutput::Register(_)
+                | index @ NodeOutput::ReturnValues
+                | index @ NodeOutput::VAStack,
                 value @ NodeOutput::Constant(_)
                 | value @ NodeOutput::Register(_)
                 | value @ NodeOutput::ReturnValues
                 | value @ NodeOutput::VAStack,
             ) => {
+                let index = self.write_move_to_reg(index).into();
                 self.write_store_table_indirect(table, index, value);
-                Ok(None)
-            }
-            (
-                NodeOutput::ReturnValues,
-                _value @ NodeOutput::Constant(_)
-                | _value @ NodeOutput::Register(_)
-                | _value @ NodeOutput::ReturnValues
-                | _value @ NodeOutput::VAStack,
-            ) => todo!(),
-            (
-                NodeOutput::VAStack,
-                value @ NodeOutput::Constant(_)
-                | value @ NodeOutput::Register(_)
-                | value @ NodeOutput::ReturnValues
-                | value @ NodeOutput::VAStack,
-            ) => {
-                let index = self.scope.new_anonymous().init_from_va(self, 0);
-                self.write_store_table_indirect(table, index.into(), value);
+
                 Ok(None)
             }
             (NodeOutput::Err(err), _) => Ok(Some(err)),
@@ -1071,82 +1069,46 @@ impl CompilerContext<'_> {
                     Ok(NodeOutput::Err(err))
                 }
             },
-            (NodeOutput::Constant(lhs), NodeOutput::Register(rhs)) => {
-                let lhs = self.scope.new_anonymous().init_from_const(self, lhs);
+            (
+                lhs @ NodeOutput::Register(_)
+                | lhs @ NodeOutput::ReturnValues
+                | lhs @ NodeOutput::VAStack,
+                NodeOutput::Constant(rhs),
+            ) => {
+                let lhs = self.write_move_to_reg(lhs);
+
+                self.write(Op::from((lhs.into(), rhs)));
+
+                Ok(NodeOutput::Register(lhs.into()))
+            }
+            (
+                lhs @ NodeOutput::Constant(_)
+                | lhs @ NodeOutput::Register(_)
+                | lhs @ NodeOutput::ReturnValues
+                | lhs @ NodeOutput::VAStack,
+                rhs @ NodeOutput::ReturnValues | rhs @ NodeOutput::VAStack,
+            ) => {
+                let lhs = self.write_move_to_reg(lhs);
+                let rhs = self.write_move_to_reg(rhs);
+
+                self.write(OpIndirect::from((lhs.into(), rhs.into())));
+
+                Ok(NodeOutput::Register(lhs.into()))
+            }
+            (
+                lhs @ NodeOutput::Constant(_)
+                | lhs @ NodeOutput::Register(_)
+                | lhs @ NodeOutput::ReturnValues
+                | lhs @ NodeOutput::VAStack,
+                NodeOutput::Register(rhs),
+            ) => {
+                let lhs = self.write_move_to_reg(lhs);
 
                 self.write(OpIndirect::from((lhs.into(), rhs)));
 
                 Ok(NodeOutput::Register(lhs.into()))
             }
-            (NodeOutput::Constant(lhs), NodeOutput::ReturnValues) => {
-                let rhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                let lhs = self.scope.new_anonymous().init_from_const(self, lhs).into();
-
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::Register(lhs), NodeOutput::Constant(rhs)) => {
-                let lhs = match lhs {
-                    UnasmRegister::Anonymous(_) => lhs,
-                    UnasmRegister::Local(_) => {
-                        self.scope.new_anonymous().init_from_reg(self, lhs).into()
-                    }
-                };
-                self.write(Op::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::Register(lhs), NodeOutput::Register(rhs)) => {
-                let lhs = match lhs {
-                    UnasmRegister::Anonymous(_) => lhs,
-                    UnasmRegister::Local(_) => {
-                        self.scope.new_anonymous().init_from_reg(self, lhs).into()
-                    }
-                };
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::Register(lhs), NodeOutput::ReturnValues) => {
-                let rhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                let lhs = match lhs {
-                    UnasmRegister::Anonymous(_) => lhs,
-                    UnasmRegister::Local(_) => {
-                        self.scope.new_anonymous().init_from_reg(self, lhs).into()
-                    }
-                };
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::ReturnValues, NodeOutput::Constant(rhs)) => {
-                let lhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                self.write(Op::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::ReturnValues, NodeOutput::Register(rhs)) => {
-                let lhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
-            (NodeOutput::ReturnValues, NodeOutput::ReturnValues) => {
-                let lhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                let rhs = self.scope.new_anonymous().init_from_ret(self).into();
-
-                self.write(OpIndirect::from((lhs, rhs)));
-
-                Ok(NodeOutput::Register(lhs))
-            }
             (NodeOutput::Err(err), _) | (_, NodeOutput::Err(err)) => Ok(NodeOutput::Err(err)),
-            (NodeOutput::VAStack, _) | (_, NodeOutput::VAStack) => todo!(),
         }
     }
 
