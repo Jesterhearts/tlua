@@ -47,12 +47,12 @@ impl CompileExpression for TableConstructor<'_> {
         // Arraylike fields must be stored after indexed fields to respect lua's order
         // of initialization.
         for (index, init) in rest.iter().enumerate() {
-            compiler.assign_to_array(table, index + 1, *init)?;
+            compiler.assign_to_array(table, index, *init)?;
         }
 
         if let Some(last) = last {
             debug_assert!(matches!(last, NodeOutput::VAStack));
-            compiler.copy_va_to_array(table, rest.len())?;
+            compiler.copy_va_to_array(table, rest.len());
         }
 
         Ok(NodeOutput::Register(table))

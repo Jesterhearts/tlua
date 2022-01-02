@@ -138,6 +138,8 @@ pub enum Op<RegisterTy> {
     StoreConstantIndirect(StoreConstantIndirect<RegisterTy>),
     /// `[dest].table[[index]]` = `va[c]`
     StoreFromVaIndirect(StoreFromVaIndirect<RegisterTy>),
+    /// `[dest].table[(start, ..)]` = `va...`
+    StoreAllFromVa(StoreAllFromVa<RegisterTy>),
     /// Initialize a register to a constant value.
     Set(Set<RegisterTy>),
     /// Initialize a register from another register.
@@ -349,6 +351,12 @@ pub struct StoreFromVaIndirect<RegTy> {
     pub dest: RegTy,
     pub index: RegTy,
     pub va_index: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct StoreAllFromVa<RegTy> {
+    pub dest: RegTy,
+    pub start_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]

@@ -20,6 +20,7 @@ use crate::vm::{
                 Scope,
                 ScopeSet,
             },
+            table::TableKey,
             Function,
             Number,
         },
@@ -279,6 +280,25 @@ impl Context<'_> {
                             TryFrom::<Value>::try_from(index)?,
                             self.in_scope.load_va(va_index),
                         ),
+                        _ => todo!("metatables are unsupported"),
+                    };
+                }
+                Op::StoreAllFromVa(StoreAllFromVa { dest, start_index }) => {
+                    let entries = self
+                        .in_scope
+                        .iter_va()
+                        .enumerate()
+                        .map(|(index, v)| {
+                            i64::try_from(index + start_index)
+                                .map_err(|_| OpError::TableIndexOutOfBounds)
+                                .map(Value::from)
+                                .and_then(TableKey::try_from)
+                                .map(|key| (key, v.clone()))
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => t.borrow_mut().entries.extend(entries),
                         _ => todo!("metatables are unsupported"),
                     };
                 }

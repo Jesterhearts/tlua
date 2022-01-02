@@ -113,3 +113,42 @@ fn indexed_field_table_init() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn va_table_init() -> anyhow::Result<()> {
+    let src = indoc! {r#"
+        local function foo(...)
+            local x = { ..., ... }
+            return x
+        end
+        return foo(1, 2, 3)
+    "#};
+
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+    let result = rt.execute(&chunk)?;
+
+    let mut expected = Table::default();
+    expected.entries.extend([
+        (TableKey::try_from(Value::from(1)).unwrap(), 1.into()),
+        (TableKey::try_from(Value::from(2)).unwrap(), 1.into()),
+        (TableKey::try_from(Value::from(3)).unwrap(), 2.into()),
+        (TableKey::try_from(Value::from(4)).unwrap(), 3.into()),
+    ]);
+
+    assert_eq!(result.len(), 1, "{:#?} produced an incorrect result", chunk);
+
+    assert!(matches!(result.first(), Some(Value::Table(_))));
+
+    if let Some(Value::Table(t)) = result.first() {
+        assert_eq!(
+            t.borrow().entries,
+            expected.entries,
+            "{:#?} produced an incorrect result",
+            chunk
+        );
+    }
+
+    Ok(())
+}

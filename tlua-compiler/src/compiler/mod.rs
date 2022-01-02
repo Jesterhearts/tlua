@@ -864,10 +864,10 @@ impl CompilerContext<'_> {
     pub(crate) fn assign_to_array(
         &mut self,
         table: UnasmRegister,
-        index: usize,
+        zero_based_index: usize,
         value: NodeOutput,
     ) -> Result<(), CompileError> {
-        let index = Constant::from(i64::try_from(index).map_err(|_| {
+        let index = Constant::from(i64::try_from(zero_based_index + 1).map_err(|_| {
             CompileError::TooManyTableEntries {
                 max: i64::MAX as usize,
             }
@@ -879,14 +879,13 @@ impl CompilerContext<'_> {
     }
 
     /// Instruct the compiler to emit the instructions required copy a list of
-    /// va arguments to the arraylike indicides of a table starting at
+    /// va arguments to the arraylike indicies of a table starting at
     /// `start_index`.
-    pub(crate) fn copy_va_to_array(
-        &mut self,
-        _table: UnasmRegister,
-        _start_index: usize,
-    ) -> Result<(), CompileError> {
-        todo!()
+    pub(crate) fn copy_va_to_array(&mut self, table: UnasmRegister, zero_based_start_index: usize) {
+        self.write(opcodes::StoreAllFromVa::from((
+            table,
+            zero_based_start_index + 1,
+        )));
     }
 
     /// Instruct the compiler to emit the instructions required to set a value
@@ -925,8 +924,7 @@ impl CompilerContext<'_> {
 
                 Ok(None)
             }
-            (NodeOutput::Err(err), _) => Ok(Some(err)),
-            (_, NodeOutput::Err(err)) => Ok(Some(err)),
+            (NodeOutput::Err(err), _) | (_, NodeOutput::Err(err)) => Ok(Some(err)),
         }
     }
 

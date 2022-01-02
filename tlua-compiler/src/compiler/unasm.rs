@@ -245,6 +245,11 @@ impl AssembleOp for UnasmOp {
                 index: index.into(),
             }
             .into(),
+            Op::StoreAllFromVa(StoreAllFromVa { dest, start_index }) => StoreAllFromVa {
+                dest: dest.into(),
+                start_index,
+            }
+            .into(),
             Op::Set(Set { dest, source }) => Set {
                 dest: dest.into(),
                 source,
