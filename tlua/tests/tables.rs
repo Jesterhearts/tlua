@@ -152,3 +152,48 @@ fn va_table_init() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn arraylike_takes_precedence_table_init() -> anyhow::Result<()> {
+    let src = indoc! {r#"
+        local x = { [1] = 13, 10, 11 }
+        local y = { 10, [1] = 13, 11 }
+        return x, y
+    "#};
+
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+    let result = rt.execute(&chunk)?;
+
+    let mut expected = Table::default();
+    expected.entries.extend([
+        (TableKey::try_from(Value::from(1)).unwrap(), 10.into()),
+        (TableKey::try_from(Value::from(2)).unwrap(), 11.into()),
+    ]);
+
+    assert_eq!(result.len(), 2, "{:#?} produced an incorrect result", chunk);
+
+    assert!(matches!(
+        result.as_slice(),
+        [Value::Table(_), Value::Table(_)]
+    ));
+
+    if let [Value::Table(x), Value::Table(y)] = result.as_slice() {
+        assert_eq!(
+            x.borrow().entries,
+            expected.entries,
+            "{:#?} produced an incorrect result",
+            chunk
+        );
+
+        assert_eq!(
+            y.borrow().entries,
+            expected.entries,
+            "{:#?} produced an incorrect result",
+            chunk
+        );
+    }
+
+    Ok(())
+}
