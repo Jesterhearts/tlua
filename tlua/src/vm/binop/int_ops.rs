@@ -5,8 +5,7 @@ use tlua_bytecode::{
             NumericOpEval,
             OpName,
         },
-        BinOpData,
-        IntOpTag,
+        IntOp,
     },
     Constant,
     OpError,
@@ -21,7 +20,7 @@ use crate::vm::{
     },
 };
 
-impl<OpTy> ApplyBinop for BinOpData<IntOpTag<OpTy>, Register, Constant>
+impl<OpTy> ApplyBinop for IntOp<OpTy, Register, Constant>
 where
     OpTy: OpName + IntBinop,
 {
@@ -41,7 +40,7 @@ where
     }
 }
 
-impl<OpTy> ApplyBinop for BinOpData<IntOpTag<OpTy>, Register, Register>
+impl<OpTy> ApplyBinop for IntOp<OpTy, Register, Register>
 where
     OpTy: OpName + IntBinop,
 {

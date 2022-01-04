@@ -1,17 +1,9 @@
-use std::marker::PhantomData;
-
-use derive_more::{
-    Deref,
-    From,
-};
-
 use crate::{
     binop::{
         traits::{
             FloatBinop,
             NumericOpEval,
         },
-        BinOpData,
         OpName,
     },
     NumLike,
@@ -20,11 +12,37 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FloatOpTag<OpTy: FloatBinop>(PhantomData<OpTy>);
+pub struct FloatOp<OpTy: FloatBinop, LhsTy, RhsTy> {
+    pub lhs: LhsTy,
+    pub rhs: RhsTy,
+    op: OpTy,
+}
+
+impl<OpTy, LhsTy, RhsTy> From<FloatOp<OpTy, LhsTy, RhsTy>> for (LhsTy, RhsTy)
+where
+    OpTy: FloatBinop,
+{
+    fn from(val: FloatOp<OpTy, LhsTy, RhsTy>) -> Self {
+        (val.lhs, val.rhs)
+    }
+}
+
+impl<OpTy, LhsTy, RhsTy> From<(LhsTy, RhsTy)> for FloatOp<OpTy, LhsTy, RhsTy>
+where
+    OpTy: FloatBinop + Default,
+{
+    fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
+        Self {
+            lhs,
+            rhs,
+            op: Default::default(),
+        }
+    }
+}
 
 /// Generic operation for anything that looks like a number, usable during
 /// compilation
-impl<OpTy, LhsTy, RhsTy> NumericOpEval for BinOpData<FloatOpTag<OpTy>, LhsTy, RhsTy>
+impl<OpTy, LhsTy, RhsTy> NumericOpEval for FloatOp<OpTy, LhsTy, RhsTy>
 where
     OpTy: FloatBinop + OpName,
 {
@@ -56,34 +74,14 @@ macro_rules! float_binop_impl {
             ($lhs_float:ident : float, $rhs_float:ident : float) => $when_floats:expr $(,)?
         }
     ) => {
-        #[derive(Debug, Clone, Copy, PartialEq, From, Deref)]
-        pub struct $name<LhsTy, RhsTy>(BinOpData<FloatOpTag<Self>, LhsTy, RhsTy>);
+        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+        pub struct $name;
 
-        impl<LhsTy, RhsTy> From<(LhsTy, RhsTy)> for $name<LhsTy, RhsTy> {
-            fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
-                Self(BinOpData {
-                    lhs,
-                    rhs,
-                    _tag: Default::default(),
-                })
-            }
-        }
-
-        impl<LhsTy, RhsTy> OpName for $name<LhsTy, RhsTy> {
+        impl OpName for $name {
             const NAME: &'static str = stringify!($name);
         }
 
-        impl<LhsTy, RhsTy> NumericOpEval for $name<LhsTy, RhsTy> {
-            fn evaluate<LHS, RHS>(lhs: LHS, rhs: RHS) -> Result<Number, OpError>
-            where
-                LHS: NumLike,
-                RHS: NumLike,
-            {
-                BinOpData::<FloatOpTag<Self>, LhsTy, RhsTy>::evaluate(lhs, rhs)
-            }
-        }
-
-        impl<LhsTy, RhsTy> FloatBinop for $name<LhsTy, RhsTy> {
+        impl FloatBinop for $name {
             fn apply_ints(lhs: i64, rhs: i64) -> Number {
                 let $lhs_int = lhs;
                 let $rhs_int = rhs;

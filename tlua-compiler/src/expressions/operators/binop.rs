@@ -1,17 +1,18 @@
 use tlua_bytecode::{
+    self,
     binop::{
-        self,
         traits::{
             BooleanOpEval,
             ComparisonOpEval,
             NumericOpEval,
         },
+        *,
     },
     Constant,
     OpError,
 };
 use tlua_parser::ast::expressions::{
-    operator::*,
+    operator,
     Expression,
 };
 
@@ -85,188 +86,188 @@ where
     compiler.write_binop::<Op, OpIndirect, _, _, _>(lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
 }
 
-impl CompileExpression for Plus<'_> {
+impl CompileExpression for operator::Plus<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::Add<UnasmRegister, Constant>,
-            binop::AddIndirect<UnasmRegister, UnasmRegister>,
+            FloatOp<Add, UnasmRegister, Constant>,
+            FloatOp<AddIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for Minus<'_> {
+impl CompileExpression for operator::Minus<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::Subtract<UnasmRegister, Constant>,
-            binop::SubtractIndirect<UnasmRegister, UnasmRegister>,
+            FloatOp<Subtract, UnasmRegister, Constant>,
+            FloatOp<SubtractIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for Times<'_> {
+impl CompileExpression for operator::Times<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::Times<UnasmRegister, Constant>,
-            binop::TimesIndirect<UnasmRegister, UnasmRegister>,
+            FloatOp<Times, UnasmRegister, Constant>,
+            FloatOp<TimesIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for Divide<'_> {
+impl CompileExpression for operator::Divide<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::Divide<UnasmRegister, Constant>,
-            binop::DivideIndirect<UnasmRegister, UnasmRegister>,
+            FloatOp<Divide, UnasmRegister, Constant>,
+            FloatOp<DivideIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for IDiv<'_> {
+impl CompileExpression for operator::IDiv<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::IDiv<UnasmRegister, Constant>,
-            binop::IDivIndirect<UnasmRegister, UnasmRegister>,
+            FloatOp<IDiv, UnasmRegister, Constant>,
+            FloatOp<IDivIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for Modulo<'_> {
+impl CompileExpression for operator::Modulo<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::Modulo<UnasmRegister, Constant>,
-            binop::ModuloIndirect<UnasmRegister, UnasmRegister>,
+            FloatOp<Modulo, UnasmRegister, Constant>,
+            FloatOp<ModuloIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for Exponetiation<'_> {
+impl CompileExpression for operator::Exponetiation<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::Exponetiation<UnasmRegister, Constant>,
-            binop::ExponetiationIndirect<UnasmRegister, UnasmRegister>,
+            FloatOp<Exponetiation, UnasmRegister, Constant>,
+            FloatOp<ExponetiationIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for BitAnd<'_> {
+impl CompileExpression for operator::BitAnd<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::BitAnd<UnasmRegister, Constant>,
-            binop::BitAndIndirect<UnasmRegister, UnasmRegister>,
+            IntOp<BitAnd, UnasmRegister, Constant>,
+            IntOp<BitAndIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for BitOr<'_> {
+impl CompileExpression for operator::BitOr<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::BitOr<UnasmRegister, Constant>,
-            binop::BitOrIndirect<UnasmRegister, UnasmRegister>,
+            IntOp<BitOr, UnasmRegister, Constant>,
+            IntOp<BitOrIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for BitXor<'_> {
+impl CompileExpression for operator::BitXor<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::BitXor<UnasmRegister, Constant>,
-            binop::BitXorIndirect<UnasmRegister, UnasmRegister>,
+            IntOp<BitXor, UnasmRegister, Constant>,
+            IntOp<BitXorIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for ShiftLeft<'_> {
+impl CompileExpression for operator::ShiftLeft<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::ShiftLeft<UnasmRegister, Constant>,
-            binop::ShiftLeftIndirect<UnasmRegister, UnasmRegister>,
+            IntOp<ShiftLeft, UnasmRegister, Constant>,
+            IntOp<ShiftLeftIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for ShiftRight<'_> {
+impl CompileExpression for operator::ShiftRight<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_numeric_binop::<
-            binop::ShiftRight<UnasmRegister, Constant>,
-            binop::ShiftRightIndirect<UnasmRegister, UnasmRegister>,
+            IntOp<ShiftRight, UnasmRegister, Constant>,
+            IntOp<ShiftRightIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for Concat<'_> {
+impl CompileExpression for operator::Concat<'_> {
     fn compile(&self, _compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         todo!()
     }
 }
 
-impl CompileExpression for LessThan<'_> {
+impl CompileExpression for operator::LessThan<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_cmp_binop::<
-            binop::LessThan<UnasmRegister, Constant>,
-            binop::LessThanIndirect<UnasmRegister, UnasmRegister>,
+            CompareOp<LessThan, UnasmRegister, Constant>,
+            CompareOp<LessThanIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for LessEqual<'_> {
+impl CompileExpression for operator::LessEqual<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_cmp_binop::<
-            binop::LessEqual<UnasmRegister, Constant>,
-            binop::LessEqualIndirect<UnasmRegister, UnasmRegister>,
+            CompareOp<LessEqual, UnasmRegister, Constant>,
+            CompareOp<LessEqualIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for GreaterThan<'_> {
+impl CompileExpression for operator::GreaterThan<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_cmp_binop::<
-            binop::GreaterThan<UnasmRegister, Constant>,
-            binop::GreaterThanIndirect<UnasmRegister, UnasmRegister>,
+            CompareOp<GreaterThan, UnasmRegister, Constant>,
+            CompareOp<GreaterThanIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for GreaterEqual<'_> {
+impl CompileExpression for operator::GreaterEqual<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_cmp_binop::<
-            binop::GreaterEqual<UnasmRegister, Constant>,
-            binop::GreaterEqualIndirect<UnasmRegister, UnasmRegister>,
+            CompareOp<GreaterEqual, UnasmRegister, Constant>,
+            CompareOp<GreaterEqualIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for Equals<'_> {
+impl CompileExpression for operator::Equals<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_cmp_binop::<
-            binop::Equals<UnasmRegister, Constant>,
-            binop::EqualsIndirect<UnasmRegister, UnasmRegister>,
+            CompareOp<Equals, UnasmRegister, Constant>,
+            CompareOp<EqualsIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for NotEqual<'_> {
+impl CompileExpression for operator::NotEqual<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_cmp_binop::<
-            binop::NotEqual<UnasmRegister, Constant>,
-            binop::NotEqualIndirect<UnasmRegister, UnasmRegister>,
+            CompareOp<NotEqual, UnasmRegister, Constant>,
+            CompareOp<NotEqualIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for And<'_> {
+impl CompileExpression for operator::And<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_boolean_binop::<
-            binop::And<UnasmRegister, Constant>,
-            binop::AndIndirect<UnasmRegister, UnasmRegister>,
+            BoolOp<And, UnasmRegister, Constant>,
+            BoolOp<AndIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }
 
-impl CompileExpression for Or<'_> {
+impl CompileExpression for operator::Or<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         write_boolean_binop::<
-            binop::Or<UnasmRegister, Constant>,
-            binop::OrIndirect<UnasmRegister, UnasmRegister>,
+            BoolOp<Or, UnasmRegister, Constant>,
+            BoolOp<OrIndirect, UnasmRegister, UnasmRegister>,
         >(compiler, self.lhs, self.rhs)
     }
 }

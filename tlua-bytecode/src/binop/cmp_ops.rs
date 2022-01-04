@@ -1,14 +1,6 @@
-use std::marker::PhantomData;
-
-use derive_more::{
-    Deref,
-    From,
-};
-
 use crate::{
     binop::{
         traits::ComparisonOpEval,
-        BinOpData,
         OpName,
     },
     Number,
@@ -17,7 +9,30 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CompareOpTag<OpTy: ComparisonOpEval>(PhantomData<OpTy>);
+pub struct CompareOp<OpTy, LhsTy, RhsTy> {
+    pub lhs: LhsTy,
+    pub rhs: RhsTy,
+    op: OpTy,
+}
+
+impl<OpTy, LhsTy, RhsTy> From<CompareOp<OpTy, LhsTy, RhsTy>> for (LhsTy, RhsTy) {
+    fn from(val: CompareOp<OpTy, LhsTy, RhsTy>) -> Self {
+        (val.lhs, val.rhs)
+    }
+}
+
+impl<OpTy, LhsTy, RhsTy> From<(LhsTy, RhsTy)> for CompareOp<OpTy, LhsTy, RhsTy>
+where
+    OpTy: Default,
+{
+    fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
+        Self {
+            lhs,
+            rhs,
+            op: Default::default(),
+        }
+    }
+}
 
 macro_rules! comparison_binop_impl {
     (
@@ -31,24 +46,14 @@ macro_rules! comparison_binop_impl {
             ($lhs_func:ident : func, $rhs_func:ident : func) => $when_func:expr $(,)?
         }
     ) => {
-        #[derive(Debug, Clone, Copy, PartialEq, From, Deref)]
-        pub struct $name<LhsTy, RhsTy>(BinOpData<CompareOpTag<Self>, LhsTy, RhsTy>);
+        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+        pub struct $name;
 
-        impl<LhsTy, RhsTy> From<(LhsTy, RhsTy)> for $name<LhsTy, RhsTy> {
-            fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
-                Self(BinOpData {
-                    lhs,
-                    rhs,
-                    _tag: Default::default(),
-                })
-            }
-        }
-
-        impl<LhsTy, RhsTy> OpName for $name<LhsTy, RhsTy> {
+        impl OpName for $name {
             const NAME: &'static str = stringify!($name);
         }
 
-        impl<LhsTy, RhsTy> ComparisonOpEval for $name<LhsTy, RhsTy> {
+        impl<RhsTy, LhsTy> ComparisonOpEval for CompareOp<$name, RhsTy, LhsTy> {
             fn apply_numbers(lhs: Number, rhs: Number) -> bool {
                 let $lhs_num = lhs;
                 let $rhs_num = rhs;

@@ -1,6 +1,6 @@
 use derive_more::{
-    Deref,
     From,
+    Into,
 };
 
 use crate::{
@@ -19,53 +19,53 @@ pub type Instruction = Op<Register>;
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub enum Op<RegisterTy> {
     /// `[dest] += c`, preserving types.
-    Add(Add<RegisterTy, Constant>),
+    Add(FloatOp<Add, RegisterTy, Constant>),
     /// `[dest] += [src]`
-    AddIndirect(AddIndirect<RegisterTy, RegisterTy>),
+    AddIndirect(FloatOp<AddIndirect, RegisterTy, RegisterTy>),
     /// `[dest] -= c`, preserving types.
-    Subtract(Subtract<RegisterTy, Constant>),
+    Subtract(FloatOp<Subtract, RegisterTy, Constant>),
     /// `[dest] -= [src]`, preserving types.
-    SubtractIndirect(SubtractIndirect<RegisterTy, RegisterTy>),
+    SubtractIndirect(FloatOp<SubtractIndirect, RegisterTy, RegisterTy>),
     /// `[dest] *= c`, preserving types.
-    Times(Times<RegisterTy, Constant>),
+    Times(FloatOp<Times, RegisterTy, Constant>),
     /// `[dest] *= [src]`, preserving types.
-    TimesIndirect(TimesIndirect<RegisterTy, RegisterTy>),
+    TimesIndirect(FloatOp<TimesIndirect, RegisterTy, RegisterTy>),
     /// `[dest] %= c`, preserving types.
-    Modulo(Modulo<RegisterTy, Constant>),
+    Modulo(FloatOp<Modulo, RegisterTy, Constant>),
     /// `[dest] %= [src]`, preserving types.
-    ModuloIndirect(ModuloIndirect<RegisterTy, RegisterTy>),
+    ModuloIndirect(FloatOp<ModuloIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] / c`, producing a float.
-    Divide(Divide<RegisterTy, Constant>),
+    Divide(FloatOp<Divide, RegisterTy, Constant>),
     /// `[dest] = [dest] / [src]`, producing a float.
-    DivideIndirect(DivideIndirect<RegisterTy, RegisterTy>),
+    DivideIndirect(FloatOp<DivideIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest].exp(c)`, producing a float.
-    Exponetiation(Exponetiation<RegisterTy, Constant>),
+    Exponetiation(FloatOp<Exponetiation, RegisterTy, Constant>),
     /// `[dest] = [dest].exp([src])`, producing a float.
-    ExponetiationIndirect(ExponetiationIndirect<RegisterTy, RegisterTy>),
+    ExponetiationIndirect(FloatOp<ExponetiationIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = floor([dest] / c)`, type preserving.
-    IDiv(IDiv<RegisterTy, Constant>),
+    IDiv(FloatOp<IDiv, RegisterTy, Constant>),
     /// `[dest] = floor([dest] / [src])`, type preserving.
-    IDivIndirect(IDivIndirect<RegisterTy, RegisterTy>),
+    IDivIndirect(FloatOp<IDivIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] & c`, producing an int.
-    BitAnd(BitAnd<RegisterTy, Constant>),
+    BitAnd(IntOp<BitAnd, RegisterTy, Constant>),
     /// `[dest] = [dest] & [src]`, producing an int.
-    BitAndIndirect(BitAndIndirect<RegisterTy, RegisterTy>),
+    BitAndIndirect(IntOp<BitAndIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] | c`, producing an int.
-    BitOr(BitOr<RegisterTy, Constant>),
+    BitOr(IntOp<BitOr, RegisterTy, Constant>),
     /// `[dest] = [dest] | [src]`, producing an int.
-    BitOrIndirect(BitOrIndirect<RegisterTy, RegisterTy>),
+    BitOrIndirect(IntOp<BitOrIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] ^ c`, producing an int.
-    BitXor(BitXor<RegisterTy, Constant>),
+    BitXor(IntOp<BitXor, RegisterTy, Constant>),
     /// `[dest] = [dest] ^ [src]`, producing an int.
-    BitXorIndirect(BitXorIndirect<RegisterTy, RegisterTy>),
+    BitXorIndirect(IntOp<BitXorIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] << c`, producing an int.
-    ShiftLeft(ShiftLeft<RegisterTy, Constant>),
+    ShiftLeft(IntOp<ShiftLeft, RegisterTy, Constant>),
     /// `[dest] = [dest] << [src]`, producing an int.
-    ShiftLeftIndirect(ShiftLeftIndirect<RegisterTy, RegisterTy>),
+    ShiftLeftIndirect(IntOp<ShiftLeftIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] >> c`, producing an int.
-    ShiftRight(ShiftRight<RegisterTy, Constant>),
+    ShiftRight(IntOp<ShiftRight, RegisterTy, Constant>),
     /// `[dest] = [dest] >> [src]`, producing an int.
-    ShiftRightIndirect(ShiftRightIndirect<RegisterTy, RegisterTy>),
+    ShiftRightIndirect(IntOp<ShiftRightIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = -[dest]`, type preserving.
     UnaryMinus(UnaryMinus<RegisterTy>),
     /// `[dest] = !([dest] as bool)`, producing a bool.
@@ -73,37 +73,37 @@ pub enum Op<RegisterTy> {
     /// `[dest] = ![dest]`, producing an int.
     UnaryBitNot(UnaryBitNot<RegisterTy>),
     /// `[dest] = [dest] < c`.
-    LessThan(LessThan<RegisterTy, Constant>),
+    LessThan(CompareOp<LessThan, RegisterTy, Constant>),
     /// `[dest] = [dest] < [src]`.
-    LessThanIndirect(LessThanIndirect<RegisterTy, RegisterTy>),
+    LessThanIndirect(CompareOp<LessThanIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] <= c`.
-    LessEqual(LessEqual<RegisterTy, Constant>),
+    LessEqual(CompareOp<LessEqual, RegisterTy, Constant>),
     /// `[dest] = [dest] <= [src]`.
-    LessEqualIndirect(LessEqualIndirect<RegisterTy, RegisterTy>),
+    LessEqualIndirect(CompareOp<LessEqualIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] > c`.
-    GreaterThan(GreaterThan<RegisterTy, Constant>),
+    GreaterThan(CompareOp<GreaterThan, RegisterTy, Constant>),
     /// `[dest] = [dest] > [src]`.
-    GreaterThanIndirect(GreaterThanIndirect<RegisterTy, RegisterTy>),
+    GreaterThanIndirect(CompareOp<GreaterThanIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] >= c`.
-    GreaterEqual(GreaterEqual<RegisterTy, Constant>),
+    GreaterEqual(CompareOp<GreaterEqual, RegisterTy, Constant>),
     /// `[dest] = [dest] >= [src]`.
-    GreaterEqualIndirect(GreaterEqualIndirect<RegisterTy, RegisterTy>),
+    GreaterEqualIndirect(CompareOp<GreaterEqualIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] == c`.
-    Equals(Equals<RegisterTy, Constant>),
+    Equals(CompareOp<Equals, RegisterTy, Constant>),
     /// `[dest] = [dest] == [src]`.
-    EqualsIndirect(EqualsIndirect<RegisterTy, RegisterTy>),
+    EqualsIndirect(CompareOp<EqualsIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] != c`.
-    NotEqual(NotEqual<RegisterTy, Constant>),
+    NotEqual(CompareOp<NotEqual, RegisterTy, Constant>),
     /// `[dest] = [dest] != [src]`.
-    NotEqualIndirect(NotEqualIndirect<RegisterTy, RegisterTy>),
+    NotEqualIndirect(CompareOp<NotEqualIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] as bool ? c : [dest]`.
-    And(And<RegisterTy, Constant>),
+    And(BoolOp<And, RegisterTy, Constant>),
     /// `[dest] = [dest] as bool ? [src] : [dest]`.
-    AndIndirect(AndIndirect<RegisterTy, RegisterTy>),
+    AndIndirect(BoolOp<AndIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest] as bool ? [dest] : c`.
-    Or(Or<RegisterTy, Constant>),
+    Or(BoolOp<Or, RegisterTy, Constant>),
     /// `[dest] = [dest] as bool ? [dest] : [src]`.
-    OrIndirect(OrIndirect<RegisterTy, RegisterTy>),
+    OrIndirect(BoolOp<OrIndirect, RegisterTy, RegisterTy>),
     /// `[dest] = [dest].to_string() + c.to_string()`.
     Concat(Concat<RegisterTy>),
     /// `[dest] = [dest].to_string() + [src].to_string()`.
@@ -201,22 +201,16 @@ pub enum Op<RegisterTy> {
     MapRet(MapRet<RegisterTy>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, From, Deref)]
-pub struct Concat<RegTy>(BinOpData<Self, RegTy, Constant>);
-
-impl<RegTy> From<(RegTy, Constant)> for Concat<RegTy> {
-    fn from(tuple: (RegTy, Constant)) -> Self {
-        Self(tuple.into())
-    }
+#[derive(Debug, Clone, Copy, PartialEq, From, Into)]
+pub struct Concat<RegTy> {
+    lhs: RegTy,
+    rhs: Constant,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, From, Deref)]
-pub struct ConcatIndirect<RegTy>(BinOpData<Self, RegTy, RegTy>);
-
-impl<RegTy> From<(RegTy, RegTy)> for ConcatIndirect<RegTy> {
-    fn from(tuple: (RegTy, RegTy)) -> Self {
-        Self(tuple.into())
-    }
+#[derive(Debug, Clone, Copy, PartialEq, From, Into)]
+pub struct ConcatIndirect<RegTy> {
+    lhs: RegTy,
+    rhs: RegTy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]

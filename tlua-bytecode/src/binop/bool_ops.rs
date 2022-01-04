@@ -1,21 +1,48 @@
-use std::marker::PhantomData;
-
-use derive_more::{
-    Deref,
-    From,
-};
-
 use crate::{
     binop::{
         traits::BooleanOpEval,
-        BinOpData,
         OpName,
     },
     Truthy,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BoolOpTag<OpTy: BooleanOpEval>(PhantomData<OpTy>);
+pub struct BoolOp<OpTy: BooleanOpEval, LhsTy, RhsTy> {
+    pub lhs: LhsTy,
+    pub rhs: RhsTy,
+    op: OpTy,
+}
+
+impl<OpTy, LhsTy, RhsTy> BooleanOpEval for BoolOp<OpTy, LhsTy, RhsTy>
+where
+    OpTy: BooleanOpEval,
+{
+    fn evaluate<RES, LHS: Truthy + Into<RES>, RHS: Truthy + Into<RES>>(lhs: LHS, rhs: RHS) -> RES {
+        OpTy::evaluate(lhs, rhs)
+    }
+}
+
+impl<OpTy, LhsTy, RhsTy> From<BoolOp<OpTy, LhsTy, RhsTy>> for (LhsTy, RhsTy)
+where
+    OpTy: BooleanOpEval,
+{
+    fn from(val: BoolOp<OpTy, LhsTy, RhsTy>) -> Self {
+        (val.lhs, val.rhs)
+    }
+}
+
+impl<OpTy, LhsTy, RhsTy> From<(LhsTy, RhsTy)> for BoolOp<OpTy, LhsTy, RhsTy>
+where
+    OpTy: BooleanOpEval + Default,
+{
+    fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
+        Self {
+            lhs,
+            rhs,
+            op: Default::default(),
+        }
+    }
+}
 
 fn evaluate_and<RES, LHS, RHS>(lhs: LHS, rhs: RHS) -> RES
 where
@@ -43,24 +70,14 @@ where
 
 macro_rules! bool_binop_impl {
     ($name:ident => ($lhs:ident : bool, $rhs:ident : bool) => $op:expr $(,)?) => {
-        #[derive(Debug, Clone, Copy, PartialEq, From, Deref)]
-        pub struct $name<LhsTy, RhsTy>(BinOpData<BoolOpTag<Self>, LhsTy, RhsTy>);
+        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+        pub struct $name;
 
-        impl<LhsTy, RhsTy> From<(LhsTy, RhsTy)> for $name<LhsTy, RhsTy> {
-            fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
-                Self(BinOpData {
-                    lhs,
-                    rhs,
-                    _tag: Default::default(),
-                })
-            }
-        }
-
-        impl<LhsTy, RhsTy> OpName for $name<LhsTy, RhsTy> {
+        impl OpName for $name {
             const NAME: &'static str = stringify!($name);
         }
 
-        impl<Lhs, Rhs> BooleanOpEval for $name<Lhs, Rhs> {
+        impl BooleanOpEval for $name {
             fn evaluate<RES, LHS, RHS>(lhs: LHS, rhs: RHS) -> RES
             where
                 LHS: Truthy + Into<RES>,

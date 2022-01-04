@@ -4,8 +4,7 @@ use tlua_bytecode::{
             BooleanOpEval,
             OpName,
         },
-        BinOpData,
-        BoolOpTag,
+        BoolOp,
     },
     Constant,
     OpError,
@@ -17,7 +16,7 @@ use crate::vm::{
     runtime::value::function::ScopeSet,
 };
 
-impl<OpTy> ApplyBinop for BinOpData<BoolOpTag<OpTy>, Register, Constant>
+impl<OpTy> ApplyBinop for BoolOp<OpTy, Register, Constant>
 where
     OpTy: OpName + BooleanOpEval,
 {
@@ -30,7 +29,7 @@ where
     }
 }
 
-impl<OpTy> ApplyBinop for BinOpData<BoolOpTag<OpTy>, Register, Register>
+impl<OpTy> ApplyBinop for BoolOp<OpTy, Register, Register>
 where
     OpTy: OpName + BooleanOpEval,
 {

@@ -5,7 +5,6 @@ use derive_more::{
     From,
 };
 use tlua_bytecode::{
-    binop::*,
     opcodes::*,
     Constant,
     Register,
@@ -93,24 +92,6 @@ impl From<UnasmRegister> for Register {
 
 pub(crate) type UnasmOp = Op<UnasmRegister>;
 
-impl<OpTy> AssembleOp for BinOpData<OpTy, UnasmRegister, Constant> {
-    type Target = (Register, Constant);
-
-    fn assemble(self) -> Self::Target {
-        let data: (_, _) = self.into();
-        data.assemble()
-    }
-}
-
-impl<OpTy> AssembleOp for BinOpData<OpTy, UnasmRegister, UnasmRegister> {
-    type Target = (Register, Register);
-
-    fn assemble(self) -> Self::Target {
-        let data: (_, _) = self.into();
-        data.assemble()
-    }
-}
-
 impl AssembleOp for (UnasmRegister, Constant) {
     type Target = (Register, Constant);
 
@@ -134,51 +115,63 @@ impl AssembleOp for UnasmOp {
 
     fn assemble(self) -> Self::Target {
         match self {
-            Op::Add(op) => Add::from(op.assemble()).into(),
-            Op::AddIndirect(op) => AddIndirect::from(op.assemble()).into(),
-            Op::Subtract(op) => Subtract::from(op.assemble()).into(),
-            Op::SubtractIndirect(op) => SubtractIndirect::from(op.assemble()).into(),
-            Op::Times(op) => Times::from(op.assemble()).into(),
-            Op::TimesIndirect(op) => TimesIndirect::from(op.assemble()).into(),
-            Op::Modulo(op) => Modulo::from(op.assemble()).into(),
-            Op::ModuloIndirect(op) => ModuloIndirect::from(op.assemble()).into(),
-            Op::Divide(op) => Divide::from(op.assemble()).into(),
-            Op::DivideIndirect(op) => DivideIndirect::from(op.assemble()).into(),
-            Op::Exponetiation(op) => Exponetiation::from(op.assemble()).into(),
-            Op::ExponetiationIndirect(op) => ExponetiationIndirect::from(op.assemble()).into(),
-            Op::IDiv(op) => IDiv::from(op.assemble()).into(),
-            Op::IDivIndirect(op) => IDivIndirect::from(op.assemble()).into(),
-            Op::BitAnd(op) => BitAnd::from(op.assemble()).into(),
-            Op::BitAndIndirect(op) => BitAndIndirect::from(op.assemble()).into(),
-            Op::BitOr(op) => BitOr::from(op.assemble()).into(),
-            Op::BitOrIndirect(op) => BitOrIndirect::from(op.assemble()).into(),
-            Op::BitXor(op) => BitXor::from(op.assemble()).into(),
-            Op::BitXorIndirect(op) => BitXorIndirect::from(op.assemble()).into(),
-            Op::ShiftLeft(op) => ShiftLeft::from(op.assemble()).into(),
-            Op::ShiftLeftIndirect(op) => ShiftLeftIndirect::from(op.assemble()).into(),
-            Op::ShiftRight(op) => ShiftRight::from(op.assemble()).into(),
-            Op::ShiftRightIndirect(op) => ShiftRightIndirect::from(op.assemble()).into(),
+            Op::Add(op) => Op::Add(<(_, _)>::from(op).assemble().into()),
+            Op::AddIndirect(op) => Op::AddIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::Subtract(op) => Op::Subtract(<(_, _)>::from(op).assemble().into()),
+            Op::SubtractIndirect(op) => Op::SubtractIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::Times(op) => Op::Times(<(_, _)>::from(op).assemble().into()),
+            Op::TimesIndirect(op) => Op::TimesIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::Modulo(op) => Op::Modulo(<(_, _)>::from(op).assemble().into()),
+            Op::ModuloIndirect(op) => Op::ModuloIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::Divide(op) => Op::Divide(<(_, _)>::from(op).assemble().into()),
+            Op::DivideIndirect(op) => Op::DivideIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::Exponetiation(op) => Op::Exponetiation(<(_, _)>::from(op).assemble().into()),
+            Op::ExponetiationIndirect(op) => {
+                Op::ExponetiationIndirect(<(_, _)>::from(op).assemble().into())
+            }
+            Op::IDiv(op) => Op::IDiv(<(_, _)>::from(op).assemble().into()),
+            Op::IDivIndirect(op) => Op::IDivIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::BitAnd(op) => Op::BitAnd(<(_, _)>::from(op).assemble().into()),
+            Op::BitAndIndirect(op) => Op::BitAndIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::BitOr(op) => Op::BitOr(<(_, _)>::from(op).assemble().into()),
+            Op::BitOrIndirect(op) => Op::BitOrIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::BitXor(op) => Op::BitXor(<(_, _)>::from(op).assemble().into()),
+            Op::BitXorIndirect(op) => Op::BitXorIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::ShiftLeft(op) => Op::ShiftLeft(<(_, _)>::from(op).assemble().into()),
+            Op::ShiftLeftIndirect(op) => {
+                Op::ShiftLeftIndirect(<(_, _)>::from(op).assemble().into())
+            }
+            Op::ShiftRight(op) => Op::ShiftRight(<(_, _)>::from(op).assemble().into()),
+            Op::ShiftRightIndirect(op) => {
+                Op::ShiftRightIndirect(<(_, _)>::from(op).assemble().into())
+            }
             Op::UnaryMinus(UnaryMinus { reg }) => UnaryMinus { reg: reg.into() }.into(),
             Op::Not(Not { reg }) => Not { reg: reg.into() }.into(),
             Op::UnaryBitNot(UnaryBitNot { reg }) => UnaryBitNot { reg: reg.into() }.into(),
-            Op::LessThan(op) => LessThan::from(op.assemble()).into(),
-            Op::LessThanIndirect(op) => LessThanIndirect::from(op.assemble()).into(),
-            Op::LessEqual(op) => LessEqual::from(op.assemble()).into(),
-            Op::LessEqualIndirect(op) => LessEqualIndirect::from(op.assemble()).into(),
-            Op::GreaterThan(op) => GreaterThan::from(op.assemble()).into(),
-            Op::GreaterThanIndirect(op) => GreaterThanIndirect::from(op.assemble()).into(),
-            Op::GreaterEqual(op) => GreaterEqual::from(op.assemble()).into(),
-            Op::GreaterEqualIndirect(op) => GreaterEqualIndirect::from(op.assemble()).into(),
-            Op::Equals(op) => Equals::from(op.assemble()).into(),
-            Op::EqualsIndirect(op) => EqualsIndirect::from(op.assemble()).into(),
-            Op::NotEqual(op) => NotEqual::from(op.assemble()).into(),
-            Op::NotEqualIndirect(op) => NotEqualIndirect::from(op.assemble()).into(),
-            Op::And(op) => And::from(op.assemble()).into(),
-            Op::AndIndirect(op) => AndIndirect::from(op.assemble()).into(),
-            Op::Or(op) => Or::from(op.assemble()).into(),
-            Op::OrIndirect(op) => OrIndirect::from(op.assemble()).into(),
-            Op::Concat(op) => Concat::from(op.assemble()).into(),
-            Op::ConcatIndirect(op) => ConcatIndirect::from(op.assemble()).into(),
+            Op::LessThan(op) => Op::LessThan(<(_, _)>::from(op).assemble().into()),
+            Op::LessThanIndirect(op) => Op::LessThanIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::LessEqual(op) => Op::LessEqual(<(_, _)>::from(op).assemble().into()),
+            Op::LessEqualIndirect(op) => {
+                Op::LessEqualIndirect(<(_, _)>::from(op).assemble().into())
+            }
+            Op::GreaterThan(op) => Op::GreaterThan(<(_, _)>::from(op).assemble().into()),
+            Op::GreaterThanIndirect(op) => {
+                Op::GreaterThanIndirect(<(_, _)>::from(op).assemble().into())
+            }
+            Op::GreaterEqual(op) => Op::GreaterEqual(<(_, _)>::from(op).assemble().into()),
+            Op::GreaterEqualIndirect(op) => {
+                Op::GreaterEqualIndirect(<(_, _)>::from(op).assemble().into())
+            }
+            Op::Equals(op) => Op::Equals(<(_, _)>::from(op).assemble().into()),
+            Op::EqualsIndirect(op) => Op::EqualsIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::NotEqual(op) => Op::NotEqual(<(_, _)>::from(op).assemble().into()),
+            Op::NotEqualIndirect(op) => Op::NotEqualIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::And(op) => Op::And(<(_, _)>::from(op).assemble().into()),
+            Op::AndIndirect(op) => Op::AndIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::Or(op) => Op::Or(<(_, _)>::from(op).assemble().into()),
+            Op::OrIndirect(op) => Op::OrIndirect(<(_, _)>::from(op).assemble().into()),
+            Op::Concat(op) => Op::Concat(<(_, _)>::from(op).assemble().into()),
+            Op::ConcatIndirect(op) => Op::ConcatIndirect(<(_, _)>::from(op).assemble().into()),
             Op::Length(Length { reg }) => Length { reg: reg.into() }.into(),
             Op::Raise(op) => op.into(),
             Op::Jump(op) => op.into(),

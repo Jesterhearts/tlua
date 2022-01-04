@@ -1,17 +1,9 @@
-use std::marker::PhantomData;
-
-use derive_more::{
-    Deref,
-    From,
-};
-
 use crate::{
     binop::{
         traits::{
             IntBinop,
             NumericOpEval,
         },
-        BinOpData,
         OpName,
     },
     NumLike,
@@ -20,7 +12,33 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct IntOpTag<OpTy: IntBinop>(PhantomData<OpTy>);
+pub struct IntOp<OpTy: IntBinop, LhsTy, RhsTy> {
+    pub lhs: LhsTy,
+    pub rhs: RhsTy,
+    op: OpTy,
+}
+
+impl<OpTy, LhsTy, RhsTy> From<IntOp<OpTy, LhsTy, RhsTy>> for (LhsTy, RhsTy)
+where
+    OpTy: IntBinop,
+{
+    fn from(val: IntOp<OpTy, LhsTy, RhsTy>) -> Self {
+        (val.lhs, val.rhs)
+    }
+}
+
+impl<OpTy, LhsTy, RhsTy> From<(LhsTy, RhsTy)> for IntOp<OpTy, LhsTy, RhsTy>
+where
+    OpTy: IntBinop + Default,
+{
+    fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
+        Self {
+            lhs,
+            rhs,
+            op: Default::default(),
+        }
+    }
+}
 
 /// Converts an `f64` to an `i64` if it falls within the range of `i64` and has
 /// no fractional component.
@@ -34,7 +52,7 @@ pub fn f64inbounds(f: f64) -> Result<i64, OpError> {
 
 /// Generic operation for anything that looks like a number, usable during
 /// compilation
-impl<OpTy, LhsTy, RhsTy> NumericOpEval for BinOpData<IntOpTag<OpTy>, LhsTy, RhsTy>
+impl<OpTy, LhsTy, RhsTy> NumericOpEval for IntOp<OpTy, LhsTy, RhsTy>
 where
     OpTy: IntBinop + OpName,
 {
@@ -97,34 +115,14 @@ macro_rules! int_binop_impl {
             ($lhs_float:ident : float, $rhs_float:ident : float) => $when_floats:expr $(,)?
         }
     ) => {
-        #[derive(Debug, Clone, Copy, PartialEq, From, Deref)]
-        pub struct $name<LhsTy, RhsTy>(BinOpData<IntOpTag<Self>, LhsTy, RhsTy>);
+        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+        pub struct $name;
 
-        impl<LhsTy, RhsTy> From<(LhsTy, RhsTy)> for $name<LhsTy, RhsTy> {
-            fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
-                Self(BinOpData {
-                    lhs,
-                    rhs,
-                    _tag: Default::default(),
-                })
-            }
-        }
-
-        impl<LhsTy, RhsTy> OpName for $name<LhsTy, RhsTy> {
+        impl OpName for $name {
             const NAME: &'static str = stringify!($name);
         }
 
-        impl<LhsTy, RhsTy> NumericOpEval for $name<LhsTy, RhsTy> {
-            fn evaluate<LHS, RHS>(lhs: LHS, rhs: RHS) -> Result<Number, OpError>
-            where
-                LHS: NumLike,
-                RHS: NumLike,
-            {
-                BinOpData::<IntOpTag<Self>, LhsTy, RhsTy>::evaluate(lhs, rhs)
-            }
-        }
-
-        impl<LhsTy, RhsTy> IntBinop for $name<LhsTy, RhsTy> {
+        impl IntBinop for $name {
             fn apply_ints(lhs: i64, rhs: i64) -> Number {
                 let $lhs_int = lhs;
                 let $rhs_int = rhs;
