@@ -471,7 +471,9 @@ impl CompilerContext<'_> {
             NodeOutput::Register(reg) => {
                 self.write(opcodes::Store::from((table, index, reg)));
             }
-            NodeOutput::ReturnValues => todo!(),
+            NodeOutput::ReturnValues => {
+                self.write(opcodes::StoreRet::from((table, index)));
+            }
             NodeOutput::VAStack => {
                 self.write(opcodes::StoreFromVa::from((table, index, 0)));
             }
@@ -492,7 +494,9 @@ impl CompilerContext<'_> {
             NodeOutput::Register(reg) => {
                 self.write(opcodes::StoreIndirect::from((table, index, reg)));
             }
-            NodeOutput::ReturnValues => todo!(),
+            NodeOutput::ReturnValues => {
+                self.write(opcodes::StoreRetIndirect::from((table, index)));
+            }
             NodeOutput::VAStack => {
                 self.write(opcodes::StoreFromVaIndirect::from((table, index, 0)));
             }
@@ -883,6 +887,20 @@ impl CompilerContext<'_> {
     /// `start_index`.
     pub(crate) fn copy_va_to_array(&mut self, table: UnasmRegister, zero_based_start_index: usize) {
         self.write(opcodes::StoreAllFromVa::from((
+            table,
+            zero_based_start_index + 1,
+        )));
+    }
+
+    /// Instruct the compiler to emit the instructions required copy a list of
+    /// return values to the arraylike indicies of a table starting at
+    /// `start_index`.
+    pub(crate) fn copy_ret_to_array(
+        &mut self,
+        table: UnasmRegister,
+        zero_based_start_index: usize,
+    ) {
+        self.write(opcodes::StoreAllRet::from((
             table,
             zero_based_start_index + 1,
         )));

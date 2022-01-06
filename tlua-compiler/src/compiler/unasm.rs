@@ -287,6 +287,21 @@ impl AssembleOp for UnasmOp {
             Op::CopyRetFromVaAndRet => Op::CopyRetFromVaAndRet,
             Op::Ret => Op::Ret,
             Op::MapRet(MapRet { dest }) => MapRet { dest: dest.into() }.into(),
+            Op::StoreRetIndirect(StoreRetIndirect { dest, index }) => StoreRetIndirect {
+                dest: dest.into(),
+                index: index.into(),
+            }
+            .into(),
+            Op::StoreRet(StoreRet { dest, index }) => StoreRet {
+                dest: dest.into(),
+                index,
+            }
+            .into(),
+            Op::StoreAllRet(StoreAllRet { dest, start_index }) => StoreAllRet {
+                dest: dest.into(),
+                start_index,
+            }
+            .into(),
         }
     }
 }

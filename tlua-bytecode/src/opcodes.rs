@@ -199,6 +199,13 @@ pub enum Op<RegisterTy> {
     Ret,
     /// Copy the next available return value into the target register.
     MapRet(MapRet<RegisterTy>),
+    /// Copy the next available return value into a constant index in a table.
+    StoreRet(StoreRet<RegisterTy>),
+    /// Copy the next available return value into the index loaded from a
+    /// register into a table.
+    StoreRetIndirect(StoreRetIndirect<RegisterTy>),
+    /// Copy all the available return values into a table.
+    StoreAllRet(StoreAllRet<RegisterTy>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From, Into)]
@@ -282,11 +289,6 @@ pub struct SetRet {
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct SetRetIndirect<RegTy> {
     pub src: RegTy,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct MapRet<RegTy> {
-    pub dest: RegTy,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
@@ -386,4 +388,27 @@ pub struct SetFromVa<RegTy> {
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct ScopeDescriptor {
     pub size: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct MapRet<RegTy> {
+    pub dest: RegTy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct StoreRet<RegTy> {
+    pub dest: RegTy,
+    pub index: Constant,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct StoreRetIndirect<RegTy> {
+    pub dest: RegTy,
+    pub index: RegTy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub struct StoreAllRet<RegTy> {
+    pub dest: RegTy,
+    pub start_index: usize,
 }
