@@ -154,6 +154,20 @@ pub enum Op<RegisterTy> {
     PushScope(ScopeDescriptor),
     /// Discard the current scope and restore the most recently pushed scope.
     PopScope,
+    /// Copy the target constant value into this function's output list.
+    SetRet(SetRet),
+    /// Copy the target register value into this function's output list.
+    SetRetIndirect(SetRetIndirect<RegisterTy>),
+    /// Copy the first va arg into this function's output list.
+    SetRetVa0,
+    /// Copy the first return value from a function into this function's output
+    /// list.
+    SetRetFromRet0,
+    /// Copy all return values from this function's va list and then return from
+    /// the function.
+    CopyRetFromVaAndRet,
+    /// Stop executing this function and return.
+    Ret,
     /// Load the target function as the current call target and begin mapping
     /// values into its registers. Extra arguments will populate the
     /// function's variadic argument list. Missing arguments will be cleared
@@ -180,23 +194,9 @@ pub enum Op<RegisterTy> {
     MapArgIndirect(MapArgIndirect<RegisterTy>),
     /// Copy the first va arg into the next register for the current call target
     MapVa0,
-    /// Copy the target constant value into this function's output list.
-    SetRet(SetRet),
-    /// Copy the target register value into this function's output list.
-    SetRetIndirect(SetRetIndirect<RegisterTy>),
-    /// Copy the first va arg into this function's output list.
-    SetRetVa0,
-    /// Copy the first return value from a function into this function's output
-    /// list.
-    SetRetFromRet0,
     /// Copy all return values from a function into this function's output list
     /// and then return from the function.
     CopyRetFromRetAndRet,
-    /// Copy all return values this function's va list and then return from the
-    /// function.
-    CopyRetFromVaAndRet,
-    /// Stop executing this function and return.
-    Ret,
     /// Copy the next available return value into the target register.
     MapRet(MapRet<RegisterTy>),
     /// Copy the next available return value into a constant index in a table.
@@ -264,11 +264,13 @@ pub struct JumpNotVa0 {
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct StartCall<RegTy> {
     pub target: RegTy,
+    pub mapped_args: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct StartCallExtending<RegTy> {
     pub target: RegTy,
+    pub mapped_args: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]

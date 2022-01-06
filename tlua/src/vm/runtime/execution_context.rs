@@ -30,11 +30,11 @@ use crate::vm::{
 };
 
 pub struct Context<'call> {
-    pub in_scope: ScopeSet,
-    pub instruction: usize,
+    in_scope: ScopeSet,
 
     chunk: &'call Chunk,
-    instructions: &'call Vec<Instruction>,
+    instructions: &'call [Instruction],
+    instruction_pointer: &'call [Instruction],
 }
 
 impl<'call> Context<'call> {
@@ -42,8 +42,8 @@ impl<'call> Context<'call> {
         Self {
             in_scope: scopes,
             chunk,
-            instructions: &chunk.main.instructions,
-            instruction: 0,
+            instructions: chunk.main.instructions.as_slice(),
+            instruction_pointer: chunk.main.instructions.as_slice(),
         }
     }
 }
@@ -67,17 +67,16 @@ impl Context<'_> {
                 vec![Value::Nil; func_def.anon_registers],
                 va_args,
             ),
-            instruction: 0,
 
             chunk: self.chunk,
-            instructions: &func_def.instructions,
+            instructions: func_def.instructions.as_slice(),
+            instruction_pointer: func_def.instructions.as_slice(),
         }
     }
 
     pub fn execute(mut self) -> Result<Vec<Value>, OpError> {
-        while self.instruction < self.instructions.len() {
-            let instruction = self.instructions[self.instruction];
-            self.instruction += 1;
+        while let Some((&instruction, next)) = self.instruction_pointer.split_first() {
+            self.instruction_pointer = next;
 
             match instruction {
                 // Numeric operations
@@ -170,19 +169,19 @@ impl Context<'_> {
                 Op::Length(_) => todo!(),
 
                 Op::Jump(Jump { target }) => {
-                    self.instruction = target;
+                    self.instruction_pointer = self.instructions.split_at(target).1;
                 }
 
                 Op::JumpNot(JumpNot { cond, target }) => {
                     let cond = self.in_scope.load(cond);
                     if !cond.as_bool() {
-                        self.instruction = target;
+                        self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
                 Op::JumpNotVa0(JumpNotVa0 { target }) => {
                     if !self.in_scope.load_va(0).as_bool() {
-                        self.instruction = target;
+                        self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
@@ -314,8 +313,14 @@ impl Context<'_> {
                 }
 
                 // Begin calling a function
-                Op::StartCall(StartCall { target }) => {
-                    self.start_call(target, None)?;
+                Op::StartCall(StartCall {
+                    target,
+                    mapped_args,
+                }) => {
+                    let (arg_mapping_isns, next) = self.instruction_pointer.split_at(mapped_args);
+                    self.instruction_pointer = next;
+
+                    self.start_call(target, arg_mapping_isns, None)?;
                 }
 
                 // Set up return values for a function
@@ -377,7 +382,7 @@ impl Context<'_> {
                 | Op::CopyRetFromRetAndRet => {
                     return Err(OpError::ByteCodeError {
                         err: ByteCodeError::UnexpectedCallInstruction,
-                        offset: self.instruction,
+                        offset: self.ip_index(),
                     });
                 }
             }
@@ -389,6 +394,7 @@ impl Context<'_> {
     fn start_call(
         &mut self,
         target: Register,
+        arg_mapping_instructions: &[Instruction],
         other_results: Option<Vec<Value>>,
     ) -> Result<(), OpError> {
         let func = match self.in_scope.load(target) {
@@ -396,24 +402,28 @@ impl Context<'_> {
             _ => todo!("Metatables are not supported"),
         };
 
-        let results = self.execute_call(&func.borrow(), other_results)?;
+        let results = self.execute_call(&func.borrow(), arg_mapping_instructions, other_results)?;
 
-        match self.instructions[self.instruction] {
+        match self.instruction_pointer[0] {
             // We just performed a call, so if the very next instruction is StartCallExtending, we
             // know that we should include the results in that call directly rather than doing
             // normal result mapping.
-            Op::StartCallExtending(StartCallExtending { target }) => {
-                self.instruction += 1;
-                self.start_call(target, Some(results))
+            Op::StartCallExtending(StartCallExtending {
+                target,
+                mapped_args,
+            }) => {
+                let (arg_mapping_isns, next) = self.instruction_pointer.split_at(mapped_args);
+                self.instruction_pointer = next;
+
+                self.start_call(target, arg_mapping_isns, Some(results))
             }
             // We just performed a call, so if the very next instruction is CopyRetFromRet, we know
             // we should copy over all of the results directly rather than doing normal result
             // mapping.
             Op::CopyRetFromRetAndRet => {
                 self.in_scope.extend_results(results);
+                self.instruction_pointer = &[];
 
-                // Terminate execution by setting the current IP to the end
-                self.instruction = self.instructions.len();
                 Ok(())
             }
             _ => self.map_results(results),
@@ -423,6 +433,7 @@ impl Context<'_> {
     fn execute_call(
         &mut self,
         func: &Function,
+        arg_mapping_instructions: &[Instruction],
         other_results: Option<Vec<Value>>,
     ) -> Result<Vec<Value>, OpError> {
         let mut argi = 0;
@@ -431,43 +442,10 @@ impl Context<'_> {
         let argc = func_def.named_args;
         let subscope = Scope::new(func_def.local_registers);
 
-        let mut va_args = vec![];
+        let mut va_args = Vec::with_capacity(arg_mapping_instructions.len().saturating_sub(argc));
 
-        while self.instruction < self.instructions.len() {
-            let isn = self.instructions[self.instruction];
-            self.instruction += 1;
-
+        for &isn in arg_mapping_instructions {
             match isn {
-                Op::DoCall => {
-                    let mut other_results = other_results.into_iter().flat_map(Vec::into_iter);
-
-                    for arg in argi..argc {
-                        if let Some(init) = other_results.next() {
-                            subscope.registers[arg].replace(init);
-                        } else {
-                            break;
-                        }
-                    }
-
-                    va_args.extend(other_results);
-
-                    return self.subcontext(func, va_args, subscope).execute();
-                }
-                Op::MapVarArgsAndDoCall => {
-                    let mut parent_va = self.in_scope.iter_va().cloned();
-
-                    for arg in argi..argc {
-                        if let Some(init) = parent_va.next() {
-                            subscope.registers[arg].replace(init);
-                        } else {
-                            break;
-                        }
-                    }
-
-                    va_args.extend(parent_va);
-
-                    return self.subcontext(func, va_args, subscope).execute();
-                }
                 Op::MapArg(MapArg { value }) => {
                     if argi < argc {
                         subscope.registers[argi].replace(value.into());
@@ -495,25 +473,66 @@ impl Context<'_> {
 
                 _ => {
                     return Err(OpError::ByteCodeError {
-                        err: ByteCodeError::ExpectedCallInstruction,
-                        offset: self.instruction,
+                        err: ByteCodeError::ExpectedArgMappingInstruction,
+                        offset: self.ip_index(),
                     })
                 }
             }
         }
 
-        Err(OpError::ByteCodeError {
-            err: ByteCodeError::MissingCallInvocation,
-            offset: self.instruction,
-        })
+        let (&isn, next) = if let Some(isn) = self.instruction_pointer.split_first() {
+            isn
+        } else {
+            return Err(OpError::ByteCodeError {
+                err: ByteCodeError::MissingCallInvocation,
+                offset: self.ip_index(),
+            });
+        };
+
+        self.instruction_pointer = next;
+
+        match isn {
+            Op::DoCall => {
+                let mut other_results = other_results.into_iter().flat_map(Vec::into_iter);
+
+                for arg in argi..argc {
+                    if let Some(init) = other_results.next() {
+                        subscope.registers[arg].replace(init);
+                    } else {
+                        break;
+                    }
+                }
+
+                va_args.extend(other_results);
+
+                self.subcontext(func, va_args, subscope).execute()
+            }
+            Op::MapVarArgsAndDoCall => {
+                let mut parent_va = self.in_scope.iter_va().cloned();
+
+                for arg in argi..argc {
+                    if let Some(init) = parent_va.next() {
+                        subscope.registers[arg].replace(init);
+                    } else {
+                        break;
+                    }
+                }
+
+                va_args.extend(parent_va);
+
+                self.subcontext(func, va_args, subscope).execute()
+            }
+
+            _ => Err(OpError::ByteCodeError {
+                err: ByteCodeError::MissingCallInvocation,
+                offset: self.ip_index(),
+            }),
+        }
     }
 
     fn map_results(&mut self, mut results: Vec<Value>) -> Result<(), OpError> {
         let mut results = results.drain(..);
-
-        while self.instruction < self.instructions.len() {
-            let isn = self.instructions[self.instruction];
-
+        while let Some((&isn, next)) = self.instruction_pointer.split_first() {
             match isn {
                 Op::MapRet(MapRet { dest }) => {
                     self.in_scope
@@ -559,7 +578,7 @@ impl Context<'_> {
                         _ => todo!("metatables are unsupported"),
                     };
 
-                    self.instruction += 1;
+                    self.instruction_pointer = next;
                     return Ok(());
                 }
 
@@ -568,25 +587,27 @@ impl Context<'_> {
                         .add_result(results.next().unwrap_or(Value::Nil));
                 }
 
-                Op::StartCallExtending(StartCallExtending { .. }) => {
-                    return Err(OpError::ByteCodeError {
-                        err: ByteCodeError::UnexpectedCallInstruction,
-                        offset: self.instruction,
-                    })
-                }
-
                 Op::JumpNotRet0(JumpNotRet0 { target }) => {
                     if !results.next().unwrap_or(Value::Nil).as_bool() {
-                        self.instruction = target;
+                        self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
                 _ => return Ok(()),
             }
 
-            self.instruction += 1;
+            self.instruction_pointer = next;
         }
 
         Ok(())
+    }
+
+    fn ip_index(&self) -> usize {
+        if self.instruction_pointer.is_empty() {
+            self.instructions.len()
+        } else {
+            (self.instruction_pointer.as_ptr() as usize - self.instructions.as_ptr() as usize)
+                / std::mem::size_of::<Instruction>()
+        }
     }
 }

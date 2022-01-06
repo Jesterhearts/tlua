@@ -21,7 +21,9 @@ pub enum ByteCodeError {
     #[error("Call setup instruction encountered outside of a call context")]
     UnexpectedCallInstruction,
     #[error("Non call setup instruction encountered inside of a call context")]
-    ExpectedCallInstruction,
+    ExpectedArgMappingInstruction,
+    #[error("Non return value mapping instruction encountered during function cleanup")]
+    ExpectedReturnValueInstruction,
     #[error("Expected a *DoCall instruction.")]
     MissingCallInvocation,
     #[error("Expected a jump instruction")]

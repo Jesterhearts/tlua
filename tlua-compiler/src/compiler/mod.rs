@@ -531,16 +531,17 @@ impl CompilerContext<'_> {
             Va0,
         }
 
-        if args.len() == 0 {
+        let argc = args.len();
+        if argc == 0 {
             // No arguments, just call.
-            self.write(opcodes::StartCall::from(target));
+            self.write(opcodes::StartCall::from((target, 0)));
             self.write(opcodes::Op::DoCall);
             return Ok(None);
         }
 
-        let regular_argc = args.len() - 1;
+        let regular_argc = argc - 1;
 
-        let mut arg_srcs = Vec::with_capacity(args.len());
+        let mut arg_srcs = Vec::with_capacity(argc);
 
         for _ in 0..regular_argc {
             match args
@@ -583,12 +584,12 @@ impl CompilerContext<'_> {
                 arg_srcs.push(ArgSrc::Register(r));
             }
             NodeOutput::ReturnValues => {
-                self.write(opcodes::StartCallExtending::from(target));
+                self.write(opcodes::StartCallExtending::from((target, argc - 1)));
                 write_args(self, arg_srcs);
                 return Ok(None);
             }
             NodeOutput::VAStack => {
-                self.write(opcodes::StartCall::from(target));
+                self.write(opcodes::StartCall::from((target, argc - 1)));
                 write_args(self, arg_srcs);
                 self.write(opcodes::Op::MapVarArgsAndDoCall);
                 return Ok(None);
@@ -596,7 +597,7 @@ impl CompilerContext<'_> {
             NodeOutput::Err(err) => return Ok(Some(err)),
         }
 
-        self.write(opcodes::StartCall::from(target));
+        self.write(opcodes::StartCall::from((target, argc)));
         write_args(self, arg_srcs);
         self.write(opcodes::Op::DoCall);
         Ok(None)
