@@ -7,6 +7,7 @@ use thiserror::Error;
 
 pub mod binop;
 mod constant;
+mod encoding;
 mod number;
 pub mod opcodes;
 mod register;

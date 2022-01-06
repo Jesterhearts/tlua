@@ -6,6 +6,10 @@ use crate::{
         },
         OpName,
     },
+    encoding::{
+        EncodableInstruction,
+        InstructionTag,
+    },
     NumLike,
     Number,
     OpError,
@@ -76,6 +80,10 @@ macro_rules! float_binop_impl {
     ) => {
         #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
         pub struct $name;
+
+        impl EncodableInstruction for $name {
+            const TAG: InstructionTag = InstructionTag::$name;
+        }
 
         impl OpName for $name {
             const NAME: &'static str = stringify!($name);

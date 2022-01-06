@@ -8,8 +8,17 @@ publish = false
 
 [dependencies]
 derive_more = '^0.99'
+indexmap = '^1.0'
+num_enum = '^0.5'
 paste = '^1.0'
 thiserror = '^1.0'
 
+[dependencies.bytemuck]
+version = '^1.0'
+features = [ "derive" ]
+
 [dependencies.tlua-parser]
 path = "../tlua-parser"
+
+[dev-dependencies]
+pretty_assertions = '^1.0'
