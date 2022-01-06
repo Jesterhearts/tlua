@@ -369,6 +369,9 @@ impl Context<'_> {
                 | Op::DoCall
                 | Op::MapVarArgsAndDoCall
                 | Op::MapRet(_)
+                | Op::StoreRetIndirect(_)
+                | Op::StoreRet(_)
+                | Op::StoreAllRet(_)
                 | Op::SetRetFromRet0
                 | Op::JumpNotRet0(_)
                 | Op::CopyRetFromRetAndRet => {
@@ -515,6 +518,49 @@ impl Context<'_> {
                 Op::MapRet(MapRet { dest }) => {
                     self.in_scope
                         .store(dest, results.next().unwrap_or(Value::Nil));
+                }
+
+                Op::StoreRetIndirect(StoreRetIndirect { dest, index }) => {
+                    let index = self.in_scope.load(index);
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => t
+                            .borrow_mut()
+                            .entries
+                            .insert(index.try_into()?, results.next().unwrap_or(Value::Nil)),
+                        _ => todo!("metatables are unsupported"),
+                    };
+                }
+
+                Op::StoreRet(StoreRet { dest, index }) => {
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => t.borrow_mut().entries.insert(
+                            TryFrom::<Value>::try_from(index.into())?,
+                            results.next().unwrap_or(Value::Nil),
+                        ),
+                        _ => todo!("metatables are unsupported"),
+                    };
+                }
+
+                Op::StoreAllRet(StoreAllRet { dest, start_index }) => {
+                    match self.in_scope.load(dest) {
+                        Value::Table(t) => {
+                            let mut table = t.borrow_mut();
+                            for res in results.enumerate().map(|(index, v)| {
+                                i64::try_from(index + start_index)
+                                    .map_err(|_| OpError::TableIndexOutOfBounds)
+                                    .map(Value::from)
+                                    .and_then(TableKey::try_from)
+                                    .map(|key| (key, v))
+                            }) {
+                                let (k, v) = res?;
+                                table.entries.insert(k, v);
+                            }
+                        }
+                        _ => todo!("metatables are unsupported"),
+                    };
+
+                    self.instruction += 1;
+                    return Ok(());
                 }
 
                 Op::SetRetFromRet0 => {

@@ -30,7 +30,10 @@ impl CompileExpression for TableConstructor<'_> {
                 }
                 Field::Arraylike { expression } => {
                     arraylike.push(expression.compile(compiler)?);
-                    last_field_va = matches!(arraylike.last(), Some(NodeOutput::VAStack));
+                    last_field_va = matches!(
+                        arraylike.last(),
+                        Some(NodeOutput::VAStack | NodeOutput::ReturnValues)
+                    );
                 }
             }
         }
@@ -51,8 +54,13 @@ impl CompileExpression for TableConstructor<'_> {
         }
 
         if let Some(last) = last {
-            debug_assert!(matches!(last, NodeOutput::VAStack));
-            compiler.copy_va_to_array(table, rest.len());
+            match last {
+                NodeOutput::ReturnValues => compiler.copy_ret_to_array(table, rest.len()),
+                NodeOutput::VAStack => compiler.copy_va_to_array(table, rest.len()),
+                NodeOutput::Constant(_) | NodeOutput::Register(_) | NodeOutput::Err(_) => {
+                    unreachable!("Only VA and return value nodes need special handling.")
+                }
+            }
         }
 
         Ok(NodeOutput::Register(table))
