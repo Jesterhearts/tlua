@@ -81,29 +81,17 @@ impl Context<'_> {
             match instruction {
                 // Numeric operations
                 Op::Add(data) => data.apply(&mut self.in_scope)?,
-                Op::AddIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Subtract(data) => data.apply(&mut self.in_scope)?,
-                Op::SubtractIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Times(data) => data.apply(&mut self.in_scope)?,
-                Op::TimesIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Modulo(data) => data.apply(&mut self.in_scope)?,
-                Op::ModuloIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Divide(data) => data.apply(&mut self.in_scope)?,
-                Op::DivideIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Exponetiation(data) => data.apply(&mut self.in_scope)?,
-                Op::ExponetiationIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::IDiv(data) => data.apply(&mut self.in_scope)?,
-                Op::IDivIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::BitAnd(data) => data.apply(&mut self.in_scope)?,
-                Op::BitAndIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::BitOr(data) => data.apply(&mut self.in_scope)?,
-                Op::BitOrIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::BitXor(data) => data.apply(&mut self.in_scope)?,
-                Op::BitXorIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::ShiftLeft(data) => data.apply(&mut self.in_scope)?,
-                Op::ShiftLeftIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::ShiftRight(data) => data.apply(&mut self.in_scope)?,
-                Op::ShiftRightIndirect(data) => data.apply(&mut self.in_scope)?,
 
                 // Unary math operations
                 Op::UnaryMinus(UnaryMinus { reg }) => {
@@ -139,23 +127,15 @@ impl Context<'_> {
 
                 // Comparison operations
                 Op::LessThan(data) => data.apply(&mut self.in_scope)?,
-                Op::LessThanIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::LessEqual(data) => data.apply(&mut self.in_scope)?,
-                Op::LessEqualIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::GreaterThan(data) => data.apply(&mut self.in_scope)?,
-                Op::GreaterThanIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::GreaterEqual(data) => data.apply(&mut self.in_scope)?,
-                Op::GreaterEqualIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Equals(data) => data.apply(&mut self.in_scope)?,
-                Op::EqualsIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::NotEqual(data) => data.apply(&mut self.in_scope)?,
-                Op::NotEqualIndirect(data) => data.apply(&mut self.in_scope)?,
 
                 // Boolean operations
                 Op::And(data) => data.apply(&mut self.in_scope)?,
-                Op::AndIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Or(data) => data.apply(&mut self.in_scope)?,
-                Op::OrIndirect(data) => data.apply(&mut self.in_scope)?,
 
                 // Unary boolean operations
                 Op::Not(Not { reg }) => {
@@ -165,7 +145,6 @@ impl Context<'_> {
 
                 // String & Array operations
                 Op::Concat(_) => todo!(),
-                Op::ConcatIndirect(_) => todo!(),
                 Op::Length(_) => todo!(),
 
                 Op::Jump(Jump { target }) => {
@@ -191,21 +170,10 @@ impl Context<'_> {
                         Value::Table(t) => t
                             .borrow()
                             .entries
-                            .get(&TryFrom::<Value>::try_from(index.into())?)
-                            .cloned()
-                            .unwrap_or_default(),
-                        _ => todo!("metatables are unsupported"),
-                    };
-
-                    self.in_scope.store(dest, value);
-                }
-                Op::LoadIndirect(LoadIndirect { dest, index }) => {
-                    let index = self.in_scope.load(index);
-                    let value = match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow()
-                            .entries
-                            .get(&index.try_into()?)
+                            .get(&TryFrom::<Value>::try_from(
+                                Value::try_from(index)
+                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
+                            )?)
                             .cloned()
                             .unwrap_or_default(),
                         _ => todo!("metatables are unsupported"),
@@ -216,21 +184,15 @@ impl Context<'_> {
 
                 // TODO(cleanup): These can have generic behavior across their arguments.
                 Op::Store(Store { dest, src, index }) => {
-                    let value = self.in_scope.load(src);
+                    let value = Value::try_from(src).unwrap_or_else(|reg| self.in_scope.load(reg));
                     match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(TryFrom::<Value>::try_from(index.into())?, value),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
-                Op::StoreConstant(StoreConstant { dest, index, src }) => {
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(TryFrom::<Value>::try_from(index.into())?, src.into()),
+                        Value::Table(t) => t.borrow_mut().entries.insert(
+                            TryFrom::<Value>::try_from(
+                                Value::try_from(index)
+                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
+                            )?,
+                            value,
+                        ),
                         _ => todo!("metatables are unsupported"),
                     };
                 }
@@ -241,47 +203,16 @@ impl Context<'_> {
                 }) => {
                     match self.in_scope.load(dest) {
                         Value::Table(t) => t.borrow_mut().entries.insert(
-                            TryFrom::<Value>::try_from(index.into())?,
+                            TryFrom::<Value>::try_from(
+                                Value::try_from(index)
+                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
+                            )?,
                             self.in_scope.load_va(va_index),
                         ),
                         _ => todo!("metatables are unsupported"),
                     };
                 }
 
-                Op::StoreIndirect(StoreIndirect { dest, src, index }) => {
-                    let index = self.in_scope.load(index);
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(TryFrom::<Value>::try_from(index)?, self.in_scope.load(src)),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
-                Op::StoreConstantIndirect(StoreConstantIndirect { dest, index, src }) => {
-                    let index = self.in_scope.load(index);
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(TryFrom::<Value>::try_from(index)?, src.into()),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
-                Op::StoreFromVaIndirect(StoreFromVaIndirect {
-                    dest,
-                    index,
-                    va_index,
-                }) => {
-                    let index = self.in_scope.load(index);
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t.borrow_mut().entries.insert(
-                            TryFrom::<Value>::try_from(index)?,
-                            self.in_scope.load_va(va_index),
-                        ),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
                 Op::StoreAllFromVa(StoreAllFromVa { dest, start_index }) => {
                     let entries = self
                         .in_scope
@@ -304,9 +235,11 @@ impl Context<'_> {
 
                 // Register operations
                 Op::Set(Set { dest, source }) => {
-                    self.in_scope.store(dest, source.into());
+                    self.in_scope.store(
+                        dest,
+                        Value::try_from(source).unwrap_or_else(|reg| self.in_scope.load(reg)),
+                    );
                 }
-                Op::SetIndirect(SetIndirect { dest, source }) => self.in_scope.copy(dest, source),
                 Op::SetFromVa(SetFromVa { dest, index }) => {
                     self.in_scope
                         .store(dest, self.in_scope.load_va(index).clone());
@@ -324,11 +257,10 @@ impl Context<'_> {
                 }
 
                 // Set up return values for a function
-                Op::SetRet(SetRet { value }) => {
-                    self.in_scope.add_result(value.into());
-                }
-                Op::SetRetIndirect(SetRetIndirect { src }) => {
-                    self.in_scope.add_result(self.in_scope.load(src));
+                Op::SetRet(SetRet { src }) => {
+                    self.in_scope.add_result(
+                        Value::try_from(src).unwrap_or_else(|reg| self.in_scope.load(reg)),
+                    );
                 }
                 Op::SetRetVa0 => {
                     self.in_scope.add_result(self.in_scope.load_va(0));
@@ -369,12 +301,10 @@ impl Context<'_> {
 
                 Op::StartCallExtending(_)
                 | Op::MapArg(_)
-                | Op::MapArgIndirect(_)
                 | Op::MapVa0
                 | Op::DoCall
                 | Op::MapVarArgsAndDoCall
                 | Op::MapRet(_)
-                | Op::StoreRetIndirect(_)
                 | Op::StoreRet(_)
                 | Op::StoreAllRet(_)
                 | Op::SetRetFromRet0
@@ -393,7 +323,7 @@ impl Context<'_> {
 
     fn start_call(
         &mut self,
-        target: Register,
+        target: AnyReg<Register>,
         arg_mapping_instructions: &[Instruction],
         other_results: Option<Vec<Value>>,
     ) -> Result<(), OpError> {
@@ -446,20 +376,13 @@ impl Context<'_> {
 
         for &isn in arg_mapping_instructions {
             match isn {
-                Op::MapArg(MapArg { value }) => {
+                Op::MapArg(MapArg { src }) => {
+                    let value = Value::try_from(src).unwrap_or_else(|reg| self.in_scope.load(reg));
                     if argi < argc {
-                        subscope.registers[argi].replace(value.into());
+                        subscope.registers[argi].replace(value);
                         argi += 1;
                     } else {
-                        va_args.push(value.into());
-                    }
-                }
-                Op::MapArgIndirect(MapArgIndirect { src }) => {
-                    if argi < argc {
-                        subscope.registers[argi].replace(self.in_scope.load(src));
-                        argi += 1;
-                    } else {
-                        va_args.push(self.in_scope.load(src));
+                        va_args.push(value);
                     }
                 }
                 Op::MapVa0 => {
@@ -539,21 +462,13 @@ impl Context<'_> {
                         .store(dest, results.next().unwrap_or(Value::Nil));
                 }
 
-                Op::StoreRetIndirect(StoreRetIndirect { dest, index }) => {
-                    let index = self.in_scope.load(index);
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(index.try_into()?, results.next().unwrap_or(Value::Nil)),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
-
                 Op::StoreRet(StoreRet { dest, index }) => {
                     match self.in_scope.load(dest) {
                         Value::Table(t) => t.borrow_mut().entries.insert(
-                            TryFrom::<Value>::try_from(index.into())?,
+                            TryFrom::<Value>::try_from(
+                                Value::try_from(index)
+                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
+                            )?,
                             results.next().unwrap_or(Value::Nil),
                         ),
                         _ => todo!("metatables are unsupported"),

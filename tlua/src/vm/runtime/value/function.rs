@@ -10,8 +10,12 @@ use derive_more::{
     Into,
 };
 use tlua_bytecode::{
-    opcodes::ScopeDescriptor,
+    opcodes::{
+        AnyReg,
+        ScopeDescriptor,
+    },
     FuncId,
+    MappedRegister,
     Register,
 };
 use tracing_rc::{
@@ -130,38 +134,38 @@ impl ScopeSet {
 
     // TODO(perf): This shouldn't be cloning its values.
     #[track_caller]
-    pub fn load(&self, addr: Register) -> Value {
-        if let Some(scope) = addr.scope {
-            if usize::from(scope.get() - 1) == self.referenced.len() {
-                self.local.registers[usize::from(addr.offset)]
-                    .borrow()
-                    .clone()
-            } else {
-                self.referenced[usize::from(scope.get()) - 1].registers[usize::from(addr.offset)]
-                    .borrow()
-                    .clone()
+    pub fn load(&self, addr: AnyReg<Register>) -> Value {
+        match addr {
+            AnyReg::Register(MappedRegister(Register { scope, offset })) => {
+                if usize::from(scope) == self.referenced.len() {
+                    self.local.registers[usize::from(offset)].borrow().clone()
+                } else {
+                    self.referenced[usize::from(scope)].registers[usize::from(offset)]
+                        .borrow()
+                        .clone()
+                }
             }
-        } else {
-            self.anon[usize::from(addr.offset)].clone()
+            AnyReg::Immediate(a) => self.anon[usize::from(a)].clone(),
         }
     }
 
     #[track_caller]
-    pub fn store(&mut self, addr: Register, value: Value) {
-        if let Some(scope) = addr.scope {
-            if usize::from(scope.get() - 1) == self.referenced.len() {
-                self.local.registers[usize::from(addr.offset)].replace(value);
-            } else {
-                self.referenced[usize::from(scope.get()) - 1].registers[usize::from(addr.offset)]
-                    .replace(value);
+    pub fn store(&mut self, addr: AnyReg<Register>, value: Value) {
+        match addr {
+            AnyReg::Register(MappedRegister(Register { scope, offset })) => {
+                if usize::from(scope) == self.referenced.len() {
+                    self.local.registers[usize::from(offset)].replace(value);
+                } else {
+                    self.referenced[usize::from(scope)].registers[usize::from(offset)]
+                        .replace(value);
+                }
             }
-        } else {
-            self.anon[usize::from(addr.offset)] = value;
+            AnyReg::Immediate(a) => self.anon[usize::from(a)] = value,
         }
     }
 
     #[track_caller]
-    pub fn copy(&mut self, dest: Register, src: Register) {
+    pub fn copy(&mut self, dest: AnyReg<Register>, src: AnyReg<Register>) {
         let src_data = self.load(src);
         self.store(dest, src_data);
     }

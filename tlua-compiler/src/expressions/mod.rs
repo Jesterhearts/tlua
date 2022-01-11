@@ -1,4 +1,3 @@
-use tlua_bytecode::Constant;
 use tlua_parser::ast::{
     constant_string::ConstantString,
     expressions::{
@@ -9,6 +8,7 @@ use tlua_parser::ast::{
 };
 
 use crate::{
+    constant::Constant,
     CompileExpression,
     CompilerContext,
     NodeOutput,

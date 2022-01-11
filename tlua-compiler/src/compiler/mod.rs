@@ -5,9 +5,9 @@ use std::ops::{
 
 use derive_more::From;
 use tlua_bytecode::{
-    opcodes,
+    opcodes::{self,},
+    AnonymousRegister,
     ByteCodeError,
-    Constant,
     FuncId,
     OpError,
     Truthy,
@@ -18,6 +18,7 @@ use tlua_parser::ast::{
 };
 
 use crate::{
+    constant::Constant,
     Chunk,
     CompileError,
     CompileExpression,
@@ -108,17 +109,16 @@ impl Compiler {
     }
 }
 
-trait RegisterMappable<InitTy, RegisterTy = InitTy>: Sized
+trait RegisterMappable<RegisterTy>: Sized
 where
-    RegisterTy: Copy,
-    InitTy: InitRegister<RegisterTy>,
+    RegisterTy: InitRegister<RegisterTy> + Copy,
     UnasmRegister: From<RegisterTy>,
 {
-    fn map(self, compiler: &mut CompilerContext) -> Result<InitTy, CompileError>;
+    fn map(self, compiler: &mut CompilerContext) -> Result<RegisterTy, CompileError>;
 }
 
-impl RegisterMappable<LocalRegister, LocalRegister> for LocalVariableTarget {
-    fn map(self, compiler: &mut CompilerContext) -> Result<LocalRegister, CompileError> {
+impl RegisterMappable<MappedLocalRegister> for LocalVariableTarget {
+    fn map(self, compiler: &mut CompilerContext) -> Result<MappedLocalRegister, CompileError> {
         match self {
             LocalVariableTarget::Mutable(ident) => {
                 Ok(compiler.scope.new_local(ident)?.no_init_needed().into())
@@ -131,7 +131,7 @@ impl RegisterMappable<LocalRegister, LocalRegister> for LocalVariableTarget {
     }
 }
 
-impl RegisterMappable<UnasmRegister, UnasmRegister> for VariableTarget {
+impl RegisterMappable<UnasmRegister> for VariableTarget {
     fn map(self, compiler: &mut CompilerContext) -> Result<UnasmRegister, CompileError> {
         match self {
             VariableTarget::Ident(ident) => Ok(compiler.scope.get_in_scope(ident)?.into()),
@@ -160,7 +160,10 @@ where
     /// constant is always nil, please use init_from_nil.
     fn init_from_const(self, compiler: &mut CompilerContext, value: Constant) -> RegisterTy {
         let register = self.no_init_needed();
-        compiler.write(opcodes::Set::from((UnasmRegister::from(register), value)));
+        compiler.write(opcodes::Set::from((
+            UnasmRegister::from(register),
+            UnasmOperand::from(value),
+        )));
         register
     }
 
@@ -185,9 +188,9 @@ where
     /// Indicate that the register should be initialized from another register.
     fn init_from_reg(self, compiler: &mut CompilerContext, other: UnasmRegister) -> RegisterTy {
         let register = self.no_init_needed();
-        compiler.write(opcodes::SetIndirect::from((
+        compiler.write(opcodes::Set::from((
             UnasmRegister::from(register),
-            other,
+            UnasmOperand::from(other),
         )));
         register
     }
@@ -208,8 +211,8 @@ impl InitRegister<UnasmRegister> for UnasmRegister {
     }
 }
 
-impl InitRegister<LocalRegister> for LocalRegister {
-    fn no_init_needed(self) -> LocalRegister {
+impl InitRegister<MappedLocalRegister> for MappedLocalRegister {
+    fn no_init_needed(self) -> Self {
         self
     }
 }
@@ -442,7 +445,7 @@ impl CompilerContext<'_> {
     }
 
     fn write_move_to_reg(&mut self, value: NodeOutput) -> AnonymousRegister {
-        if let NodeOutput::Register(UnasmRegister::Anonymous(reg)) = value {
+        if let NodeOutput::Register(UnasmRegister::Immediate(reg)) = value {
             reg
         } else {
             let reg = self.scope.new_anonymous();
@@ -458,47 +461,23 @@ impl CompilerContext<'_> {
         }
     }
 
-    fn write_store_table_constant_idx(
-        &mut self,
-        table: UnasmRegister,
-        index: Constant,
-        value: NodeOutput,
-    ) {
+    fn write_store_table(&mut self, table: UnasmRegister, index: UnasmOperand, value: NodeOutput) {
         match value {
             NodeOutput::Constant(c) => {
-                self.write(opcodes::StoreConstant::from((table, index, c)));
+                self.write(opcodes::Store::from((table, index, UnasmOperand::from(c))));
             }
             NodeOutput::Register(reg) => {
-                self.write(opcodes::Store::from((table, index, reg)));
+                self.write(opcodes::Store::from((
+                    table,
+                    index,
+                    UnasmOperand::from(reg),
+                )));
             }
             NodeOutput::ReturnValues => {
                 self.write(opcodes::StoreRet::from((table, index)));
             }
             NodeOutput::VAStack => {
                 self.write(opcodes::StoreFromVa::from((table, index, 0)));
-            }
-            NodeOutput::Err(_) => unreachable!("Errors should already be handled."),
-        }
-    }
-
-    fn write_store_table_indirect(
-        &mut self,
-        table: UnasmRegister,
-        index: UnasmRegister,
-        value: NodeOutput,
-    ) {
-        match value {
-            NodeOutput::Constant(c) => {
-                self.write(opcodes::StoreConstantIndirect::from((table, index, c)));
-            }
-            NodeOutput::Register(reg) => {
-                self.write(opcodes::StoreIndirect::from((table, index, reg)));
-            }
-            NodeOutput::ReturnValues => {
-                self.write(opcodes::StoreRetIndirect::from((table, index)));
-            }
-            NodeOutput::VAStack => {
-                self.write(opcodes::StoreFromVaIndirect::from((table, index, 0)));
             }
             NodeOutput::Err(_) => unreachable!("Errors should already be handled."),
         }
@@ -566,9 +545,11 @@ impl CompilerContext<'_> {
         let write_args = |compiler: &mut CompilerContext, arg_srcs: Vec<ArgSrc>| {
             for arg in arg_srcs.into_iter() {
                 match arg {
-                    ArgSrc::Const(constant) => compiler.write(opcodes::MapArg::from(constant)),
+                    ArgSrc::Const(constant) => {
+                        compiler.write(opcodes::MapArg::from(UnasmOperand::from(constant)))
+                    }
                     ArgSrc::Register(register) => {
-                        compiler.write(opcodes::MapArgIndirect::from(register))
+                        compiler.write(opcodes::MapArg::from(UnasmOperand::from(register)))
                     }
                     ArgSrc::Va0 => compiler.write(opcodes::Op::MapVa0),
                 }
@@ -872,13 +853,13 @@ impl CompilerContext<'_> {
         zero_based_index: usize,
         value: NodeOutput,
     ) -> Result<(), CompileError> {
-        let index = Constant::from(i64::try_from(zero_based_index + 1).map_err(|_| {
+        let index = UnasmOperand::from(i64::try_from(zero_based_index + 1).map_err(|_| {
             CompileError::TooManyTableEntries {
                 max: i64::MAX as usize,
             }
         })?);
 
-        self.write_store_table_constant_idx(table, index, value);
+        self.write_store_table(table, index, value);
 
         Ok(())
     }
@@ -926,7 +907,7 @@ impl CompilerContext<'_> {
                 | value @ NodeOutput::ReturnValues
                 | value @ NodeOutput::VAStack,
             ) => {
-                self.write_store_table_constant_idx(table, index, value);
+                self.write_store_table(table, index.into(), value);
                 Ok(None)
             }
             (
@@ -939,7 +920,7 @@ impl CompilerContext<'_> {
                 | value @ NodeOutput::VAStack,
             ) => {
                 let index = self.write_move_to_reg(index).into();
-                self.write_store_table_indirect(table, index, value);
+                self.write_store_table(table, index, value);
 
                 Ok(None)
             }
@@ -967,10 +948,10 @@ impl CompilerContext<'_> {
                 .compile(self)?
             {
                 NodeOutput::Constant(c) => {
-                    self.write(opcodes::SetRet::from(c));
+                    self.write(opcodes::SetRet::from(UnasmOperand::from(c)));
                 }
                 NodeOutput::Register(register) => {
-                    self.write(opcodes::SetRetIndirect::from(register));
+                    self.write(opcodes::SetRet::from(UnasmOperand::from(register)));
                 }
                 NodeOutput::Err(err) => {
                     return Ok(Some(err));
@@ -988,11 +969,11 @@ impl CompilerContext<'_> {
             .compile(self)?
         {
             NodeOutput::Constant(c) => {
-                self.write(opcodes::SetRet::from(c));
+                self.write(opcodes::SetRet::from(UnasmOperand::from(c)));
                 self.write(opcodes::Op::Ret)
             }
             NodeOutput::Register(register) => {
-                self.write(opcodes::SetRetIndirect::from(register));
+                self.write(opcodes::SetRet::from(UnasmOperand::from(register)));
                 self.write(opcodes::Op::Ret)
             }
             NodeOutput::ReturnValues => {
@@ -1036,15 +1017,14 @@ impl CompilerContext<'_> {
 
     /// Instruct the compiler to emit a sequence of instructions corresponding
     /// to a binary operation on the result of two nodes.
-    pub(crate) fn write_binop<Op, OpIndirect, Lhs, Rhs, ConstEval>(
+    pub(crate) fn write_binop<Op, Lhs, Rhs, ConstEval>(
         &mut self,
         lhs: Lhs,
         rhs: Rhs,
         consteval: ConstEval,
     ) -> Result<NodeOutput, CompileError>
     where
-        Op: From<(UnasmRegister, Constant)> + Into<UnasmOp>,
-        OpIndirect: From<(UnasmRegister, UnasmRegister)> + Into<UnasmOp>,
+        Op: From<(UnasmRegister, UnasmOperand)> + Into<UnasmOp>,
         Lhs: CompileExpression,
         Rhs: CompileExpression,
         ConstEval: FnOnce(Constant, Constant) -> Result<Constant, OpError>,
@@ -1072,7 +1052,7 @@ impl CompilerContext<'_> {
             ) => {
                 let lhs = self.write_move_to_reg(lhs);
 
-                self.write(Op::from((lhs.into(), rhs)));
+                self.write(Op::from((lhs.into(), rhs.into())));
 
                 Ok(NodeOutput::Register(lhs.into()))
             }
@@ -1086,7 +1066,7 @@ impl CompilerContext<'_> {
                 let lhs = self.write_move_to_reg(lhs);
                 let rhs = self.write_move_to_reg(rhs);
 
-                self.write(OpIndirect::from((lhs.into(), rhs.into())));
+                self.write(Op::from((lhs.into(), rhs.into())));
 
                 Ok(NodeOutput::Register(lhs.into()))
             }
@@ -1099,7 +1079,7 @@ impl CompilerContext<'_> {
             ) => {
                 let lhs = self.write_move_to_reg(lhs);
 
-                self.write(OpIndirect::from((lhs.into(), rhs)));
+                self.write(Op::from((lhs.into(), rhs.into())));
 
                 Ok(NodeOutput::Register(lhs.into()))
             }

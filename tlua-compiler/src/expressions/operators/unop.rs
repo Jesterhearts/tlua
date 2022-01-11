@@ -9,7 +9,8 @@ use tlua_bytecode::{
 use tlua_parser::ast::expressions::operator::*;
 
 use crate::{
-    compiler::unasm::UnasmRegister,
+    compiler::unasm::LocalRegister,
+    constant::Constant,
     CompileError,
     CompileExpression,
     CompilerContext,
@@ -18,9 +19,9 @@ use crate::{
 
 impl CompileExpression for Negation<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        compiler.write_unary_op::<UnaryMinus<UnasmRegister>, _, _>(&self.0, |v| match v {
-            tlua_bytecode::Constant::Float(f) => Ok((-f).into()),
-            tlua_bytecode::Constant::Integer(i) => Ok((-i).into()),
+        compiler.write_unary_op::<UnaryMinus<LocalRegister>, _, _>(&self.0, |v| match v {
+            Constant::Float(f) => Ok((-f).into()),
+            Constant::Integer(i) => Ok((-i).into()),
             _ => Err(tlua_bytecode::OpError::InvalidType { op: "negation" }),
         })
     }
@@ -28,7 +29,7 @@ impl CompileExpression for Negation<'_> {
 
 impl CompileExpression for Not<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        compiler.write_unary_op::<UnaryMinus<UnasmRegister>, _, _>(&self.0, |v| {
+        compiler.write_unary_op::<UnaryMinus<LocalRegister>, _, _>(&self.0, |v| {
             Ok((!v.as_bool()).into())
         })
     }
@@ -36,9 +37,9 @@ impl CompileExpression for Not<'_> {
 
 impl CompileExpression for BitNot<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        compiler.write_unary_op::<UnaryBitNot<UnasmRegister>, _, _>(&self.0, |v| match v {
-            tlua_bytecode::Constant::Float(f) => f64inbounds(f).map(|i| (!i).into()),
-            tlua_bytecode::Constant::Integer(i) => Ok((!i).into()),
+        compiler.write_unary_op::<UnaryBitNot<LocalRegister>, _, _>(&self.0, |v| match v {
+            Constant::Float(f) => f64inbounds(f).map(|i| (!i).into()),
+            Constant::Integer(i) => Ok((!i).into()),
             _ => Err(tlua_bytecode::OpError::InvalidType { op: "bitwise" }),
         })
     }
@@ -53,10 +54,7 @@ impl CompileExpression for Length<'_> {
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
-    use tlua_bytecode::{
-        Constant,
-        OpError,
-    };
+    use tlua_bytecode::OpError;
     use tlua_parser::ast::expressions::{
         number::Number,
         operator::BitNot,
@@ -65,6 +63,7 @@ mod tests {
 
     use crate::{
         compiler::Compiler,
+        constant::Constant,
         CompileExpression,
         NodeOutput,
     };

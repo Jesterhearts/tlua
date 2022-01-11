@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use thiserror::Error;
 use tlua_bytecode::{
     opcodes::Instruction,
-    Constant,
     OpError,
 };
 use tlua_parser::{
@@ -28,6 +27,7 @@ use tracing::instrument;
 
 mod block;
 mod compiler;
+mod constant;
 mod expressions;
 mod prefix_expression;
 mod statement;
@@ -36,7 +36,10 @@ use self::compiler::{
     unasm::UnasmRegister,
     CompilerContext,
 };
-use crate::compiler::Compiler;
+use crate::{
+    compiler::Compiler,
+    constant::Constant,
+};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum NodeOutput {

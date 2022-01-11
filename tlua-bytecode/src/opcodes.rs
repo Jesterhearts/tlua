@@ -2,14 +2,58 @@ use derive_more::{
     From,
     Into,
 };
+use tlua_parser::ast::constant_string::ConstantString;
 
 use crate::{
     binop::*,
-    constant::Constant,
-    register::Register,
+    register::{
+        AnonymousRegister,
+        MappedRegister,
+        Register,
+    },
     FuncId,
+    Number,
     OpError,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub enum AnyReg<RegisterTy> {
+    Register(MappedRegister<RegisterTy>),
+    Immediate(AnonymousRegister),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, From)]
+pub enum Operand<RegisterTy> {
+    Nil,
+    Bool(bool),
+    Float(f64),
+    Integer(i64),
+    String(ConstantString),
+    Register(MappedRegister<RegisterTy>),
+    Immediate(AnonymousRegister),
+}
+
+impl<T, O> From<AnyReg<O>> for Operand<T>
+where
+    T: From<O>,
+    O: Copy,
+{
+    fn from(a: AnyReg<O>) -> Self {
+        match a {
+            AnyReg::Register(r) => MappedRegister::from(T::from(*r)).into(),
+            AnyReg::Immediate(i) => i.into(),
+        }
+    }
+}
+
+impl<T> From<Number> for Operand<T> {
+    fn from(n: Number) -> Self {
+        match n {
+            Number::Float(f) => Self::Float(f),
+            Number::Integer(i) => Self::Integer(i),
+        }
+    }
+}
 
 /// An opcode using the bytecode's representation of a register.
 pub type Instruction = Op<Register>;
@@ -18,96 +62,54 @@ pub type Instruction = Op<Register>;
 /// generic over the register type to allow intermediate forms of bytecode.
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub enum Op<RegisterTy> {
-    /// `[dest] += c`, preserving types.
-    Add(FloatOp<Add, RegisterTy, Constant>),
     /// `[dest] += [src]`
-    AddIndirect(FloatOp<AddIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] -= c`, preserving types.
-    Subtract(FloatOp<Subtract, RegisterTy, Constant>),
+    Add(FloatOp<Add, RegisterTy>),
     /// `[dest] -= [src]`, preserving types.
-    SubtractIndirect(FloatOp<SubtractIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] *= c`, preserving types.
-    Times(FloatOp<Times, RegisterTy, Constant>),
+    Subtract(FloatOp<Subtract, RegisterTy>),
     /// `[dest] *= [src]`, preserving types.
-    TimesIndirect(FloatOp<TimesIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] %= c`, preserving types.
-    Modulo(FloatOp<Modulo, RegisterTy, Constant>),
+    Times(FloatOp<Times, RegisterTy>),
     /// `[dest] %= [src]`, preserving types.
-    ModuloIndirect(FloatOp<ModuloIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] / c`, producing a float.
-    Divide(FloatOp<Divide, RegisterTy, Constant>),
+    Modulo(FloatOp<Modulo, RegisterTy>),
     /// `[dest] = [dest] / [src]`, producing a float.
-    DivideIndirect(FloatOp<DivideIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest].exp(c)`, producing a float.
-    Exponetiation(FloatOp<Exponetiation, RegisterTy, Constant>),
+    Divide(FloatOp<Divide, RegisterTy>),
     /// `[dest] = [dest].exp([src])`, producing a float.
-    ExponetiationIndirect(FloatOp<ExponetiationIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = floor([dest] / c)`, type preserving.
-    IDiv(FloatOp<IDiv, RegisterTy, Constant>),
+    Exponetiation(FloatOp<Exponetiation, RegisterTy>),
     /// `[dest] = floor([dest] / [src])`, type preserving.
-    IDivIndirect(FloatOp<IDivIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] & c`, producing an int.
-    BitAnd(IntOp<BitAnd, RegisterTy, Constant>),
+    IDiv(FloatOp<IDiv, RegisterTy>),
     /// `[dest] = [dest] & [src]`, producing an int.
-    BitAndIndirect(IntOp<BitAndIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] | c`, producing an int.
-    BitOr(IntOp<BitOr, RegisterTy, Constant>),
+    BitAnd(IntOp<BitAnd, RegisterTy>),
     /// `[dest] = [dest] | [src]`, producing an int.
-    BitOrIndirect(IntOp<BitOrIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] ^ c`, producing an int.
-    BitXor(IntOp<BitXor, RegisterTy, Constant>),
+    BitOr(IntOp<BitOr, RegisterTy>),
     /// `[dest] = [dest] ^ [src]`, producing an int.
-    BitXorIndirect(IntOp<BitXorIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] << c`, producing an int.
-    ShiftLeft(IntOp<ShiftLeft, RegisterTy, Constant>),
+    BitXor(IntOp<BitXor, RegisterTy>),
     /// `[dest] = [dest] << [src]`, producing an int.
-    ShiftLeftIndirect(IntOp<ShiftLeftIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] >> c`, producing an int.
-    ShiftRight(IntOp<ShiftRight, RegisterTy, Constant>),
+    ShiftLeft(IntOp<ShiftLeft, RegisterTy>),
     /// `[dest] = [dest] >> [src]`, producing an int.
-    ShiftRightIndirect(IntOp<ShiftRightIndirect, RegisterTy, RegisterTy>),
+    ShiftRight(IntOp<ShiftRight, RegisterTy>),
     /// `[dest] = -[dest]`, type preserving.
     UnaryMinus(UnaryMinus<RegisterTy>),
     /// `[dest] = !([dest] as bool)`, producing a bool.
     Not(Not<RegisterTy>),
     /// `[dest] = ![dest]`, producing an int.
     UnaryBitNot(UnaryBitNot<RegisterTy>),
-    /// `[dest] = [dest] < c`.
-    LessThan(CompareOp<LessThan, RegisterTy, Constant>),
     /// `[dest] = [dest] < [src]`.
-    LessThanIndirect(CompareOp<LessThanIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] <= c`.
-    LessEqual(CompareOp<LessEqual, RegisterTy, Constant>),
+    LessThan(CompareOp<LessThan, RegisterTy>),
     /// `[dest] = [dest] <= [src]`.
-    LessEqualIndirect(CompareOp<LessEqualIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] > c`.
-    GreaterThan(CompareOp<GreaterThan, RegisterTy, Constant>),
+    LessEqual(CompareOp<LessEqual, RegisterTy>),
     /// `[dest] = [dest] > [src]`.
-    GreaterThanIndirect(CompareOp<GreaterThanIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] >= c`.
-    GreaterEqual(CompareOp<GreaterEqual, RegisterTy, Constant>),
+    GreaterThan(CompareOp<GreaterThan, RegisterTy>),
     /// `[dest] = [dest] >= [src]`.
-    GreaterEqualIndirect(CompareOp<GreaterEqualIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] == c`.
-    Equals(CompareOp<Equals, RegisterTy, Constant>),
+    GreaterEqual(CompareOp<GreaterEqual, RegisterTy>),
     /// `[dest] = [dest] == [src]`.
-    EqualsIndirect(CompareOp<EqualsIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] != c`.
-    NotEqual(CompareOp<NotEqual, RegisterTy, Constant>),
+    Equals(CompareOp<Equals, RegisterTy>),
     /// `[dest] = [dest] != [src]`.
-    NotEqualIndirect(CompareOp<NotEqualIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] as bool ? c : [dest]`.
-    And(BoolOp<And, RegisterTy, Constant>),
+    NotEqual(CompareOp<NotEqual, RegisterTy>),
     /// `[dest] = [dest] as bool ? [src] : [dest]`.
-    AndIndirect(BoolOp<AndIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest] as bool ? [dest] : c`.
-    Or(BoolOp<Or, RegisterTy, Constant>),
+    And(BoolOp<And, RegisterTy>),
     /// `[dest] = [dest] as bool ? [dest] : [src]`.
-    OrIndirect(BoolOp<OrIndirect, RegisterTy, RegisterTy>),
-    /// `[dest] = [dest].to_string() + c.to_string()`.
-    Concat(Concat<RegisterTy>),
+    Or(BoolOp<Or, RegisterTy>),
     /// `[dest] = [dest].to_string() + [src].to_string()`.
-    ConcatIndirect(ConcatIndirect<RegisterTy>),
+    Concat(Concat<RegisterTy>),
     /// `[dest] = [dest].len()`.
     Length(Length<RegisterTy>),
     /// Immediately return from the current function with a specific error.
@@ -122,28 +124,16 @@ pub enum Op<RegisterTy> {
     JumpNotRet0(JumpNotRet0),
     /// Jump to a specific instruction if the first variadic argument
     JumpNotVa0(JumpNotVa0),
-    /// `[dest] = `[dest].table[c]`
-    Load(Load<RegisterTy>),
     /// `[dest] = `[dest].table[[src]]`
-    LoadIndirect(LoadIndirect<RegisterTy>),
-    /// `[dest].table[c]` = `[src]`
-    Store(Store<RegisterTy>),
-    /// `[dest].table[c1]` = `c2`
-    StoreConstant(StoreConstant<RegisterTy>),
-    /// `[dest].table[c1]` = `va[c2]`
-    StoreFromVa(StoreFromVa<RegisterTy>),
+    Load(Load<RegisterTy>),
     /// `[dest].table[[index]]` = `[src]`
-    StoreIndirect(StoreIndirect<RegisterTy>),
-    /// `[dest].table[[index]]` = `c`
-    StoreConstantIndirect(StoreConstantIndirect<RegisterTy>),
+    Store(Store<RegisterTy>),
     /// `[dest].table[[index]]` = `va[c]`
-    StoreFromVaIndirect(StoreFromVaIndirect<RegisterTy>),
+    StoreFromVa(StoreFromVa<RegisterTy>),
     /// `[dest].table[(start, ..)]` = `va...`
     StoreAllFromVa(StoreAllFromVa<RegisterTy>),
-    /// Initialize a register to a constant value.
+    /// Initialize a register from a value.
     Set(Set<RegisterTy>),
-    /// Initialize a register from another register.
-    SetIndirect(SetIndirect<RegisterTy>),
     /// Initialize a register from a variadic argument.
     SetFromVa(SetFromVa<RegisterTy>),
     /// Allocate a new function
@@ -154,10 +144,8 @@ pub enum Op<RegisterTy> {
     PushScope(ScopeDescriptor),
     /// Discard the current scope and restore the most recently pushed scope.
     PopScope,
-    /// Copy the target constant value into this function's output list.
-    SetRet(SetRet),
     /// Copy the target register value into this function's output list.
-    SetRetIndirect(SetRetIndirect<RegisterTy>),
+    SetRet(SetRet<RegisterTy>),
     /// Copy the first va arg into this function's output list.
     SetRetVa0,
     /// Copy the first return value from a function into this function's output
@@ -188,10 +176,7 @@ pub enum Op<RegisterTy> {
     MapVarArgsAndDoCall,
     /// Load the target value into the the next register for the current call
     /// target.
-    MapArg(MapArg),
-    /// Load the target value into the the next register for the current call
-    /// target.
-    MapArgIndirect(MapArgIndirect<RegisterTy>),
+    MapArg(MapArg<RegisterTy>),
     /// Copy the first va arg into the next register for the current call target
     MapVa0,
     /// Copy all return values from a function into this function's output list
@@ -199,45 +184,37 @@ pub enum Op<RegisterTy> {
     CopyRetFromRetAndRet,
     /// Copy the next available return value into the target register.
     MapRet(MapRet<RegisterTy>),
-    /// Copy the next available return value into a constant index in a table.
-    StoreRet(StoreRet<RegisterTy>),
     /// Copy the next available return value into the index loaded from a
     /// register into a table.
-    StoreRetIndirect(StoreRetIndirect<RegisterTy>),
+    StoreRet(StoreRet<RegisterTy>),
     /// Copy all the available return values into a table.
     StoreAllRet(StoreAllRet<RegisterTy>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From, Into)]
 pub struct Concat<RegTy> {
-    lhs: RegTy,
-    rhs: Constant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From, Into)]
-pub struct ConcatIndirect<RegTy> {
-    lhs: RegTy,
-    rhs: RegTy,
+    lhs: AnyReg<RegTy>,
+    rhs: Operand<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct UnaryMinus<RegTy> {
-    pub reg: RegTy,
+    pub reg: AnyReg<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct UnaryBitNot<RegTy> {
-    pub reg: RegTy,
+    pub reg: AnyReg<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct Not<RegTy> {
-    pub reg: RegTy,
+    pub reg: AnyReg<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Length<RegTy> {
-    pub reg: RegTy,
+    pub reg: AnyReg<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
@@ -247,7 +224,7 @@ pub struct Jump {
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct JumpNot<RegTy> {
-    pub cond: RegTy,
+    pub cond: AnyReg<RegTy>,
     pub target: usize,
 }
 
@@ -263,34 +240,24 @@ pub struct JumpNotVa0 {
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct StartCall<RegTy> {
-    pub target: RegTy,
+    pub target: AnyReg<RegTy>,
     pub mapped_args: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct StartCallExtending<RegTy> {
-    pub target: RegTy,
+    pub target: AnyReg<RegTy>,
     pub mapped_args: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct MapArg {
-    pub value: Constant,
+pub struct MapArg<RegTy> {
+    pub src: Operand<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct MapArgIndirect<RegTy> {
-    pub src: RegTy,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct SetRet {
-    pub value: Constant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct SetRetIndirect<RegTy> {
-    pub src: RegTy,
+pub struct SetRet<RegTy> {
+    pub src: Operand<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
@@ -300,90 +267,50 @@ pub struct Raise {
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct AllocFunc<RegTy> {
-    pub dest: RegTy,
+    pub dest: AnyReg<RegTy>,
     pub id: FuncId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct AllocTable<RegTy> {
-    pub dest: RegTy,
+    pub dest: AnyReg<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct Store<RegTy> {
-    pub dest: RegTy,
-    pub index: Constant,
-    pub src: RegTy,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct StoreConstant<RegTy> {
-    pub dest: RegTy,
-    pub index: Constant,
-    pub src: Constant,
+    pub dest: AnyReg<RegTy>,
+    pub index: Operand<RegTy>,
+    pub src: Operand<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct StoreFromVa<RegTy> {
-    pub dest: RegTy,
-    pub index: Constant,
-    pub va_index: usize,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct StoreIndirect<RegTy> {
-    pub dest: RegTy,
-    pub index: RegTy,
-    pub src: RegTy,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct StoreConstantIndirect<RegTy> {
-    pub dest: RegTy,
-    pub index: RegTy,
-    pub src: Constant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct StoreFromVaIndirect<RegTy> {
-    pub dest: RegTy,
-    pub index: RegTy,
+    pub dest: AnyReg<RegTy>,
+    pub index: Operand<RegTy>,
     pub va_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct StoreAllFromVa<RegTy> {
-    pub dest: RegTy,
+    pub dest: AnyReg<RegTy>,
     pub start_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct Load<RegTy> {
-    pub dest: RegTy,
-    pub index: Constant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct LoadIndirect<RegTy> {
-    pub dest: RegTy,
-    pub index: RegTy,
+    pub dest: AnyReg<RegTy>,
+    pub index: Operand<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct Set<RegTy> {
-    pub dest: RegTy,
-    pub source: Constant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct SetIndirect<RegTy> {
-    pub dest: RegTy,
-    pub source: RegTy,
+    pub dest: AnyReg<RegTy>,
+    pub source: Operand<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct SetFromVa<RegTy> {
-    pub dest: RegTy,
+    pub dest: AnyReg<RegTy>,
     pub index: usize,
 }
 
@@ -394,23 +321,17 @@ pub struct ScopeDescriptor {
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct MapRet<RegTy> {
-    pub dest: RegTy,
+    pub dest: AnyReg<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct StoreRet<RegTy> {
-    pub dest: RegTy,
-    pub index: Constant,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct StoreRetIndirect<RegTy> {
-    pub dest: RegTy,
-    pub index: RegTy,
+    pub dest: AnyReg<RegTy>,
+    pub index: Operand<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub struct StoreAllRet<RegTy> {
-    pub dest: RegTy,
+    pub dest: AnyReg<RegTy>,
     pub start_index: usize,
 }

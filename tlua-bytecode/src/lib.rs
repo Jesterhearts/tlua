@@ -6,14 +6,17 @@ use std::{
 use thiserror::Error;
 
 pub mod binop;
-mod constant;
 mod number;
 pub mod opcodes;
 mod register;
 
-pub use constant::Constant;
 pub use number::Number;
-pub use register::Register;
+pub use register::{
+    AnonymousRegister,
+    MappedRegister,
+    Register,
+};
+use tlua_parser::ast::constant_string::ConstantString;
 
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum ByteCodeError {
@@ -82,5 +85,11 @@ impl Deref for FuncId {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl StringLike for ConstantString {
+    fn as_bytes(&self) -> &[u8] {
+        self.data().as_slice()
     }
 }
