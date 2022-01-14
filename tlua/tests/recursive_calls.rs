@@ -30,11 +30,11 @@ fn nested_function_decl_always_new_captures() -> anyhow::Result<()> {
 
     let mut rt = Runtime::default();
 
-    let result = rt.execute(&chunk)?;
+    let result = rt.execute(&chunk);
 
     assert_eq!(
         result,
-        vec![Value::Nil],
+        Ok(vec![Value::Nil]),
         "{:#?} produced an incorrect result",
         chunk
     );

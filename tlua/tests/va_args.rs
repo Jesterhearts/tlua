@@ -77,11 +77,11 @@ fn va_arg_nested() -> anyhow::Result<()> {
 
     let mut rt = Runtime::default();
 
-    let result = rt.execute(&chunk)?;
+    let result = rt.execute(&chunk);
 
     assert_eq!(
         result,
-        vec![1.into()],
+        Ok(vec![1.into()]),
         "{:#?} produced an incorrect result",
         chunk
     );

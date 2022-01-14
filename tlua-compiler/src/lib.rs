@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use thiserror::Error;
 use tlua_bytecode::{
     opcodes::Instruction,
-    Constant,
     OpError,
+    TypeId,
 };
 use tlua_parser::{
     ast::{
@@ -28,6 +28,7 @@ use tracing::instrument;
 
 mod block;
 mod compiler;
+mod constant;
 mod expressions;
 mod prefix_expression;
 mod statement;
@@ -36,7 +37,10 @@ use self::compiler::{
     unasm::UnasmRegister,
     CompilerContext,
 };
-use crate::compiler::Compiler;
+use crate::{
+    compiler::Compiler,
+    constant::Constant,
+};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum NodeOutput {
@@ -51,6 +55,13 @@ impl Default for NodeOutput {
     fn default() -> Self {
         NodeOutput::Constant(Constant::Nil)
     }
+}
+
+pub struct TypeIds();
+
+impl TypeIds {
+    pub const FUNCTION: TypeId = TypeId::const_from(0);
+    pub const TABLE: TypeId = TypeId::const_from(1);
 }
 
 #[derive(Debug, Error)]

@@ -1,20 +1,26 @@
 use std::{
     fmt::Debug,
-    ops::Deref,
+    num::NonZeroUsize,
 };
 
+use derive_more::{
+    From,
+    Into,
+};
 use thiserror::Error;
 
 pub mod binop;
-mod constant;
-mod encoding;
 mod number;
 pub mod opcodes;
 mod register;
 
-pub use constant::Constant;
 pub use number::Number;
-pub use register::Register;
+pub use register::{
+    AnonymousRegister,
+    MappedRegister,
+    Register,
+};
+use tlua_parser::ast::constant_string::ConstantString;
 
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum ByteCodeError {
@@ -22,13 +28,19 @@ pub enum ByteCodeError {
     #[error("Call setup instruction encountered outside of a call context")]
     UnexpectedCallInstruction,
     #[error("Non call setup instruction encountered inside of a call context")]
-    ExpectedCallInstruction,
+    ExpectedArgMappingInstruction,
+    #[error("Non return value mapping instruction encountered during function cleanup")]
+    ExpectedReturnValueInstruction,
     #[error("Expected a *DoCall instruction.")]
     MissingCallInvocation,
     #[error("Expected a jump instruction")]
     MissingJump,
     #[error("Expected a scope descriptor")]
     MissingScopeDescriptor,
+    #[error("Invalid type metadata")]
+    InvalidTypeMetadata,
+    #[error("Invalid type id")]
+    InvalidTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
@@ -73,13 +85,24 @@ pub trait Truthy {
     fn as_bool(&self) -> bool;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FuncId(pub usize);
-
-impl Deref for FuncId {
-    type Target = usize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl StringLike for ConstantString {
+    fn as_bytes(&self) -> &[u8] {
+        self.data().as_slice()
     }
 }
+
+/// A type identifier used for bytecodes like `Alloc`. The exact meaning is up
+/// to the runtime/compiler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
+pub struct TypeId(usize);
+
+impl TypeId {
+    pub const fn const_from(v: usize) -> Self {
+        Self(v)
+    }
+}
+
+/// Extended type information used for bytecodes. The exact meaning is up to the
+/// runtime/compiler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
+pub struct TypeMeta(Option<NonZeroUsize>);

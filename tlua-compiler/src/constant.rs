@@ -1,11 +1,11 @@
-pub use tlua_parser::ast::constant_string::ConstantString;
-
-use crate::{
+use tlua_bytecode::{
     NumLike,
     Number,
-    StringLike,
     Truthy,
 };
+pub use tlua_parser::ast::constant_string::ConstantString;
+
+use crate::compiler::unasm::UnasmOperand;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Constant {
@@ -14,6 +14,18 @@ pub enum Constant {
     Float(f64),
     Integer(i64),
     String(ConstantString),
+}
+
+impl From<Constant> for UnasmOperand {
+    fn from(c: Constant) -> Self {
+        match c {
+            Constant::Nil => Self::Nil,
+            Constant::Bool(c) => Self::Bool(c),
+            Constant::Float(c) => Self::Float(c),
+            Constant::Integer(c) => Self::Integer(c),
+            Constant::String(c) => Self::String(c),
+        }
+    }
 }
 
 impl From<f64> for Constant {
@@ -84,11 +96,5 @@ impl Constant {
             Constant::Float(_) | Constant::Integer(_) => "number",
             Constant::String(_) => "string",
         }
-    }
-}
-
-impl StringLike for ConstantString {
-    fn as_bytes(&self) -> &[u8] {
-        self.data().as_slice()
     }
 }

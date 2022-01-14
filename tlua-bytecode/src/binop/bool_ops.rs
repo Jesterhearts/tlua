@@ -3,17 +3,21 @@ use crate::{
         traits::BooleanOpEval,
         OpName,
     },
+    opcodes::{
+        AnyReg,
+        Operand,
+    },
     Truthy,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct BoolOp<OpTy: BooleanOpEval, LhsTy, RhsTy> {
-    pub lhs: LhsTy,
-    pub rhs: RhsTy,
+pub struct BoolOp<OpTy: BooleanOpEval, RegisterTy> {
+    pub lhs: AnyReg<RegisterTy>,
+    pub rhs: Operand<RegisterTy>,
     op: OpTy,
 }
 
-impl<OpTy, LhsTy, RhsTy> BooleanOpEval for BoolOp<OpTy, LhsTy, RhsTy>
+impl<OpTy, RegisterTy> BooleanOpEval for BoolOp<OpTy, RegisterTy>
 where
     OpTy: BooleanOpEval,
 {
@@ -22,20 +26,20 @@ where
     }
 }
 
-impl<OpTy, LhsTy, RhsTy> From<BoolOp<OpTy, LhsTy, RhsTy>> for (LhsTy, RhsTy)
+impl<OpTy, RegisterTy> From<BoolOp<OpTy, RegisterTy>> for (AnyReg<RegisterTy>, Operand<RegisterTy>)
 where
     OpTy: BooleanOpEval,
 {
-    fn from(val: BoolOp<OpTy, LhsTy, RhsTy>) -> Self {
+    fn from(val: BoolOp<OpTy, RegisterTy>) -> Self {
         (val.lhs, val.rhs)
     }
 }
 
-impl<OpTy, LhsTy, RhsTy> From<(LhsTy, RhsTy)> for BoolOp<OpTy, LhsTy, RhsTy>
+impl<OpTy, RegisterTy> From<(AnyReg<RegisterTy>, Operand<RegisterTy>)> for BoolOp<OpTy, RegisterTy>
 where
     OpTy: BooleanOpEval + Default,
 {
-    fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
+    fn from((lhs, rhs): (AnyReg<RegisterTy>, Operand<RegisterTy>)) -> Self {
         Self {
             lhs,
             rhs,

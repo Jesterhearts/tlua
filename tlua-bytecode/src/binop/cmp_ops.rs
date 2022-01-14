@@ -3,29 +3,36 @@ use crate::{
         traits::ComparisonOpEval,
         OpName,
     },
+    opcodes::{
+        AnyReg,
+        Operand,
+    },
     Number,
     OpError,
     StringLike,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct CompareOp<OpTy, LhsTy, RhsTy> {
-    pub lhs: LhsTy,
-    pub rhs: RhsTy,
+pub struct CompareOp<OpTy, RegisterTy> {
+    pub lhs: AnyReg<RegisterTy>,
+    pub rhs: Operand<RegisterTy>,
     op: OpTy,
 }
 
-impl<OpTy, LhsTy, RhsTy> From<CompareOp<OpTy, LhsTy, RhsTy>> for (LhsTy, RhsTy) {
-    fn from(val: CompareOp<OpTy, LhsTy, RhsTy>) -> Self {
+impl<OpTy, RegisterTy> From<CompareOp<OpTy, RegisterTy>>
+    for (AnyReg<RegisterTy>, Operand<RegisterTy>)
+{
+    fn from(val: CompareOp<OpTy, RegisterTy>) -> Self {
         (val.lhs, val.rhs)
     }
 }
 
-impl<OpTy, LhsTy, RhsTy> From<(LhsTy, RhsTy)> for CompareOp<OpTy, LhsTy, RhsTy>
+impl<OpTy, RegisterTy> From<(AnyReg<RegisterTy>, Operand<RegisterTy>)>
+    for CompareOp<OpTy, RegisterTy>
 where
     OpTy: Default,
 {
-    fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
+    fn from((lhs, rhs): (AnyReg<RegisterTy>, Operand<RegisterTy>)) -> Self {
         Self {
             lhs,
             rhs,
@@ -53,7 +60,7 @@ macro_rules! comparison_binop_impl {
             const NAME: &'static str = stringify!($name);
         }
 
-        impl<RhsTy, LhsTy> ComparisonOpEval for CompareOp<$name, RhsTy, LhsTy> {
+        impl<RegisterTy> ComparisonOpEval for CompareOp<$name, RegisterTy> {
             fn apply_numbers(lhs: Number, rhs: Number) -> bool {
                 let $lhs_num = lhs;
                 let $rhs_num = rhs;
@@ -106,15 +113,6 @@ macro_rules! comparison_binop {
             ($lhs_table : table, $rhs_table : table) => $when_table,
             ($lhs_func : func, $rhs_func : func) => $when_func
         } }
-
-        paste::paste! {comparison_binop_impl! { [< $name Indirect>] => {
-            ($lhs_num : num, $rhs_num : num) => $when_num,
-            ($lhs_string : string, $rhs_string : string) => $when_string,
-            ($lhs_bool : bool, $rhs_bool : bool) => $when_bool,
-            (nil, nil) => $when_nil,
-            ($lhs_table : table, $rhs_table : table) => $when_table,
-            ($lhs_func : func, $rhs_func : func) => $when_func
-        }}}
     };
 }
 

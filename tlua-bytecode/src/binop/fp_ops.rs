@@ -6,9 +6,9 @@ use crate::{
         },
         OpName,
     },
-    encoding::{
-        EncodableInstruction,
-        InstructionTag,
+    opcodes::{
+        AnyReg,
+        Operand,
     },
     NumLike,
     Number,
@@ -16,26 +16,26 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct FloatOp<OpTy: FloatBinop, LhsTy, RhsTy> {
-    pub lhs: LhsTy,
-    pub rhs: RhsTy,
+pub struct FloatOp<OpTy: FloatBinop, RegisterTy> {
+    pub lhs: AnyReg<RegisterTy>,
+    pub rhs: Operand<RegisterTy>,
     op: OpTy,
 }
 
-impl<OpTy, LhsTy, RhsTy> From<FloatOp<OpTy, LhsTy, RhsTy>> for (LhsTy, RhsTy)
+impl<OpTy, RegisterTy> From<FloatOp<OpTy, RegisterTy>> for (AnyReg<RegisterTy>, Operand<RegisterTy>)
 where
     OpTy: FloatBinop,
 {
-    fn from(val: FloatOp<OpTy, LhsTy, RhsTy>) -> Self {
+    fn from(val: FloatOp<OpTy, RegisterTy>) -> Self {
         (val.lhs, val.rhs)
     }
 }
 
-impl<OpTy, LhsTy, RhsTy> From<(LhsTy, RhsTy)> for FloatOp<OpTy, LhsTy, RhsTy>
+impl<OpTy, RegisterTy> From<(AnyReg<RegisterTy>, Operand<RegisterTy>)> for FloatOp<OpTy, RegisterTy>
 where
     OpTy: FloatBinop + Default,
 {
-    fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
+    fn from((lhs, rhs): (AnyReg<RegisterTy>, Operand<RegisterTy>)) -> Self {
         Self {
             lhs,
             rhs,
@@ -46,7 +46,7 @@ where
 
 /// Generic operation for anything that looks like a number, usable during
 /// compilation
-impl<OpTy, LhsTy, RhsTy> NumericOpEval for FloatOp<OpTy, LhsTy, RhsTy>
+impl<OpTy, RegisterTy> NumericOpEval for FloatOp<OpTy, RegisterTy>
 where
     OpTy: FloatBinop + OpName,
 {
@@ -80,10 +80,6 @@ macro_rules! float_binop_impl {
     ) => {
         #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
         pub struct $name;
-
-        impl EncodableInstruction for $name {
-            const TAG: InstructionTag = InstructionTag::$name;
-        }
 
         impl OpName for $name {
             const NAME: &'static str = stringify!($name);
@@ -119,15 +115,6 @@ macro_rules! float_binop {
             $name => {
                 ($lhs_int : int, $rhs_int : int) => $when_ints,
                 ($lhs_float : float, $rhs_float : float) => $when_floats
-            }
-        }
-
-        paste::paste! {
-            float_binop_impl! {
-                [< $name Indirect >] => {
-                    ($lhs_int : int, $rhs_int : int) => $when_ints,
-                    ($lhs_float : float, $rhs_float : float) => $when_floats
-                }
             }
         }
     };

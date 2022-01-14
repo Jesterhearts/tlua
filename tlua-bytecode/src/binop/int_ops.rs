@@ -6,32 +6,36 @@ use crate::{
         },
         OpName,
     },
+    opcodes::{
+        AnyReg,
+        Operand,
+    },
     NumLike,
     Number,
     OpError,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct IntOp<OpTy: IntBinop, LhsTy, RhsTy> {
-    pub lhs: LhsTy,
-    pub rhs: RhsTy,
+pub struct IntOp<OpTy: IntBinop, RegisterTy> {
+    pub lhs: AnyReg<RegisterTy>,
+    pub rhs: Operand<RegisterTy>,
     op: OpTy,
 }
 
-impl<OpTy, LhsTy, RhsTy> From<IntOp<OpTy, LhsTy, RhsTy>> for (LhsTy, RhsTy)
+impl<OpTy, RegisterTy> From<IntOp<OpTy, RegisterTy>> for (AnyReg<RegisterTy>, Operand<RegisterTy>)
 where
     OpTy: IntBinop,
 {
-    fn from(val: IntOp<OpTy, LhsTy, RhsTy>) -> Self {
+    fn from(val: IntOp<OpTy, RegisterTy>) -> Self {
         (val.lhs, val.rhs)
     }
 }
 
-impl<OpTy, LhsTy, RhsTy> From<(LhsTy, RhsTy)> for IntOp<OpTy, LhsTy, RhsTy>
+impl<OpTy, RegisterTy> From<(AnyReg<RegisterTy>, Operand<RegisterTy>)> for IntOp<OpTy, RegisterTy>
 where
     OpTy: IntBinop + Default,
 {
-    fn from((lhs, rhs): (LhsTy, RhsTy)) -> Self {
+    fn from((lhs, rhs): (AnyReg<RegisterTy>, Operand<RegisterTy>)) -> Self {
         Self {
             lhs,
             rhs,
@@ -52,7 +56,7 @@ pub fn f64inbounds(f: f64) -> Result<i64, OpError> {
 
 /// Generic operation for anything that looks like a number, usable during
 /// compilation
-impl<OpTy, LhsTy, RhsTy> NumericOpEval for IntOp<OpTy, LhsTy, RhsTy>
+impl<OpTy, RegisterTy> NumericOpEval for IntOp<OpTy, RegisterTy>
 where
     OpTy: IntBinop + OpName,
 {

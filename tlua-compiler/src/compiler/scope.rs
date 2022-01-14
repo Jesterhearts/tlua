@@ -7,12 +7,12 @@ use std::{
     num::NonZeroUsize,
 };
 
+use tlua_bytecode::AnonymousRegister;
 use tlua_parser::ast::identifiers::Ident;
 
 use crate::{
     compiler::{
         unasm::{
-            AnonymousRegister,
             ConstantRegister,
             OffsetRegister,
         },
@@ -107,7 +107,7 @@ impl ScopeContext<'_> {
     }
 
     pub(super) fn new_anonymous(&mut self) -> UninitRegister<AnonymousRegister> {
-        let reg: u16 = self.total_anons.try_into().unwrap();
+        let reg = self.total_anons;
         self.total_anons += 1;
 
         UninitRegister {

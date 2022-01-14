@@ -7,7 +7,6 @@ use tlua_bytecode::{
         },
         IntOp,
     },
-    Constant,
     OpError,
     Register,
 };
@@ -20,7 +19,7 @@ use crate::vm::{
     },
 };
 
-impl<OpTy> ApplyBinop for IntOp<OpTy, Register, Constant>
+impl<OpTy> ApplyBinop for IntOp<OpTy, Register>
 where
     OpTy: OpName + IntBinop,
 {
@@ -28,30 +27,12 @@ where
         scopes.store(
             self.lhs,
             match scopes.load(self.lhs) {
-                Value::Number(lhs) => Value::Number(Self::evaluate(lhs, self.rhs)?),
+                Value::Number(lhs) => Value::Number(Self::evaluate(
+                    lhs,
+                    Value::try_from(self.rhs).unwrap_or_else(|reg| scopes.load(reg)),
+                )?),
                 Value::Table(_) => {
                     todo!("metatables are not supported");
-                }
-                _ => return Err(OpError::InvalidType { op: OpTy::NAME }),
-            },
-        );
-
-        Ok(())
-    }
-}
-
-impl<OpTy> ApplyBinop for IntOp<OpTy, Register, Register>
-where
-    OpTy: OpName + IntBinop,
-{
-    fn apply(&self, scopes: &mut ScopeSet) -> Result<(), OpError> {
-        scopes.store(
-            self.lhs,
-            match (scopes.load(self.lhs), scopes.load(self.rhs)) {
-                (Value::Table(_), _rhs) => todo!("metatables are not supported"),
-                (_lhs, Value::Table(_)) => todo!("metatables are not supported"),
-                (Value::Number(lhs), Value::Number(rhs)) => {
-                    Value::Number(Self::evaluate(lhs, rhs)?)
                 }
                 _ => return Err(OpError::InvalidType { op: OpTy::NAME }),
             },

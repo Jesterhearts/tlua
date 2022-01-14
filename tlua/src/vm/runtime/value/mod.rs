@@ -11,8 +11,12 @@ use std::{
 use derive_more::From;
 pub use tlua_bytecode::Number;
 use tlua_bytecode::{
-    Constant,
+    opcodes::{
+        AnyReg,
+        Operand,
+    },
     NumLike,
+    Register,
     Truthy,
 };
 use tracing_rc::{
@@ -103,14 +107,18 @@ impl PartialEq for Value {
     }
 }
 
-impl From<Constant> for Value {
-    fn from(c: Constant) -> Self {
-        match c {
-            Constant::Nil => Self::Nil,
-            Constant::Bool(b) => b.into(),
-            Constant::Float(f) => f.into(),
-            Constant::Integer(i) => i.into(),
-            Constant::String(s) => Self::String(Rc::new(RefCell::new(s.into()))),
+impl TryFrom<Operand<Register>> for Value {
+    type Error = AnyReg<Register>;
+
+    fn try_from(value: Operand<Register>) -> Result<Self, Self::Error> {
+        match value {
+            Operand::Nil => Ok(Self::Nil),
+            Operand::Bool(b) => Ok(b.into()),
+            Operand::Float(f) => Ok(f.into()),
+            Operand::Integer(i) => Ok(i.into()),
+            Operand::String(s) => Ok(Self::String(Rc::new(RefCell::new(s.into())))),
+            Operand::Register(r) => Err(r.into()),
+            Operand::Immediate(i) => Err(i.into()),
         }
     }
 }

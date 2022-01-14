@@ -9,7 +9,10 @@ use tlua_bytecode::{
     Register,
     Truthy,
 };
-use tlua_compiler::Chunk;
+use tlua_compiler::{
+    Chunk,
+    TypeIds,
+};
 use tracing_rc::rc::Gc;
 
 use crate::vm::{
@@ -30,11 +33,11 @@ use crate::vm::{
 };
 
 pub struct Context<'call> {
-    pub in_scope: ScopeSet,
-    pub instruction: usize,
+    in_scope: ScopeSet,
 
     chunk: &'call Chunk,
-    instructions: &'call Vec<Instruction>,
+    instructions: &'call [Instruction],
+    instruction_pointer: &'call [Instruction],
 }
 
 impl<'call> Context<'call> {
@@ -42,8 +45,8 @@ impl<'call> Context<'call> {
         Self {
             in_scope: scopes,
             chunk,
-            instructions: &chunk.main.instructions,
-            instruction: 0,
+            instructions: chunk.main.instructions.as_slice(),
+            instruction_pointer: chunk.main.instructions.as_slice(),
         }
     }
 }
@@ -58,7 +61,7 @@ impl Context<'_> {
     where
         'f: 's,
     {
-        let func_def = &self.chunk.functions[*func.id];
+        let func_def = &self.chunk.functions[usize::from(func.id)];
 
         Context {
             in_scope: ScopeSet::new(
@@ -67,44 +70,31 @@ impl Context<'_> {
                 vec![Value::Nil; func_def.anon_registers],
                 va_args,
             ),
-            instruction: 0,
 
             chunk: self.chunk,
-            instructions: &func_def.instructions,
+            instructions: func_def.instructions.as_slice(),
+            instruction_pointer: func_def.instructions.as_slice(),
         }
     }
 
     pub fn execute(mut self) -> Result<Vec<Value>, OpError> {
-        while self.instruction < self.instructions.len() {
-            let instruction = self.instructions[self.instruction];
-            self.instruction += 1;
+        while let Some((&instruction, next)) = self.instruction_pointer.split_first() {
+            self.instruction_pointer = next;
 
             match instruction {
                 // Numeric operations
                 Op::Add(data) => data.apply(&mut self.in_scope)?,
-                Op::AddIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Subtract(data) => data.apply(&mut self.in_scope)?,
-                Op::SubtractIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Times(data) => data.apply(&mut self.in_scope)?,
-                Op::TimesIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Modulo(data) => data.apply(&mut self.in_scope)?,
-                Op::ModuloIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Divide(data) => data.apply(&mut self.in_scope)?,
-                Op::DivideIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Exponetiation(data) => data.apply(&mut self.in_scope)?,
-                Op::ExponetiationIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::IDiv(data) => data.apply(&mut self.in_scope)?,
-                Op::IDivIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::BitAnd(data) => data.apply(&mut self.in_scope)?,
-                Op::BitAndIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::BitOr(data) => data.apply(&mut self.in_scope)?,
-                Op::BitOrIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::BitXor(data) => data.apply(&mut self.in_scope)?,
-                Op::BitXorIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::ShiftLeft(data) => data.apply(&mut self.in_scope)?,
-                Op::ShiftLeftIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::ShiftRight(data) => data.apply(&mut self.in_scope)?,
-                Op::ShiftRightIndirect(data) => data.apply(&mut self.in_scope)?,
 
                 // Unary math operations
                 Op::UnaryMinus(UnaryMinus { reg }) => {
@@ -140,23 +130,15 @@ impl Context<'_> {
 
                 // Comparison operations
                 Op::LessThan(data) => data.apply(&mut self.in_scope)?,
-                Op::LessThanIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::LessEqual(data) => data.apply(&mut self.in_scope)?,
-                Op::LessEqualIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::GreaterThan(data) => data.apply(&mut self.in_scope)?,
-                Op::GreaterThanIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::GreaterEqual(data) => data.apply(&mut self.in_scope)?,
-                Op::GreaterEqualIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Equals(data) => data.apply(&mut self.in_scope)?,
-                Op::EqualsIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::NotEqual(data) => data.apply(&mut self.in_scope)?,
-                Op::NotEqualIndirect(data) => data.apply(&mut self.in_scope)?,
 
                 // Boolean operations
                 Op::And(data) => data.apply(&mut self.in_scope)?,
-                Op::AndIndirect(data) => data.apply(&mut self.in_scope)?,
                 Op::Or(data) => data.apply(&mut self.in_scope)?,
-                Op::OrIndirect(data) => data.apply(&mut self.in_scope)?,
 
                 // Unary boolean operations
                 Op::Not(Not { reg }) => {
@@ -166,23 +148,22 @@ impl Context<'_> {
 
                 // String & Array operations
                 Op::Concat(_) => todo!(),
-                Op::ConcatIndirect(_) => todo!(),
                 Op::Length(_) => todo!(),
 
                 Op::Jump(Jump { target }) => {
-                    self.instruction = target;
+                    self.instruction_pointer = self.instructions.split_at(target).1;
                 }
 
                 Op::JumpNot(JumpNot { cond, target }) => {
                     let cond = self.in_scope.load(cond);
                     if !cond.as_bool() {
-                        self.instruction = target;
+                        self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
                 Op::JumpNotVa0(JumpNotVa0 { target }) => {
                     if !self.in_scope.load_va(0).as_bool() {
-                        self.instruction = target;
+                        self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
@@ -192,21 +173,10 @@ impl Context<'_> {
                         Value::Table(t) => t
                             .borrow()
                             .entries
-                            .get(&TryFrom::<Value>::try_from(index.into())?)
-                            .cloned()
-                            .unwrap_or_default(),
-                        _ => todo!("metatables are unsupported"),
-                    };
-
-                    self.in_scope.store(dest, value);
-                }
-                Op::LoadIndirect(LoadIndirect { dest, index }) => {
-                    let index = self.in_scope.load(index);
-                    let value = match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow()
-                            .entries
-                            .get(&index.try_into()?)
+                            .get(&TryFrom::<Value>::try_from(
+                                Value::try_from(index)
+                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
+                            )?)
                             .cloned()
                             .unwrap_or_default(),
                         _ => todo!("metatables are unsupported"),
@@ -217,21 +187,15 @@ impl Context<'_> {
 
                 // TODO(cleanup): These can have generic behavior across their arguments.
                 Op::Store(Store { dest, src, index }) => {
-                    let value = self.in_scope.load(src);
+                    let value = Value::try_from(src).unwrap_or_else(|reg| self.in_scope.load(reg));
                     match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(TryFrom::<Value>::try_from(index.into())?, value),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
-                Op::StoreConstant(StoreConstant { dest, index, src }) => {
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(TryFrom::<Value>::try_from(index.into())?, src.into()),
+                        Value::Table(t) => t.borrow_mut().entries.insert(
+                            TryFrom::<Value>::try_from(
+                                Value::try_from(index)
+                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
+                            )?,
+                            value,
+                        ),
                         _ => todo!("metatables are unsupported"),
                     };
                 }
@@ -242,47 +206,16 @@ impl Context<'_> {
                 }) => {
                     match self.in_scope.load(dest) {
                         Value::Table(t) => t.borrow_mut().entries.insert(
-                            TryFrom::<Value>::try_from(index.into())?,
+                            TryFrom::<Value>::try_from(
+                                Value::try_from(index)
+                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
+                            )?,
                             self.in_scope.load_va(va_index),
                         ),
                         _ => todo!("metatables are unsupported"),
                     };
                 }
 
-                Op::StoreIndirect(StoreIndirect { dest, src, index }) => {
-                    let index = self.in_scope.load(index);
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(TryFrom::<Value>::try_from(index)?, self.in_scope.load(src)),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
-                Op::StoreConstantIndirect(StoreConstantIndirect { dest, index, src }) => {
-                    let index = self.in_scope.load(index);
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(TryFrom::<Value>::try_from(index)?, src.into()),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
-                Op::StoreFromVaIndirect(StoreFromVaIndirect {
-                    dest,
-                    index,
-                    va_index,
-                }) => {
-                    let index = self.in_scope.load(index);
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t.borrow_mut().entries.insert(
-                            TryFrom::<Value>::try_from(index)?,
-                            self.in_scope.load_va(va_index),
-                        ),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
                 Op::StoreAllFromVa(StoreAllFromVa { dest, start_index }) => {
                     let entries = self
                         .in_scope
@@ -305,39 +238,60 @@ impl Context<'_> {
 
                 // Register operations
                 Op::Set(Set { dest, source }) => {
-                    self.in_scope.store(dest, source.into());
+                    self.in_scope.store(
+                        dest,
+                        Value::try_from(source).unwrap_or_else(|reg| self.in_scope.load(reg)),
+                    );
                 }
-                Op::SetIndirect(SetIndirect { dest, source }) => self.in_scope.copy(dest, source),
                 Op::SetFromVa(SetFromVa { dest, index }) => {
                     self.in_scope
                         .store(dest, self.in_scope.load_va(index).clone());
                 }
 
                 // Begin calling a function
-                Op::StartCall(StartCall { target }) => {
-                    self.start_call(target, None)?;
+                Op::StartCall(StartCall {
+                    target,
+                    mapped_args,
+                }) => {
+                    let (arg_mapping_isns, next) = self.instruction_pointer.split_at(mapped_args);
+                    self.instruction_pointer = next;
+
+                    self.start_call(target, arg_mapping_isns, None)?;
                 }
 
                 // Set up return values for a function
-                Op::SetRet(SetRet { value }) => {
-                    self.in_scope.add_result(value.into());
-                }
-                Op::SetRetIndirect(SetRetIndirect { src }) => {
-                    self.in_scope.add_result(self.in_scope.load(src));
+                Op::SetRet(SetRet { src }) => {
+                    self.in_scope.add_result(
+                        Value::try_from(src).unwrap_or_else(|reg| self.in_scope.load(reg)),
+                    );
                 }
                 Op::SetRetVa0 => {
                     self.in_scope.add_result(self.in_scope.load_va(0));
                 }
 
                 // Allocate values
-                Op::AllocFunc(AllocFunc { dest, id }) => {
-                    let func = Value::Function(Gc::new(Function::new(&self.in_scope, id)));
-                    self.in_scope.store(dest, func);
-                }
-
-                Op::AllocTable(AllocTable { dest }) => {
-                    let func = Value::Table(Gc::new(Table::default()));
-                    self.in_scope.store(dest, func);
+                Op::Alloc(Alloc {
+                    dest,
+                    type_id,
+                    metadata,
+                }) => {
+                    let value = match type_id {
+                        TypeIds::FUNCTION => Value::Function(Gc::new(Function::new(
+                            &self.in_scope,
+                            metadata.try_into().map_err(|err| OpError::ByteCodeError {
+                                err,
+                                offset: self.ip_index(),
+                            })?,
+                        ))),
+                        TypeIds::TABLE => Value::Table(Gc::new(Table::default())),
+                        _ => {
+                            return Err(OpError::ByteCodeError {
+                                err: ByteCodeError::InvalidTypeId,
+                                offset: self.ip_index(),
+                            })
+                        }
+                    };
+                    self.in_scope.store(dest, value);
                 }
 
                 // Alter the active scopes
@@ -364,12 +318,10 @@ impl Context<'_> {
 
                 Op::StartCallExtending(_)
                 | Op::MapArg(_)
-                | Op::MapArgIndirect(_)
                 | Op::MapVa0
                 | Op::DoCall
                 | Op::MapVarArgsAndDoCall
                 | Op::MapRet(_)
-                | Op::StoreRetIndirect(_)
                 | Op::StoreRet(_)
                 | Op::StoreAllRet(_)
                 | Op::SetRetFromRet0
@@ -377,7 +329,7 @@ impl Context<'_> {
                 | Op::CopyRetFromRetAndRet => {
                     return Err(OpError::ByteCodeError {
                         err: ByteCodeError::UnexpectedCallInstruction,
-                        offset: self.instruction,
+                        offset: self.ip_index(),
                     });
                 }
             }
@@ -388,7 +340,8 @@ impl Context<'_> {
 
     fn start_call(
         &mut self,
-        target: Register,
+        target: AnyReg<Register>,
+        arg_mapping_instructions: &[Instruction],
         other_results: Option<Vec<Value>>,
     ) -> Result<(), OpError> {
         let func = match self.in_scope.load(target) {
@@ -396,24 +349,28 @@ impl Context<'_> {
             _ => todo!("Metatables are not supported"),
         };
 
-        let results = self.execute_call(&func.borrow(), other_results)?;
+        let results = self.execute_call(&func.borrow(), arg_mapping_instructions, other_results)?;
 
-        match self.instructions[self.instruction] {
+        match self.instruction_pointer[0] {
             // We just performed a call, so if the very next instruction is StartCallExtending, we
             // know that we should include the results in that call directly rather than doing
             // normal result mapping.
-            Op::StartCallExtending(StartCallExtending { target }) => {
-                self.instruction += 1;
-                self.start_call(target, Some(results))
+            Op::StartCallExtending(StartCallExtending {
+                target,
+                mapped_args,
+            }) => {
+                let (arg_mapping_isns, next) = self.instruction_pointer.split_at(mapped_args);
+                self.instruction_pointer = next;
+
+                self.start_call(target, arg_mapping_isns, Some(results))
             }
             // We just performed a call, so if the very next instruction is CopyRetFromRet, we know
             // we should copy over all of the results directly rather than doing normal result
             // mapping.
             Op::CopyRetFromRetAndRet => {
                 self.in_scope.extend_results(results);
+                self.instruction_pointer = &[];
 
-                // Terminate execution by setting the current IP to the end
-                self.instruction = self.instructions.len();
                 Ok(())
             }
             _ => self.map_results(results),
@@ -423,65 +380,26 @@ impl Context<'_> {
     fn execute_call(
         &mut self,
         func: &Function,
+        arg_mapping_instructions: &[Instruction],
         other_results: Option<Vec<Value>>,
     ) -> Result<Vec<Value>, OpError> {
         let mut argi = 0;
 
-        let func_def = &self.chunk.functions[*func.id];
+        let func_def = &self.chunk.functions[usize::from(func.id)];
         let argc = func_def.named_args;
         let subscope = Scope::new(func_def.local_registers);
 
-        let mut va_args = vec![];
+        let mut va_args = Vec::with_capacity(arg_mapping_instructions.len().saturating_sub(argc));
 
-        while self.instruction < self.instructions.len() {
-            let isn = self.instructions[self.instruction];
-            self.instruction += 1;
-
+        for &isn in arg_mapping_instructions {
             match isn {
-                Op::DoCall => {
-                    let mut other_results = other_results.into_iter().flat_map(Vec::into_iter);
-
-                    for arg in argi..argc {
-                        if let Some(init) = other_results.next() {
-                            subscope.registers[arg].replace(init);
-                        } else {
-                            break;
-                        }
-                    }
-
-                    va_args.extend(other_results);
-
-                    return self.subcontext(func, va_args, subscope).execute();
-                }
-                Op::MapVarArgsAndDoCall => {
-                    let mut parent_va = self.in_scope.iter_va().cloned();
-
-                    for arg in argi..argc {
-                        if let Some(init) = parent_va.next() {
-                            subscope.registers[arg].replace(init);
-                        } else {
-                            break;
-                        }
-                    }
-
-                    va_args.extend(parent_va);
-
-                    return self.subcontext(func, va_args, subscope).execute();
-                }
-                Op::MapArg(MapArg { value }) => {
+                Op::MapArg(MapArg { src }) => {
+                    let value = Value::try_from(src).unwrap_or_else(|reg| self.in_scope.load(reg));
                     if argi < argc {
-                        subscope.registers[argi].replace(value.into());
+                        subscope.registers[argi].replace(value);
                         argi += 1;
                     } else {
-                        va_args.push(value.into());
-                    }
-                }
-                Op::MapArgIndirect(MapArgIndirect { src }) => {
-                    if argi < argc {
-                        subscope.registers[argi].replace(self.in_scope.load(src));
-                        argi += 1;
-                    } else {
-                        va_args.push(self.in_scope.load(src));
+                        va_args.push(value);
                     }
                 }
                 Op::MapVa0 => {
@@ -495,46 +413,79 @@ impl Context<'_> {
 
                 _ => {
                     return Err(OpError::ByteCodeError {
-                        err: ByteCodeError::ExpectedCallInstruction,
-                        offset: self.instruction,
+                        err: ByteCodeError::ExpectedArgMappingInstruction,
+                        offset: self.ip_index(),
                     })
                 }
             }
         }
 
-        Err(OpError::ByteCodeError {
-            err: ByteCodeError::MissingCallInvocation,
-            offset: self.instruction,
-        })
+        let (&isn, next) = if let Some(isn) = self.instruction_pointer.split_first() {
+            isn
+        } else {
+            return Err(OpError::ByteCodeError {
+                err: ByteCodeError::MissingCallInvocation,
+                offset: self.ip_index(),
+            });
+        };
+
+        self.instruction_pointer = next;
+
+        match isn {
+            Op::DoCall => {
+                let mut other_results = other_results.into_iter().flat_map(Vec::into_iter);
+
+                for arg in argi..argc {
+                    if let Some(init) = other_results.next() {
+                        subscope.registers[arg].replace(init);
+                    } else {
+                        break;
+                    }
+                }
+
+                va_args.extend(other_results);
+
+                self.subcontext(func, va_args, subscope).execute()
+            }
+            Op::MapVarArgsAndDoCall => {
+                let mut parent_va = self.in_scope.iter_va().cloned();
+
+                for arg in argi..argc {
+                    if let Some(init) = parent_va.next() {
+                        subscope.registers[arg].replace(init);
+                    } else {
+                        break;
+                    }
+                }
+
+                va_args.extend(parent_va);
+
+                self.subcontext(func, va_args, subscope).execute()
+            }
+
+            _ => Err(OpError::ByteCodeError {
+                err: ByteCodeError::MissingCallInvocation,
+                offset: self.ip_index(),
+            }),
+        }
     }
 
     fn map_results(&mut self, mut results: Vec<Value>) -> Result<(), OpError> {
         let mut results = results.drain(..);
-
-        while self.instruction < self.instructions.len() {
-            let isn = self.instructions[self.instruction];
-
+        while let Some((&isn, next)) = self.instruction_pointer.split_first() {
             match isn {
                 Op::MapRet(MapRet { dest }) => {
                     self.in_scope
                         .store(dest, results.next().unwrap_or(Value::Nil));
                 }
 
-                Op::StoreRetIndirect(StoreRetIndirect { dest, index }) => {
-                    let index = self.in_scope.load(index);
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t
-                            .borrow_mut()
-                            .entries
-                            .insert(index.try_into()?, results.next().unwrap_or(Value::Nil)),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
-
                 Op::StoreRet(StoreRet { dest, index }) => {
                     match self.in_scope.load(dest) {
                         Value::Table(t) => t.borrow_mut().entries.insert(
-                            TryFrom::<Value>::try_from(index.into())?,
+                            TryFrom::<Value>::try_from(
+                                Value::try_from(index)
+                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
+                            )?,
                             results.next().unwrap_or(Value::Nil),
                         ),
                         _ => todo!("metatables are unsupported"),
@@ -559,7 +510,7 @@ impl Context<'_> {
                         _ => todo!("metatables are unsupported"),
                     };
 
-                    self.instruction += 1;
+                    self.instruction_pointer = next;
                     return Ok(());
                 }
 
@@ -568,25 +519,27 @@ impl Context<'_> {
                         .add_result(results.next().unwrap_or(Value::Nil));
                 }
 
-                Op::StartCallExtending(StartCallExtending { .. }) => {
-                    return Err(OpError::ByteCodeError {
-                        err: ByteCodeError::UnexpectedCallInstruction,
-                        offset: self.instruction,
-                    })
-                }
-
                 Op::JumpNotRet0(JumpNotRet0 { target }) => {
                     if !results.next().unwrap_or(Value::Nil).as_bool() {
-                        self.instruction = target;
+                        self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
                 _ => return Ok(()),
             }
 
-            self.instruction += 1;
+            self.instruction_pointer = next;
         }
 
         Ok(())
+    }
+
+    fn ip_index(&self) -> usize {
+        if self.instruction_pointer.is_empty() {
+            self.instructions.len()
+        } else {
+            (self.instruction_pointer.as_ptr() as usize - self.instructions.as_ptr() as usize)
+                / std::mem::size_of::<Instruction>()
+        }
     }
 }
