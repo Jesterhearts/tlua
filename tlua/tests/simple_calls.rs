@@ -253,3 +253,28 @@ fn local_call_multi_ret_seq_pop1_pop2() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn local_call_call_as_arg() -> anyhow::Result<()> {
+    let src = indoc! {"
+        local function foo(...) return 10, 11, ... end
+
+        x, y, z, w = foo(foo())
+        return x, y, z, w
+    "};
+
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+
+    let result = rt.execute(&chunk)?;
+
+    assert_eq!(
+        result,
+        vec![10.into(), 11.into(), 10.into(), 11.into()],
+        "{:#?} produced an incorrect result",
+        chunk
+    );
+
+    Ok(())
+}

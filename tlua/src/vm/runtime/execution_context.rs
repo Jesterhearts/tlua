@@ -370,11 +370,19 @@ impl Context<'_> {
                 target,
                 mapped_args_start,
                 mapped_args_count,
-            }) => self.start_call(
-                target,
-                mapped_args_start..(mapped_args_start + mapped_args_count),
-                results,
-            ),
+            }) => {
+                self.instruction_pointer = self
+                    .instruction_pointer
+                    .split_first()
+                    .map(|(_, next)| next)
+                    .unwrap_or_default();
+
+                self.start_call(
+                    target,
+                    mapped_args_start..(mapped_args_start + mapped_args_count),
+                    results,
+                )
+            }
             // We just performed a call, so if the very next instruction is CopyRetFromRet, we know
             // we should copy over all of the results directly rather than doing normal result
             // mapping.
