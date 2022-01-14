@@ -9,7 +9,10 @@ use tlua_bytecode::{
     Register,
     Truthy,
 };
-use tlua_compiler::Chunk;
+use tlua_compiler::{
+    Chunk,
+    TypeIds,
+};
 use tracing_rc::rc::Gc;
 
 use crate::vm::{
@@ -58,7 +61,7 @@ impl Context<'_> {
     where
         'f: 's,
     {
-        let func_def = &self.chunk.functions[*func.id];
+        let func_def = &self.chunk.functions[usize::from(func.id)];
 
         Context {
             in_scope: ScopeSet::new(
@@ -267,14 +270,28 @@ impl Context<'_> {
                 }
 
                 // Allocate values
-                Op::AllocFunc(AllocFunc { dest, id }) => {
-                    let func = Value::Function(Gc::new(Function::new(&self.in_scope, id)));
-                    self.in_scope.store(dest, func);
-                }
-
-                Op::AllocTable(AllocTable { dest }) => {
-                    let func = Value::Table(Gc::new(Table::default()));
-                    self.in_scope.store(dest, func);
+                Op::Alloc(Alloc {
+                    dest,
+                    type_id,
+                    metadata,
+                }) => {
+                    let value = match type_id {
+                        TypeIds::FUNCTION => Value::Function(Gc::new(Function::new(
+                            &self.in_scope,
+                            metadata.try_into().map_err(|err| OpError::ByteCodeError {
+                                err,
+                                offset: self.ip_index(),
+                            })?,
+                        ))),
+                        TypeIds::TABLE => Value::Table(Gc::new(Table::default())),
+                        _ => {
+                            return Err(OpError::ByteCodeError {
+                                err: ByteCodeError::InvalidTypeId,
+                                offset: self.ip_index(),
+                            })
+                        }
+                    };
+                    self.in_scope.store(dest, value);
                 }
 
                 // Alter the active scopes
@@ -368,7 +385,7 @@ impl Context<'_> {
     ) -> Result<Vec<Value>, OpError> {
         let mut argi = 0;
 
-        let func_def = &self.chunk.functions[*func.id];
+        let func_def = &self.chunk.functions[usize::from(func.id)];
         let argc = func_def.named_args;
         let subscope = Scope::new(func_def.local_registers);
 

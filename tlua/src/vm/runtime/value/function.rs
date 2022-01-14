@@ -1,5 +1,6 @@
 use std::{
     cell::RefCell,
+    num::NonZeroUsize,
     rc::Rc,
 };
 
@@ -14,9 +15,10 @@ use tlua_bytecode::{
         AnyReg,
         ScopeDescriptor,
     },
-    FuncId,
+    ByteCodeError,
     MappedRegister,
     Register,
+    TypeMeta,
 };
 use tracing_rc::{
     rc::Trace,
@@ -24,6 +26,20 @@ use tracing_rc::{
 };
 
 use crate::vm::runtime::Value;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Into)]
+pub(crate) struct FuncId(usize);
+
+impl TryFrom<TypeMeta> for FuncId {
+    type Error = ByteCodeError;
+
+    fn try_from(value: TypeMeta) -> Result<Self, Self::Error> {
+        match Option::<NonZeroUsize>::from(value) {
+            Some(v) => Ok(Self(v.get() - 1)),
+            None => Err(ByteCodeError::InvalidTypeMetadata),
+        }
+    }
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope {
@@ -173,14 +189,14 @@ impl ScopeSet {
 
 #[derive(Debug, Trace)]
 pub struct Function {
-    pub referenced_scopes: Vec<Scope>,
+    pub(crate) referenced_scopes: Vec<Scope>,
 
     #[trace(ignore)]
-    pub id: FuncId,
+    pub(crate) id: FuncId,
 }
 
 impl Function {
-    pub fn new(available_scope: &ScopeSet, id: FuncId) -> Self {
+    pub(crate) fn new(available_scope: &ScopeSet, id: FuncId) -> Self {
         // TODO(perf): This is way too pessimistic and could use info from the compiler
         // to cut down on the size of the scopes it captures.
         let mut referenced_scopes = available_scope.referenced.clone();

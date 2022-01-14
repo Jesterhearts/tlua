@@ -1,6 +1,9 @@
-use std::ops::{
-    Deref,
-    DerefMut,
+use std::{
+    num::NonZeroUsize,
+    ops::{
+        Deref,
+        DerefMut,
+    },
 };
 
 use derive_more::From;
@@ -8,9 +11,9 @@ use tlua_bytecode::{
     opcodes::{self,},
     AnonymousRegister,
     ByteCodeError,
-    FuncId,
     OpError,
     Truthy,
+    TypeMeta,
 };
 use tlua_parser::ast::{
     block::Block,
@@ -24,6 +27,7 @@ use crate::{
     CompileExpression,
     CompileStatement,
     NodeOutput,
+    TypeIds,
 };
 
 mod scope;
@@ -169,10 +173,11 @@ where
 
     /// Indicate the the register should be initialized by allocating a
     /// function.
-    fn init_alloc_fn(self, compiler: &mut CompilerContext, value: FuncId) -> RegisterTy {
+    fn init_alloc_fn(self, compiler: &mut CompilerContext, value: TypeMeta) -> RegisterTy {
         let register = self.no_init_needed();
-        compiler.write(opcodes::AllocFunc::from((
+        compiler.write(opcodes::Alloc::from((
             UnasmRegister::from(register),
+            TypeIds::FUNCTION,
             value,
         )));
         register
@@ -181,7 +186,11 @@ where
     /// Indicate the the register shoudl be initialized by allocating a table
     fn init_alloc_table(self, compiler: &mut CompilerContext) -> RegisterTy {
         let register = self.no_init_needed();
-        compiler.write(opcodes::AllocTable::from(UnasmRegister::from(register)));
+        compiler.write(opcodes::Alloc::from((
+            UnasmRegister::from(register),
+            TypeIds::TABLE,
+            TypeMeta::from(None),
+        )));
         register
     }
 
@@ -305,7 +314,7 @@ impl CompilerContext<'_> {
         }
     }
 
-    fn complete(self) -> FuncId {
+    fn complete(self) -> TypeMeta {
         let Self {
             functions,
             mut function,
@@ -320,7 +329,7 @@ impl CompilerContext<'_> {
 
         functions.push(function);
 
-        FuncId(fn_id)
+        TypeMeta::from(NonZeroUsize::try_from(fn_id + 1).ok())
     }
 
     fn write_fn(
@@ -767,7 +776,7 @@ impl CompilerContext<'_> {
         params: impl ExactSizeIterator<Item = Ident>,
         body: impl ExactSizeIterator<Item = impl CompileStatement>,
         ret: Option<&impl CompileStatement>,
-    ) -> Result<FuncId, CompileError> {
+    ) -> Result<TypeMeta, CompileError> {
         let mut context = self.function_subcontext(HasVaArgs::None);
 
         context.write_fn(params, body, ret)?;
@@ -782,7 +791,7 @@ impl CompilerContext<'_> {
         params: impl ExactSizeIterator<Item = Ident>,
         body: impl ExactSizeIterator<Item = impl CompileStatement>,
         ret: Option<&impl CompileStatement>,
-    ) -> Result<FuncId, CompileError> {
+    ) -> Result<TypeMeta, CompileError> {
         let mut context = self.function_subcontext(HasVaArgs::Some);
 
         context.write_fn(params, body, ret)?;

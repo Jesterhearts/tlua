@@ -1,8 +1,12 @@
 use std::{
     fmt::Debug,
-    ops::Deref,
+    num::NonZeroUsize,
 };
 
+use derive_more::{
+    From,
+    Into,
+};
 use thiserror::Error;
 
 pub mod binop;
@@ -33,6 +37,10 @@ pub enum ByteCodeError {
     MissingJump,
     #[error("Expected a scope descriptor")]
     MissingScopeDescriptor,
+    #[error("Invalid type metadata")]
+    InvalidTypeMetadata,
+    #[error("Invalid type id")]
+    InvalidTypeId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
@@ -77,19 +85,24 @@ pub trait Truthy {
     fn as_bool(&self) -> bool;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FuncId(pub usize);
-
-impl Deref for FuncId {
-    type Target = usize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
 impl StringLike for ConstantString {
     fn as_bytes(&self) -> &[u8] {
         self.data().as_slice()
     }
 }
+
+/// A type identifier used for bytecodes like `Alloc`. The exact meaning is up
+/// to the runtime/compiler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
+pub struct TypeId(usize);
+
+impl TypeId {
+    pub const fn const_from(v: usize) -> Self {
+        Self(v)
+    }
+}
+
+/// Extended type information used for bytecodes. The exact meaning is up to the
+/// runtime/compiler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
+pub struct TypeMeta(Option<NonZeroUsize>);

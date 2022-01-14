@@ -211,13 +211,14 @@ impl AssembleOp for UnasmOp {
                 index,
             }
             .into(),
-            Op::AllocFunc(AllocFunc { dest, id }) => AllocFunc {
+            Op::Alloc(Alloc {
+                dest,
+                type_id,
+                metadata,
+            }) => Alloc {
                 dest: dest.assemble(),
-                id,
-            }
-            .into(),
-            Op::AllocTable(AllocTable { dest }) => AllocTable {
-                dest: dest.assemble(),
+                type_id,
+                metadata,
             }
             .into(),
             Op::PushScope(descriptor) => descriptor.into(),

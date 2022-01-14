@@ -4,6 +4,7 @@ use thiserror::Error;
 use tlua_bytecode::{
     opcodes::Instruction,
     OpError,
+    TypeId,
 };
 use tlua_parser::{
     ast::{
@@ -54,6 +55,13 @@ impl Default for NodeOutput {
     fn default() -> Self {
         NodeOutput::Constant(Constant::Nil)
     }
+}
+
+pub struct TypeIds();
+
+impl TypeIds {
+    pub const FUNCTION: TypeId = TypeId::const_from(0);
+    pub const TABLE: TypeId = TypeId::const_from(1);
 }
 
 #[derive(Debug, Error)]

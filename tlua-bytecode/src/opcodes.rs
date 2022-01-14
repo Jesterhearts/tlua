@@ -11,9 +11,10 @@ use crate::{
         MappedRegister,
         Register,
     },
-    FuncId,
     Number,
     OpError,
+    TypeId,
+    TypeMeta,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
@@ -136,10 +137,8 @@ pub enum Op<RegisterTy> {
     Set(Set<RegisterTy>),
     /// Initialize a register from a variadic argument.
     SetFromVa(SetFromVa<RegisterTy>),
-    /// Allocate a new function
-    AllocFunc(AllocFunc<RegisterTy>),
-    /// Allocate a new function
-    AllocTable(AllocTable<RegisterTy>),
+    /// Allocate a type
+    Alloc(Alloc<RegisterTy>),
     /// Push a new scope as the current local scope.
     PushScope(ScopeDescriptor),
     /// Discard the current scope and restore the most recently pushed scope.
@@ -266,9 +265,10 @@ pub struct Raise {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct AllocFunc<RegTy> {
+pub struct Alloc<RegTy> {
     pub dest: AnyReg<RegTy>,
-    pub id: FuncId,
+    pub type_id: TypeId,
+    pub metadata: TypeMeta,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
