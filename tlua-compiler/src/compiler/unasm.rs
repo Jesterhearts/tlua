@@ -223,29 +223,36 @@ impl AssembleOp for UnasmOp {
             .into(),
             Op::PushScope(descriptor) => descriptor.into(),
             Op::PopScope => Op::PopScope,
-            Op::StartCall(StartCall {
+            Op::Call(Call {
                 target,
-                mapped_args,
-            }) => StartCall {
+                mapped_args_start,
+                mapped_args_count,
+            }) => Call {
                 target: target.assemble(),
-                mapped_args,
+                mapped_args_start,
+                mapped_args_count,
             }
             .into(),
-            Op::StartCallExtending(StartCallExtending {
+            Op::CallCopyRet(CallCopyRet {
                 target,
-                mapped_args,
-            }) => StartCallExtending {
+                mapped_args_start,
+                mapped_args_count,
+            }) => CallCopyRet {
                 target: target.assemble(),
-                mapped_args,
+                mapped_args_start,
+                mapped_args_count,
             }
             .into(),
-            Op::DoCall => Op::DoCall,
-            Op::MapVarArgsAndDoCall => Op::MapVarArgsAndDoCall,
-            Op::MapArg(MapArg { src }) => MapArg {
-                src: src.assemble(),
+            Op::CallCopyVa(CallCopyVa {
+                target,
+                mapped_args_start,
+                mapped_args_count,
+            }) => CallCopyVa {
+                target: target.assemble(),
+                mapped_args_start,
+                mapped_args_count,
             }
             .into(),
-            Op::MapVa0 => Op::MapVa0,
             Op::SetRet(SetRet { src }) => SetRet {
                 src: src.assemble(),
             }

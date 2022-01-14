@@ -513,83 +513,66 @@ impl CompilerContext<'_> {
         target: UnasmRegister,
         mut args: impl ExactSizeIterator<Item = impl CompileExpression>,
     ) -> Result<Option<OpError>, CompileError> {
-        enum ArgSrc {
-            Const(Constant),
-            Register(UnasmRegister),
-            Va0,
-        }
-
         let argc = args.len();
         if argc == 0 {
             // No arguments, just call.
-            self.write(opcodes::StartCall::from((target, 0)));
-            self.write(opcodes::Op::DoCall);
+            self.write(opcodes::Call::from((target, 0, 0)));
             return Ok(None);
+        }
+
+        let input_args_start = self.scope.total_anons;
+        for _ in 0..argc {
+            self.scope.new_anonymous().no_init_needed();
         }
 
         let regular_argc = argc - 1;
 
-        let mut arg_srcs = Vec::with_capacity(argc);
-
-        for _ in 0..regular_argc {
+        for argi in 0..regular_argc {
+            let arg_reg = UninitRegister::from(AnonymousRegister::from(input_args_start + argi));
             match args
                 .next()
                 .expect("Still in bounds for args")
                 .compile(self)?
             {
-                NodeOutput::Constant(c) => arg_srcs.push(ArgSrc::Const(c)),
-                NodeOutput::Register(r) => arg_srcs.push(ArgSrc::Register(r)),
-                NodeOutput::ReturnValues => {
-                    let dest = self.scope.new_anonymous();
-                    let dest = dest.init_from_ret(self);
-                    arg_srcs.push(ArgSrc::Register(dest.into()));
-                }
-                NodeOutput::VAStack => {
-                    arg_srcs.push(ArgSrc::Va0);
-                }
+                NodeOutput::Constant(c) => arg_reg.init_from_const(self, c),
+                NodeOutput::Register(r) => arg_reg.init_from_reg(self, r),
+                NodeOutput::ReturnValues => arg_reg.init_from_ret(self),
+                NodeOutput::VAStack => arg_reg.init_from_va(self, 0),
                 NodeOutput::Err(err) => return Ok(Some(err)),
             };
         }
 
-        let write_args = |compiler: &mut CompilerContext, arg_srcs: Vec<ArgSrc>| {
-            for arg in arg_srcs.into_iter() {
-                match arg {
-                    ArgSrc::Const(constant) => {
-                        compiler.write(opcodes::MapArg::from(UnasmOperand::from(constant)))
-                    }
-                    ArgSrc::Register(register) => {
-                        compiler.write(opcodes::MapArg::from(UnasmOperand::from(register)))
-                    }
-                    ArgSrc::Va0 => compiler.write(opcodes::Op::MapVa0),
-                }
-            }
-        };
+        let last_reg =
+            UninitRegister::from(AnonymousRegister::from(input_args_start + regular_argc));
 
         // Process the last argument in the list
         match args.next().expect("Still in bounds args").compile(self)? {
             NodeOutput::Constant(c) => {
-                arg_srcs.push(ArgSrc::Const(c));
+                last_reg.init_from_const(self, c);
             }
             NodeOutput::Register(r) => {
-                arg_srcs.push(ArgSrc::Register(r));
+                last_reg.init_from_reg(self, r);
             }
             NodeOutput::ReturnValues => {
-                self.write(opcodes::StartCallExtending::from((target, argc - 1)));
-                write_args(self, arg_srcs);
+                self.write(opcodes::CallCopyRet::from((
+                    target,
+                    input_args_start,
+                    regular_argc,
+                )));
                 return Ok(None);
             }
             NodeOutput::VAStack => {
-                self.write(opcodes::StartCall::from((target, argc - 1)));
-                write_args(self, arg_srcs);
-                self.write(opcodes::Op::MapVarArgsAndDoCall);
+                self.write(opcodes::CallCopyVa::from((
+                    target,
+                    input_args_start,
+                    regular_argc,
+                )));
                 return Ok(None);
             }
             NodeOutput::Err(err) => return Ok(Some(err)),
         }
 
-        self.write(opcodes::StartCall::from((target, argc)));
-        write_args(self, arg_srcs);
-        self.write(opcodes::Op::DoCall);
+        self.write(opcodes::Call::from((target, input_args_start, argc)));
         Ok(None)
     }
 

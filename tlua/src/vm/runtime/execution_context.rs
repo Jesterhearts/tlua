@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use tlua_bytecode::{
     binop::f64inbounds,
     opcodes::{
@@ -249,14 +251,27 @@ impl Context<'_> {
                 }
 
                 // Begin calling a function
-                Op::StartCall(StartCall {
+                Op::Call(Call {
                     target,
-                    mapped_args,
+                    mapped_args_start,
+                    mapped_args_count,
                 }) => {
-                    let (arg_mapping_isns, next) = self.instruction_pointer.split_at(mapped_args);
-                    self.instruction_pointer = next;
-
-                    self.start_call(target, arg_mapping_isns, None)?;
+                    self.start_call(
+                        target,
+                        mapped_args_start..(mapped_args_start + mapped_args_count),
+                        Vec::default(),
+                    )?;
+                }
+                Op::CallCopyVa(CallCopyVa {
+                    target,
+                    mapped_args_start,
+                    mapped_args_count,
+                }) => {
+                    self.start_call(
+                        target,
+                        mapped_args_start..(mapped_args_start + mapped_args_count),
+                        self.in_scope.iter_va().cloned().collect(),
+                    )?;
                 }
 
                 // Set up return values for a function
@@ -316,11 +331,7 @@ impl Context<'_> {
                 // Stop execution by raising an error.
                 Op::Raise(Raise { err }) => return Err(err),
 
-                Op::StartCallExtending(_)
-                | Op::MapArg(_)
-                | Op::MapVa0
-                | Op::DoCall
-                | Op::MapVarArgsAndDoCall
+                Op::CallCopyRet(_)
                 | Op::MapRet(_)
                 | Op::StoreRet(_)
                 | Op::StoreAllRet(_)
@@ -341,29 +352,29 @@ impl Context<'_> {
     fn start_call(
         &mut self,
         target: AnyReg<Register>,
-        arg_mapping_instructions: &[Instruction],
-        other_results: Option<Vec<Value>>,
+        arg_range: Range<usize>,
+        extra_args: Vec<Value>,
     ) -> Result<(), OpError> {
         let func = match self.in_scope.load(target) {
             Value::Function(ptr) => ptr,
             _ => todo!("Metatables are not supported"),
         };
 
-        let results = self.execute_call(&func.borrow(), arg_mapping_instructions, other_results)?;
+        let results = self.execute_call(&func.borrow(), arg_range, extra_args)?;
 
         match self.instruction_pointer[0] {
             // We just performed a call, so if the very next instruction is StartCallExtending, we
             // know that we should include the results in that call directly rather than doing
             // normal result mapping.
-            Op::StartCallExtending(StartCallExtending {
+            Op::CallCopyRet(CallCopyRet {
                 target,
-                mapped_args,
-            }) => {
-                let (arg_mapping_isns, next) = self.instruction_pointer.split_at(mapped_args);
-                self.instruction_pointer = next;
-
-                self.start_call(target, arg_mapping_isns, Some(results))
-            }
+                mapped_args_start,
+                mapped_args_count,
+            }) => self.start_call(
+                target,
+                mapped_args_start..(mapped_args_start + mapped_args_count),
+                results,
+            ),
             // We just performed a call, so if the very next instruction is CopyRetFromRet, we know
             // we should copy over all of the results directly rather than doing normal result
             // mapping.
@@ -380,94 +391,39 @@ impl Context<'_> {
     fn execute_call(
         &mut self,
         func: &Function,
-        arg_mapping_instructions: &[Instruction],
-        other_results: Option<Vec<Value>>,
+        arg_range: Range<usize>,
+        mut extra_args: Vec<Value>,
     ) -> Result<Vec<Value>, OpError> {
-        let mut argi = 0;
-
         let func_def = &self.chunk.functions[usize::from(func.id)];
-        let argc = func_def.named_args;
+        let desired_input_args = func_def.named_args;
         let subscope = Scope::new(func_def.local_registers);
 
-        let mut va_args = Vec::with_capacity(arg_mapping_instructions.len().saturating_sub(argc));
+        let mut other_results = extra_args.drain(..);
 
-        for &isn in arg_mapping_instructions {
-            match isn {
-                Op::MapArg(MapArg { src }) => {
-                    let value = Value::try_from(src).unwrap_or_else(|reg| self.in_scope.load(reg));
-                    if argi < argc {
-                        subscope.registers[argi].replace(value);
-                        argi += 1;
-                    } else {
-                        va_args.push(value);
-                    }
-                }
-                Op::MapVa0 => {
-                    if argi < argc {
-                        subscope.registers[argi].replace(self.in_scope.load_va(0));
-                        argi += 1;
-                    } else {
-                        va_args.push(self.in_scope.load_va(0));
-                    }
-                }
-
-                _ => {
-                    return Err(OpError::ByteCodeError {
-                        err: ByteCodeError::ExpectedArgMappingInstruction,
-                        offset: self.ip_index(),
-                    })
-                }
-            }
-        }
-
-        let (&isn, next) = if let Some(isn) = self.instruction_pointer.split_first() {
-            isn
+        let total_input_args = arg_range.len() + other_results.len();
+        let mut va_args = if total_input_args > desired_input_args {
+            Vec::with_capacity(total_input_args - desired_input_args)
         } else {
-            return Err(OpError::ByteCodeError {
-                err: ByteCodeError::MissingCallInvocation,
-                offset: self.ip_index(),
-            });
+            Vec::default()
         };
 
-        self.instruction_pointer = next;
-
-        match isn {
-            Op::DoCall => {
-                let mut other_results = other_results.into_iter().flat_map(Vec::into_iter);
-
-                for arg in argi..argc {
-                    if let Some(init) = other_results.next() {
-                        subscope.registers[arg].replace(init);
-                    } else {
-                        break;
-                    }
-                }
-
-                va_args.extend(other_results);
-
-                self.subcontext(func, va_args, subscope).execute()
-            }
-            Op::MapVarArgsAndDoCall => {
-                let mut parent_va = self.in_scope.iter_va().cloned();
-
-                for arg in argi..argc {
-                    if let Some(init) = parent_va.next() {
-                        subscope.registers[arg].replace(init);
-                    } else {
-                        break;
-                    }
-                }
-
-                va_args.extend(parent_va);
-
-                self.subcontext(func, va_args, subscope).execute()
-            }
-
-            _ => Err(OpError::ByteCodeError {
-                err: ByteCodeError::MissingCallInvocation,
-                offset: self.ip_index(),
-            }),
+        // Map all of the explicit input args to target registers
+        for (target_idx, src_idx) in (0..desired_input_args).zip(arg_range.clone()) {
+            subscope.registers[target_idx].replace(self.in_scope.load_anon_offset(src_idx));
         }
+
+        if arg_range.len() < desired_input_args {
+            for target_idx in arg_range.len()..desired_input_args {
+                subscope.registers[target_idx].replace(other_results.next().unwrap_or_default());
+            }
+        } else {
+            for src_idx in (arg_range.start + desired_input_args)..arg_range.end {
+                va_args.push(self.in_scope.load_anon_offset(src_idx));
+            }
+        }
+
+        va_args.extend(other_results);
+        self.subcontext(func, va_args, subscope).execute()
     }
 
     fn map_results(&mut self, mut results: Vec<Value>) -> Result<(), OpError> {

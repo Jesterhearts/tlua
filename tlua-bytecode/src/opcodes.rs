@@ -155,29 +155,15 @@ pub enum Op<RegisterTy> {
     CopyRetFromVaAndRet,
     /// Stop executing this function and return.
     Ret,
-    /// Load the target function as the current call target and begin mapping
-    /// values into its registers. Extra arguments will populate the
-    /// function's variadic argument list. Missing arguments will be cleared
-    /// to nil.
-    StartCall(StartCall<RegisterTy>),
-    /// Performs the same operations as startcall, but allows for the inclusion
-    /// of the most recent function's return values in its argument list.
-    ///
-    /// Specifically, if the last instruction was a call invocation (e.g.
-    /// `DoCall` or `MapVarArgsAndDoCall`) the return values from that function
-    /// exection will be appended to the list of arguments immediately before
-    /// calling the target of this instruction
-    StartCallExtending(StartCallExtending<RegisterTy>),
-    /// Execute the function loaded by StartCall.
-    DoCall,
-    /// Copy this function's varargs into registers/varargs for the current call
-    /// target and then begin executing it.
-    MapVarArgsAndDoCall,
-    /// Load the target value into the the next register for the current call
-    /// target.
-    MapArg(MapArg<RegisterTy>),
-    /// Copy the first va arg into the next register for the current call target
-    MapVa0,
+    /// Load the target function as the current call target and copy a range of
+    /// anonymous register as that function's arguments.
+    Call(Call<RegisterTy>),
+    /// Performs the same operations as `Call` but maps the results of the most
+    /// recent call into the target's arguments.
+    CallCopyRet(CallCopyRet<RegisterTy>),
+    /// Performs the same operations as `Call`, but maps the current list of
+    /// variadic arguments into the target's arguments.
+    CallCopyVa(CallCopyVa<RegisterTy>),
     /// Copy all return values from a function into this function's output list
     /// and then return from the function.
     CopyRetFromRetAndRet,
@@ -238,20 +224,24 @@ pub struct JumpNotVa0 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct StartCall<RegTy> {
+pub struct Call<RegTy> {
     pub target: AnyReg<RegTy>,
-    pub mapped_args: usize,
+    pub mapped_args_start: usize,
+    pub mapped_args_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct StartCallExtending<RegTy> {
+pub struct CallCopyRet<RegTy> {
     pub target: AnyReg<RegTy>,
-    pub mapped_args: usize,
+    pub mapped_args_start: usize,
+    pub mapped_args_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct MapArg<RegTy> {
-    pub src: Operand<RegTy>,
+pub struct CallCopyVa<RegTy> {
+    pub target: AnyReg<RegTy>,
+    pub mapped_args_start: usize,
+    pub mapped_args_count: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
@@ -269,11 +259,6 @@ pub struct Alloc<RegTy> {
     pub dest: AnyReg<RegTy>,
     pub type_id: TypeId,
     pub metadata: TypeMeta,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct AllocTable<RegTy> {
-    pub dest: AnyReg<RegTy>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]

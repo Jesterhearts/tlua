@@ -136,7 +136,7 @@ impl ScopeSet {
         self.va_args.get(index).cloned().unwrap_or(Value::Nil)
     }
 
-    pub fn iter_va(&self) -> impl Iterator<Item = &Value> + '_ {
+    pub fn iter_va(&self) -> impl ExactSizeIterator<Item = &Value> + '_ {
         self.va_args.iter()
     }
 
@@ -146,6 +146,11 @@ impl ScopeSet {
 
     pub fn extend_results(&mut self, other: impl IntoIterator<Item = Value>) {
         self.results.extend(other.into_iter());
+    }
+
+    #[track_caller]
+    pub fn load_anon_offset(&self, index: usize) -> Value {
+        self.anon[index].clone()
     }
 
     // TODO(perf): This shouldn't be cloning its values.
