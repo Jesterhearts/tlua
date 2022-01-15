@@ -47,12 +47,8 @@ pub enum ByteCodeError {
 pub enum OpError {
     #[error("Invalid types for operator {op:?}")]
     InvalidType { op: &'static str },
-    #[error("Cannot index a numeric value")]
-    IndexNumberErr,
-    #[error("Cannot index a boolean value")]
-    IndexBoolErr,
-    #[error("Cannot index a nil value")]
-    IndexNilErr,
+    #[error("Attempted to index a {ty} value")]
+    NotATable { ty: &'static str },
     #[error("Attempted to compare {lhs} with {rhs}")]
     CmpErr {
         lhs: &'static str,

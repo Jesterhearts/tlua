@@ -53,6 +53,10 @@ impl<'c, 'list, T> CursorMut<'c, 'list, T> {
         Self { len, current }
     }
 
+    pub fn get_mut(&mut self) -> Option<&mut T> {
+        self.current.as_deref_mut().map(|node| &mut node.value)
+    }
+
     /// Allocate a list node, insert it after the current node and advance to
     /// it.
     pub fn alloc_insert_advance(self, alloc: &'list ASTAllocator, data: T) -> Self {
