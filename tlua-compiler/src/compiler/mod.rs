@@ -53,7 +53,7 @@ pub(crate) enum LocalVariableTarget {
 }
 
 #[derive(Debug)]
-enum HasVaArgs {
+pub(crate) enum HasVaArgs {
     None,
     Some,
 }
@@ -125,7 +125,7 @@ impl RegisterMappable<MappedLocalRegister> for LocalVariableTarget {
     fn map(self, compiler: &mut CompilerContext) -> Result<MappedLocalRegister, CompileError> {
         match self {
             LocalVariableTarget::Mutable(ident) => {
-                Ok(compiler.scope.new_local(ident)?.no_init_needed().into())
+                Ok(compiler.new_local(ident)?.no_init_needed().into())
             }
             LocalVariableTarget::Constant(ident) => {
                 Ok(compiler.scope.new_constant(ident)?.no_init_needed().into())
@@ -297,71 +297,6 @@ pub(crate) struct CompilerContext<'function> {
 }
 
 impl CompilerContext<'_> {
-    fn function_subcontext(&mut self, has_va_args: HasVaArgs) -> CompilerContext {
-        let scope = self.scope.subcontext();
-
-        CompilerContext {
-            functions: self.functions,
-            has_va_args,
-            function: UnasmFunction {
-                anon_registers: 0,
-                local_registers: 0,
-                named_args: 0,
-                instructions: Vec::default(),
-            },
-
-            scope,
-        }
-    }
-
-    fn complete(self) -> TypeMeta {
-        let Self {
-            functions,
-            mut function,
-            scope,
-            ..
-        } = self;
-
-        function.anon_registers = scope.total_anons;
-        function.local_registers = scope.total_locals;
-
-        let fn_id = functions.len();
-
-        functions.push(function);
-
-        TypeMeta::from(NonZeroUsize::try_from(fn_id + 1).ok())
-    }
-
-    fn write_fn(
-        &mut self,
-        params: impl ExactSizeIterator<Item = Ident>,
-        body: impl ExactSizeIterator<Item = impl CompileStatement>,
-        ret: Option<&impl CompileStatement>,
-    ) -> Result<(), CompileError> {
-        for param in params {
-            // TODO(compiler-opt): Technically today this allocates an extra, unused
-            // register for every duplicate identifier in the parameter list. It
-            // still works fine though, because the number of registers is
-            // correct.
-            self.scope.new_local(param)?.no_init_needed();
-            self.function.named_args += 1;
-        }
-
-        for stat in body {
-            stat.compile(self)?;
-        }
-
-        match ret {
-            Some(ret) => ret.compile(self)?,
-            None => {
-                self.emit(opcodes::Op::Ret);
-                None
-            }
-        };
-
-        Ok(())
-    }
-
     fn write_assignment<RegisterTy>(
         &mut self,
         mut targets: impl ExactSizeIterator<Item = impl RegisterMappable<RegisterTy>>,
@@ -485,11 +420,26 @@ impl CompilerContext<'_> {
         }
     }
 
+    /// Emit a new opcode to the current instruction stream
     pub(crate) fn emit(&mut self, opcode: impl Into<UnasmOp>) {
         self.function.instructions.push(opcode.into());
     }
 
-    pub(crate) fn anon_reg_range(
+    /// Map a new register for a local variable.
+    pub(crate) fn new_local(
+        &mut self,
+        ident: Ident,
+    ) -> Result<UninitRegister<OffsetRegister>, CompileError> {
+        self.scope.new_local(ident)
+    }
+
+    /// Allocate a new anonymous register.
+    pub(crate) fn new_anon_reg(&mut self) -> UninitRegister<AnonymousRegister> {
+        self.scope.new_anonymous()
+    }
+
+    /// Allocate a sequence of anonymous registers.
+    pub(crate) fn new_anon_reg_range(
         &mut self,
         size: usize,
     ) -> (
@@ -499,7 +449,7 @@ impl CompilerContext<'_> {
         let start = self.scope.total_anons;
         let range = start..(start + size);
         for _ in range.clone() {
-            let _ = self.scope.new_anonymous().no_init_needed();
+            let _ = self.new_anon_reg().no_init_needed();
         }
 
         (
@@ -520,6 +470,74 @@ impl CompilerContext<'_> {
     pub(crate) fn write_raise(&mut self, err: OpError) -> OpError {
         self.emit(opcodes::Raise::from(err));
         err
+    }
+
+    /// Create a new subcontext for compiling a function.
+    pub(crate) fn function_subcontext(&mut self, has_va_args: HasVaArgs) -> CompilerContext {
+        let scope = self.scope.subcontext();
+
+        CompilerContext {
+            functions: self.functions,
+            has_va_args,
+            function: UnasmFunction {
+                anon_registers: 0,
+                local_registers: 0,
+                named_args: 0,
+                instructions: Vec::default(),
+            },
+
+            scope,
+        }
+    }
+
+    /// Finalize a subcontext and return the type metadata for it.
+    pub(crate) fn complete_subcontext(self) -> TypeMeta {
+        let Self {
+            functions,
+            mut function,
+            scope,
+            ..
+        } = self;
+
+        function.anon_registers = scope.total_anons;
+        function.local_registers = scope.total_locals;
+
+        let fn_id = functions.len();
+
+        functions.push(function);
+
+        TypeMeta::from(NonZeroUsize::try_from(fn_id + 1).ok())
+    }
+
+    /// Emit the instructions for a function.
+    pub(crate) fn emit_fn(
+        &mut self,
+        params: impl ExactSizeIterator<Item = Ident>,
+        body: impl ExactSizeIterator<Item = impl CompileStatement>,
+        ret: Option<&impl CompileStatement>,
+    ) -> Result<(), CompileError> {
+        for param in params {
+            // TODO(compiler-opt): Technically today this allocates an extra, unused
+            // register for every duplicate identifier in the parameter list. It
+            // still works fine though, because the number of registers is
+            // correct.
+            self.new_local(param)?.no_init_needed();
+            self.function.named_args += 1;
+        }
+
+        for stat in body {
+            stat.compile(self)?;
+        }
+
+        match ret {
+            Some(ret) => ret.compile(self)?,
+            None => {
+                self.emit(opcodes::Op::Ret);
+                None
+            }
+        };
+
+        Ok(())
     }
 
     /// Instruct the compiler to compile a new block in its own subscope
@@ -688,88 +706,10 @@ impl CompilerContext<'_> {
         Ok(None)
     }
 
-    /// Instruct the compiler to compile a new global function.
-    pub(crate) fn write_global_fn(
-        &mut self,
-        params: impl ExactSizeIterator<Item = Ident>,
-        body: impl ExactSizeIterator<Item = impl CompileStatement>,
-        ret: Option<&impl CompileStatement>,
-    ) -> Result<TypeMeta, CompileError> {
-        let mut context = self.function_subcontext(HasVaArgs::None);
-
-        context.write_fn(params, body, ret)?;
-
-        Ok(context.complete())
-    }
-
-    /// Instruct the compiler to compile a new global function with variadic
-    /// arguments.
-    pub(crate) fn write_va_global_fn(
-        &mut self,
-        params: impl ExactSizeIterator<Item = Ident>,
-        body: impl ExactSizeIterator<Item = impl CompileStatement>,
-        ret: Option<&impl CompileStatement>,
-    ) -> Result<TypeMeta, CompileError> {
-        let mut context = self.function_subcontext(HasVaArgs::Some);
-
-        context.write_fn(params, body, ret)?;
-
-        Ok(context.complete())
-    }
-
-    /// Instruct the compiler to compile a new local function bound to `name`.
-    pub(crate) fn write_local_fn(
-        &mut self,
-        name: Ident,
-        params: impl ExactSizeIterator<Item = Ident>,
-        body: impl ExactSizeIterator<Item = impl CompileStatement>,
-        ret: Option<&impl CompileStatement>,
-    ) -> Result<(), CompileError> {
-        // This variable will be in scope for all child scopes :(
-        // So we have to allocate a register for it here before compiling the function
-        // body.
-        let register = self.scope.new_local(name)?;
-
-        let mut context = self.function_subcontext(HasVaArgs::None);
-
-        context.write_fn(params, body, ret)?;
-
-        let fn_id = context.complete();
-
-        // Because this is a local function declaration, we know we're the first write
-        // to it in scope. We had to have the register already allocated though so it
-        // could be in scope during compilation of child scopes.
-        register.init_alloc_fn(self, fn_id);
-
-        Ok(())
-    }
-
-    /// Instruct the compiler to compile a new local function bound to `name`
-    /// with variadic arguments.
-    pub(crate) fn write_va_local_fn(
-        &mut self,
-        name: Ident,
-        params: impl ExactSizeIterator<Item = Ident>,
-        body: impl ExactSizeIterator<Item = impl CompileStatement>,
-        ret: Option<&impl CompileStatement>,
-    ) -> Result<(), CompileError> {
-        let register = self.scope.new_local(name)?;
-
-        let mut context = self.function_subcontext(HasVaArgs::Some);
-
-        context.write_fn(params, body, ret)?;
-
-        let fn_id = context.complete();
-
-        register.init_alloc_fn(self, fn_id);
-
-        Ok(())
-    }
-
     /// Instruct the compiler to emit the instructions required to initialize a
     /// table.
     pub(crate) fn init_table(&mut self) -> UnasmRegister {
-        self.scope.new_anonymous().init_alloc_table(self).into()
+        self.new_anon_reg().init_alloc_table(self).into()
     }
 
     /// Instruct the compiler to emit the instructions required to set a value
@@ -1061,7 +1001,7 @@ impl CompilerContext<'_> {
         if let NodeOutput::Register(UnasmRegister::Immediate(reg)) = value {
             reg
         } else {
-            let reg = self.scope.new_anonymous();
+            let reg = self.new_anon_reg();
             match value {
                 NodeOutput::Constant(c) => reg.init_from_const(self, c),
                 NodeOutput::Register(r) => reg.init_from_reg(self, r),

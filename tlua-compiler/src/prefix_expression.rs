@@ -151,15 +151,7 @@ fn emit_call(
 ) -> Result<Option<OpError>, CompileError> {
     Ok(match atom {
         FunctionAtom::Call(args) => emit_call_with_args(compiler, target, args)?,
-        FunctionAtom::MethodCall { name, args } => compiler
-            .load_from_table(target, ConstantString::from(name))
-            .and_then(|maybe_err| {
-                if maybe_err.is_none() {
-                    emit_call_with_args(compiler, target, args)
-                } else {
-                    Ok(maybe_err)
-                }
-            })?,
+        FunctionAtom::MethodCall { name: _, args: _ } => todo!(),
     })
 }
 
@@ -191,7 +183,7 @@ fn emit_standard_call(
         return Ok(None);
     }
 
-    let (first_reg_idx, mut arg_registers) = compiler.anon_reg_range(argc);
+    let (first_reg_idx, mut arg_registers) = compiler.new_anon_reg_range(argc);
 
     let regular_argc = argc - 1;
 
