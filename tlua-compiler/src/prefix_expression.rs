@@ -4,6 +4,7 @@ use tlua_bytecode::{
     OpError,
 };
 use tlua_parser::ast::{
+    constant_string::ConstantString,
     expressions::Expression,
     prefix_expression::{
         function_calls::FnArgs,
@@ -27,7 +28,7 @@ use crate::{
 impl CompileExpression for VarAtom<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         match self {
-            VarAtom::Name(ident) => ident.compile(compiler),
+            VarAtom::Name(ident) => ConstantString::from(ident).compile(compiler),
             VarAtom::IndexOp(index) => index.compile(compiler),
         }
     }
@@ -46,7 +47,9 @@ impl CompileExpression for VarPrefixExpression<'_> {
                 };
 
                 match last {
-                    VarAtom::Name(ident) => compiler.load_from_table(src_reg, ident),
+                    VarAtom::Name(ident) => {
+                        compiler.load_from_table(src_reg, ConstantString::from(ident))
+                    }
                     VarAtom::IndexOp(index) => compiler.load_from_table(src_reg, index),
                 }
                 .map(|err| {
@@ -149,7 +152,7 @@ fn emit_call(
     Ok(match atom {
         FunctionAtom::Call(args) => emit_call_with_args(compiler, target, args)?,
         FunctionAtom::MethodCall { name, args } => compiler
-            .load_from_table(target, name)
+            .load_from_table(target, ConstantString::from(name))
             .and_then(|maybe_err| {
                 if maybe_err.is_none() {
                     emit_call_with_args(compiler, target, args)

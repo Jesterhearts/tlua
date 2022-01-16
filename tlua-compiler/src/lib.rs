@@ -84,12 +84,6 @@ trait CompileExpression {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError>;
 }
 
-impl CompileExpression for Ident {
-    fn compile(&self, _: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        Ok(NodeOutput::Constant(Constant::String(self.into())))
-    }
-}
-
 impl CompileExpression for Expression<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         match self {

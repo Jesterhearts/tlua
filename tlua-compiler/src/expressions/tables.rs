@@ -1,7 +1,10 @@
 use tlua_bytecode::OpError;
-use tlua_parser::ast::expressions::tables::{
-    Field,
-    TableConstructor,
+use tlua_parser::ast::{
+    constant_string::ConstantString,
+    expressions::tables::{
+        Field,
+        TableConstructor,
+    },
 };
 
 use crate::{
@@ -35,7 +38,9 @@ where
     for field in fields {
         match field {
             Field::Named { name, expression } => {
-                if let err @ Some(_) = compiler.assign_to_table(table, name, expression)? {
+                if let err @ Some(_) =
+                    compiler.assign_to_table(table, ConstantString::from(name), expression)?
+                {
                     return Ok(err);
                 }
                 last_field_va = false;
