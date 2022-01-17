@@ -140,10 +140,6 @@ pub enum Op<RegisterTy> {
     SetFromVa(SetFromVa<RegisterTy>),
     /// Allocate a type
     Alloc(Alloc<RegisterTy>),
-    /// Push a new scope as the current local scope.
-    PushScope(ScopeDescriptor),
-    /// Discard the current scope and restore the most recently pushed scope.
-    PopScope,
     /// Copy the target register value into this function's output list.
     SetRet(SetRet<RegisterTy>),
     /// Copy the first va arg into this function's output list.
@@ -156,6 +152,10 @@ pub enum Op<RegisterTy> {
     CopyRetFromVaAndRet,
     /// Stop executing this function and return.
     Ret,
+    /// Push a new scope as the current local scope.
+    PushScope(ScopeDescriptor),
+    /// Discard the current scope and restore the most recently pushed scope.
+    PopScope,
     /// Load the target function as the current call target and copy a range of
     /// anonymous register as that function's arguments.
     Call(Call<RegisterTy>),

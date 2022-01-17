@@ -436,6 +436,11 @@ impl CompilerContext<'_> {
         self.function.instructions[location] = opcode.into();
     }
 
+    /// Get the number of locals created in this scope so far.
+    pub(crate) fn total_locals(&self) -> usize {
+        self.scope.total_locals
+    }
+
     /// Map a new register for a local variable.
     pub(crate) fn new_local(
         &mut self,
@@ -551,11 +556,11 @@ impl CompilerContext<'_> {
         Ok(())
     }
 
-    /// Instruct the compiler to compile a new block in its own subscope
-    pub(crate) fn write_subscope(
+    /// Instruct the compiler to create a new context for the current function
+    /// in its own subscope and run the provided closure in that scope.
+    pub(crate) fn emit_in_subscope(
         &mut self,
-        mut body: impl ExactSizeIterator<Item = impl CompileStatement>,
-        ret: Option<&impl CompileStatement>,
+        subscope: &mut impl FnMut(&mut CompilerContext) -> Result<Option<OpError>, CompileError>,
     ) -> Result<Option<OpError>, CompileError> {
         let mut result = Ok(None);
 
@@ -581,28 +586,7 @@ impl CompilerContext<'_> {
                     function,
                 };
 
-                let pending = inner.function.instructions.len();
-                inner.emit(opcodes::Raise {
-                    err: OpError::ByteCodeError {
-                        err: ByteCodeError::MissingScopeDescriptor,
-                        offset: pending,
-                    },
-                });
-
-                result = body
-                    .try_for_each(|stat| stat.compile(&mut inner).map(|_| ()))
-                    .and_then(|()| match ret {
-                        Some(ret) => ret.compile(&mut inner),
-                        None => Ok(None),
-                    });
-
-                if result.is_ok() {
-                    inner.function.instructions[pending] = opcodes::ScopeDescriptor {
-                        size: inner.scope.total_locals,
-                    }
-                    .into();
-                    inner.emit(opcodes::Op::PopScope);
-                }
+                result = subscope(&mut inner);
 
                 (inner.has_va_args, inner.function, inner.scope.total_anons)
             };
