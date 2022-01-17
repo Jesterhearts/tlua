@@ -84,6 +84,8 @@ impl Context<'_> {
             self.instruction_pointer = next;
 
             match instruction {
+                Op::Nop => (),
+
                 // Numeric operations
                 Op::Add(data) => data.apply(&mut self.in_scope)?,
                 Op::Subtract(data) => data.apply(&mut self.in_scope)?,

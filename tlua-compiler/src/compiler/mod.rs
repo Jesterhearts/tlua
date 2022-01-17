@@ -8,11 +8,10 @@ use std::{
 
 use derive_more::From;
 use tlua_bytecode::{
-    opcodes::{self,},
+    opcodes,
     AnonymousRegister,
     ByteCodeError,
     OpError,
-    Truthy,
     TypeMeta,
 };
 use tlua_parser::ast::{
@@ -420,9 +419,21 @@ impl CompilerContext<'_> {
         }
     }
 
-    /// Emit a new opcode to the current instruction stream
-    pub(crate) fn emit(&mut self, opcode: impl Into<UnasmOp>) {
+    /// Get the current offset in the instruction stream.
+    pub(crate) fn current_instruction(&self) -> usize {
+        self.function.instructions.len()
+    }
+
+    /// Emit a new opcode to the current instruction stream. Returns the
+    /// location in the instruction stream.
+    pub(crate) fn emit(&mut self, opcode: impl Into<UnasmOp>) -> usize {
         self.function.instructions.push(opcode.into());
+        self.current_instruction() - 1
+    }
+
+    /// Overwrite the instruction at location.
+    pub(crate) fn overwrite(&mut self, location: usize, opcode: impl Into<UnasmOp>) {
+        self.function.instructions[location] = opcode.into();
     }
 
     /// Map a new register for a local variable.
@@ -609,103 +620,6 @@ impl CompilerContext<'_> {
         result
     }
 
-    pub(crate) fn write_if_sequence(
-        &mut self,
-        conditions: impl Iterator<Item = impl CompileExpression>,
-        bodies: impl Iterator<Item = impl CompileStatement>,
-    ) -> Result<Option<OpError>, CompileError> {
-        let mut conditions = conditions.peekable();
-        let mut bodies = bodies.peekable();
-
-        let mut pending_exit_location = None;
-        let cleanup_pending = |pending, compiler: &mut CompilerContext| {
-            if let Some(pending) = pending {
-                compiler.function.instructions[pending] = opcodes::Jump {
-                    target: compiler.function.instructions.len(),
-                }
-                .into();
-            }
-        };
-
-        let cleanup_add_pending_block_exit = |pending, compiler: &mut CompilerContext| {
-            cleanup_pending(pending, compiler);
-
-            let pending = compiler.function.instructions.len();
-            compiler.emit(opcodes::Raise {
-                err: OpError::ByteCodeError {
-                    err: ByteCodeError::MissingJump,
-                    offset: pending,
-                },
-            });
-            pending
-        };
-
-        while let (Some(_), Some(_)) = (conditions.peek(), bodies.peek()) {
-            let (cond, body) = (
-                conditions.next().expect("Saw a cond"),
-                bodies.next().expect("Saw a body"),
-            );
-
-            let cond_value = cond.compile(self)?;
-
-            if let NodeOutput::Constant(c) = cond_value {
-                if c.as_bool() {
-                    // No other branches are reachable.
-                    body.compile(self)?;
-                    cleanup_pending(pending_exit_location, self);
-                    return Ok(None);
-                } else {
-                    // The body is statically unreachable, skip it.
-                    continue;
-                }
-            } else if let NodeOutput::Err(err) = cond_value {
-                // If evaluating the condition would statically raise, we can skip compiling the
-                // rest of the sequence, since it's unreachable.
-                return Ok(Some(err));
-            }
-
-            let jump_location = self.function.instructions.len();
-            self.emit(opcodes::Raise {
-                err: OpError::ByteCodeError {
-                    err: ByteCodeError::MissingJump,
-                    offset: jump_location,
-                },
-            });
-
-            body.compile(self)?;
-
-            pending_exit_location =
-                Some(cleanup_add_pending_block_exit(pending_exit_location, self));
-
-            self.function.instructions[jump_location] = match cond_value {
-                NodeOutput::Register(reg) => opcodes::JumpNot {
-                    cond: reg,
-                    target: self.function.instructions.len(),
-                }
-                .into(),
-                NodeOutput::ReturnValues => opcodes::JumpNotRet0 {
-                    target: self.function.instructions.len(),
-                }
-                .into(),
-                NodeOutput::VAStack => opcodes::JumpNotVa0 {
-                    target: self.function.instructions.len(),
-                }
-                .into(),
-                NodeOutput::Err(_) | NodeOutput::Constant(_) => {
-                    unreachable!("Constant conditions should already be handled.")
-                }
-            }
-        }
-
-        debug_assert!(conditions.next().is_none());
-        if let Some(last) = bodies.next() {
-            last.compile(self)?;
-        }
-        cleanup_pending(pending_exit_location, self);
-
-        Ok(None)
-    }
-
     /// Instruct the compiler to emit the instructions required to initialize a
     /// table.
     pub(crate) fn init_table(&mut self) -> UnasmRegister {
@@ -844,7 +758,9 @@ impl CompilerContext<'_> {
                 NodeOutput::ReturnValues => {
                     self.emit(opcodes::Op::SetRetFromRet0);
                 }
-                NodeOutput::VAStack => self.emit(opcodes::Op::SetRetVa0),
+                NodeOutput::VAStack => {
+                    self.emit(opcodes::Op::SetRetVa0);
+                }
             }
         }
 
@@ -855,16 +771,18 @@ impl CompilerContext<'_> {
         {
             NodeOutput::Constant(c) => {
                 self.emit(opcodes::SetRet::from(UnasmOperand::from(c)));
-                self.emit(opcodes::Op::Ret)
+                self.emit(opcodes::Op::Ret);
             }
             NodeOutput::Register(register) => {
                 self.emit(opcodes::SetRet::from(UnasmOperand::from(register)));
-                self.emit(opcodes::Op::Ret)
+                self.emit(opcodes::Op::Ret);
             }
             NodeOutput::ReturnValues => {
                 self.emit(opcodes::Op::CopyRetFromRetAndRet);
             }
-            NodeOutput::VAStack => self.emit(opcodes::Op::CopyRetFromVaAndRet),
+            NodeOutput::VAStack => {
+                self.emit(opcodes::Op::CopyRetFromVaAndRet);
+            }
             NodeOutput::Err(err) => {
                 return Ok(Some(err));
             }

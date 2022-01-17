@@ -129,6 +129,7 @@ impl AssembleOp for UnasmOp {
 
     fn assemble(self) -> Self::Target {
         match self {
+            Op::Nop => Op::Nop,
             Op::Add(op) => Op::Add(<(_, _)>::from(op).assemble().into()),
             Op::Subtract(op) => Op::Subtract(<(_, _)>::from(op).assemble().into()),
             Op::Times(op) => Op::Times(<(_, _)>::from(op).assemble().into()),

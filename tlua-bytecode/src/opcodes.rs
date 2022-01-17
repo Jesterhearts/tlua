@@ -63,6 +63,7 @@ pub type Instruction = Op<Register>;
 /// generic over the register type to allow intermediate forms of bytecode.
 #[derive(Debug, Clone, Copy, PartialEq, From)]
 pub enum Op<RegisterTy> {
+    Nop,
     /// `[dest] += [src]`
     Add(FloatOp<Add, RegisterTy>),
     /// `[dest] -= [src]`, preserving types.
