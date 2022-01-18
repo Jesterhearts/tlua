@@ -1,11 +1,12 @@
+use either::Either;
 use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::variables::{
-    Attribute,
+    LocalVar,
     LocalVarList,
 };
 
 use crate::{
-    compiler::LocalVariableTarget,
+    statement::assignment,
     CompileError,
     CompileStatement,
     CompilerContext,
@@ -13,12 +14,13 @@ use crate::{
 
 impl CompileStatement for LocalVarList<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        compiler.write_assign_all_locals(
-            self.vars.iter().map(|var| match var.attribute {
-                Some(Attribute::Const) => LocalVariableTarget::Constant(var.name),
-                Some(Attribute::Close) => LocalVariableTarget::Closable(var.name),
-                None => LocalVariableTarget::Mutable(var.name),
-            }),
+        assignment::emit_assignments(
+            compiler,
+            &mut |compiler, var: &LocalVar| match var.attribute {
+                None => compiler.new_local(var.name).map(Either::Left),
+                Some(_) => todo!(),
+            },
+            self.vars.iter(),
             self.initializers.iter(),
         )
     }

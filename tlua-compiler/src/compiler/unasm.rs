@@ -1,7 +1,3 @@
-use derive_more::{
-    Deref,
-    From,
-};
 use tlua_bytecode::{
     opcodes::*,
     MappedRegister,
@@ -31,14 +27,7 @@ impl From<OffsetRegister> for Register {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deref)]
-pub(crate) struct ConstantRegister(pub(super) OffsetRegister);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From)]
-pub(crate) enum LocalRegister {
-    Mutable(OffsetRegister),
-    Constant(ConstantRegister),
-}
+pub(crate) type LocalRegister = OffsetRegister;
 
 pub(crate) type MappedLocalRegister = MappedRegister<LocalRegister>;
 pub(crate) type UnasmRegister = AnyReg<LocalRegister>;
@@ -46,10 +35,7 @@ pub(crate) type UnasmOperand = Operand<LocalRegister>;
 
 impl From<LocalRegister> for Register {
     fn from(val: LocalRegister) -> Self {
-        match val {
-            LocalRegister::Mutable(m) => m.into(),
-            LocalRegister::Constant(c) => c.0.into(),
-        }
+        val.0.into()
     }
 }
 
@@ -59,21 +45,9 @@ impl From<OffsetRegister> for MappedLocalRegister {
     }
 }
 
-impl From<ConstantRegister> for MappedLocalRegister {
-    fn from(reg: ConstantRegister) -> Self {
-        Self::from(LocalRegister::from(reg))
-    }
-}
-
 impl From<OffsetRegister> for UnasmRegister {
     fn from(reg: OffsetRegister) -> Self {
         Self::Register(LocalRegister::Mutable(reg).into())
-    }
-}
-
-impl From<ConstantRegister> for UnasmRegister {
-    fn from(reg: ConstantRegister) -> Self {
-        Self::Register(LocalRegister::Constant(reg).into())
     }
 }
 

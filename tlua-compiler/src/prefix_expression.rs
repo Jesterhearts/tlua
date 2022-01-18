@@ -36,28 +36,10 @@ impl CompileExpression for VarAtom<'_> {
 
 impl CompileExpression for VarPrefixExpression<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        match self {
-            VarPrefixExpression::Name(ident) => {
-                compiler.read_variable(*ident).map(NodeOutput::Register)
-            }
-            VarPrefixExpression::TableAccess { head, middle, last } => {
-                let src_reg = match emit_table_path_traversal(compiler, head, middle.iter())? {
-                    Either::Left(reg) => reg,
-                    Either::Right(err) => return Ok(NodeOutput::Err(err)),
-                };
-
-                match last {
-                    VarAtom::Name(ident) => {
-                        compiler.load_from_table(src_reg, ConstantString::from(ident))
-                    }
-                    VarAtom::IndexOp(index) => compiler.load_from_table(src_reg, index),
-                }
-                .map(|err| {
-                    err.map(NodeOutput::Err)
-                        .unwrap_or(NodeOutput::Register(src_reg))
-                })
-            }
-        }
+        map_var(compiler, self).map(|reg_or_err| match reg_or_err {
+            Either::Left(reg) => NodeOutput::Register(reg),
+            Either::Right(err) => NodeOutput::Err(err),
+        })
     }
 }
 
@@ -192,17 +174,13 @@ fn emit_standard_call(
             .next()
             .expect("Should still have arg registers");
 
-        match args
+        let arg_init = args
             .next()
             .expect("Still in bounds for args")
-            .compile(compiler)?
-        {
-            NodeOutput::Constant(c) => arg_reg.init_from_const(compiler, c),
-            NodeOutput::Register(r) => arg_reg.init_from_reg(compiler, r),
-            NodeOutput::ReturnValues => arg_reg.init_from_ret(compiler),
-            NodeOutput::VAStack => arg_reg.init_from_va(compiler, 0),
-            NodeOutput::Err(err) => return Ok(Some(err)),
-        };
+            .compile(compiler)?;
+        if let Either::Right(err) = arg_reg.init_from_node_output(compiler, arg_init) {
+            return Ok(Some(err));
+        }
     }
 
     let last_reg = arg_registers.last().expect("Should have at least 1 arg");
@@ -240,4 +218,27 @@ fn emit_standard_call(
 
     compiler.emit(opcodes::Call::from((target, first_reg_idx, argc)));
     Ok(None)
+}
+
+pub(crate) fn map_var(
+    compiler: &mut CompilerContext,
+    expr: &VarPrefixExpression,
+) -> Result<Either<UnasmRegister, OpError>, CompileError> {
+    match expr {
+        VarPrefixExpression::Name(ident) => compiler.read_variable(*ident).map(Either::Left),
+        VarPrefixExpression::TableAccess { head, middle, last } => {
+            let src_reg = match emit_table_path_traversal(compiler, head, middle.iter())? {
+                Either::Left(reg) => reg,
+                Either::Right(err) => return Ok(Either::Right(err)),
+            };
+
+            match last {
+                VarAtom::Name(ident) => {
+                    compiler.load_from_table(src_reg, ConstantString::from(ident))
+                }
+                VarAtom::IndexOp(index) => compiler.load_from_table(src_reg, index),
+            }
+            .map(|err| err.map(Either::Right).unwrap_or(Either::Left(src_reg)))
+        }
+    }
 }

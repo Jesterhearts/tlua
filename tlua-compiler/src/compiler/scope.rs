@@ -12,10 +12,7 @@ use tlua_parser::ast::identifiers::Ident;
 
 use crate::{
     compiler::{
-        unasm::{
-            ConstantRegister,
-            OffsetRegister,
-        },
+        unasm::OffsetRegister,
         UninitRegister,
     },
     CompileError,
@@ -113,17 +110,6 @@ impl ScopeContext<'_> {
         UninitRegister {
             register: reg.into(),
         }
-    }
-
-    pub(super) fn new_constant(
-        &mut self,
-        ident: Ident,
-    ) -> Result<UninitRegister<ConstantRegister>, CompileError> {
-        let UninitRegister { register } = self.new_local(ident)?;
-
-        Ok(UninitRegister {
-            register: ConstantRegister(register),
-        })
     }
 
     pub(super) fn new_local(

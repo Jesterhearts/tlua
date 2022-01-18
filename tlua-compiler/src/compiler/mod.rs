@@ -7,10 +7,10 @@ use std::{
 };
 
 use derive_more::From;
+use either::Either;
 use tlua_bytecode::{
     opcodes,
     AnonymousRegister,
-    ByteCodeError,
     OpError,
     TypeMeta,
 };
@@ -36,20 +36,6 @@ use self::{
     scope::*,
     unasm::*,
 };
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum VariableTarget {
-    Ident(Ident),
-    // TODO(tables)
-    Register(UnasmRegister),
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum LocalVariableTarget {
-    Mutable(Ident),
-    Constant(Ident),
-    Closable(Ident),
-}
 
 #[derive(Debug)]
 pub(crate) enum HasVaArgs {
@@ -112,37 +98,6 @@ impl Compiler {
     }
 }
 
-trait RegisterMappable<RegisterTy>: Sized
-where
-    RegisterTy: InitRegister<RegisterTy> + Copy,
-    UnasmRegister: From<RegisterTy>,
-{
-    fn map(self, compiler: &mut CompilerContext) -> Result<RegisterTy, CompileError>;
-}
-
-impl RegisterMappable<MappedLocalRegister> for LocalVariableTarget {
-    fn map(self, compiler: &mut CompilerContext) -> Result<MappedLocalRegister, CompileError> {
-        match self {
-            LocalVariableTarget::Mutable(ident) => {
-                Ok(compiler.new_local(ident)?.no_init_needed().into())
-            }
-            LocalVariableTarget::Constant(ident) => {
-                Ok(compiler.scope.new_constant(ident)?.no_init_needed().into())
-            }
-            LocalVariableTarget::Closable(_) => todo!(),
-        }
-    }
-}
-
-impl RegisterMappable<UnasmRegister> for VariableTarget {
-    fn map(self, compiler: &mut CompilerContext) -> Result<UnasmRegister, CompileError> {
-        match self {
-            VariableTarget::Ident(ident) => Ok(compiler.scope.get_in_scope(ident)?.into()),
-            VariableTarget::Register(reg) => Ok(reg),
-        }
-    }
-}
-
 pub(crate) trait InitRegister<RegisterTy>: Sized
 where
     RegisterTy: Copy,
@@ -151,6 +106,21 @@ where
     /// Indicate that the register should always init to nil, and needs no
     /// special handling.
     fn no_init_needed(self) -> RegisterTy;
+
+    /// Initialize the register from node output.
+    fn init_from_node_output(
+        self,
+        compiler: &mut CompilerContext,
+        value: NodeOutput,
+    ) -> Either<RegisterTy, OpError> {
+        match value {
+            NodeOutput::Constant(value) => Either::Left(self.init_from_const(compiler, value)),
+            NodeOutput::Register(source) => Either::Left(self.init_from_reg(compiler, source)),
+            NodeOutput::ReturnValues => Either::Left(self.init_from_ret(compiler)),
+            NodeOutput::VAStack => Either::Left(self.init_from_va(compiler, 0)),
+            NodeOutput::Err(err) => Either::Right(err),
+        }
+    }
 
     /// Indicate that the register should be initialized from a return value.
     fn init_from_ret(self, compiler: &mut CompilerContext) -> RegisterTy {
@@ -214,7 +184,7 @@ where
 }
 
 impl InitRegister<UnasmRegister> for UnasmRegister {
-    fn no_init_needed(self) -> UnasmRegister {
+    fn no_init_needed(self) -> Self {
         self
     }
 }
@@ -296,97 +266,6 @@ pub(crate) struct CompilerContext<'function> {
 }
 
 impl CompilerContext<'_> {
-    fn write_assignment<RegisterTy>(
-        &mut self,
-        mut targets: impl ExactSizeIterator<Item = impl RegisterMappable<RegisterTy>>,
-        mut initializers: impl ExactSizeIterator<Item = impl CompileExpression>,
-    ) -> Result<Option<OpError>, CompileError>
-    where
-        RegisterTy: Copy + InitRegister<RegisterTy>,
-        UnasmRegister: From<RegisterTy>,
-    {
-        if initializers.len() == 0 {
-            for dest in targets {
-                dest.map(self)?.init_from_const(self, Constant::Nil);
-            }
-            return Ok(None);
-        }
-
-        let common_length = targets.len().min(initializers.len() - 1);
-
-        for _ in 0..common_length {
-            let (dest, init) = (
-                targets.next().expect("Still in size of shortest iterator"),
-                initializers
-                    .next()
-                    .expect("Still in size of shortest iterator"),
-            );
-            match init.compile(self)? {
-                NodeOutput::Constant(value) => dest.map(self)?.init_from_const(self, value),
-                NodeOutput::Register(source) => dest.map(self)?.init_from_reg(self, source),
-                NodeOutput::ReturnValues => dest.map(self)?.init_from_ret(self),
-                NodeOutput::VAStack => dest.map(self)?.init_from_va(self, 0),
-                NodeOutput::Err(err) => return Ok(Some(err)),
-            };
-        }
-
-        if targets.len() > 0 {
-            debug_assert_eq!(initializers.len(), 1);
-
-            match initializers
-                .next()
-                .map(|expr| expr.compile(self))
-                .map_or(Ok(None), |res| res.map(Some))?
-            {
-                Some(NodeOutput::Constant(value)) => {
-                    targets
-                        .next()
-                        .expect("Still in bounds for target length")
-                        .map(self)?
-                        .init_from_const(self, value);
-
-                    for dest in targets {
-                        dest.map(self)?.init_from_const(self, Constant::Nil);
-                    }
-                }
-                Some(NodeOutput::Register(source)) => {
-                    targets
-                        .next()
-                        .expect("Still in bounds for target length")
-                        .map(self)?
-                        .init_from_reg(self, source);
-
-                    for dest in targets {
-                        dest.map(self)?.init_from_const(self, Constant::Nil);
-                    }
-                }
-                Some(NodeOutput::ReturnValues) => {
-                    for dest in targets {
-                        dest.map(self)?.init_from_ret(self);
-                    }
-                }
-                Some(NodeOutput::VAStack) => {
-                    for (index, dest) in targets.enumerate() {
-                        dest.map(self)?.init_from_va(self, index);
-                    }
-                }
-                _ => {
-                    for dest in targets {
-                        dest.map(self)?.init_from_const(self, Constant::Nil);
-                    }
-                }
-            }
-        } else {
-            for init in initializers {
-                if let NodeOutput::Err(err) = init.compile(self)? {
-                    return Ok(Some(err));
-                }
-            }
-        }
-
-        Ok(None)
-    }
-
     fn write_store_table(&mut self, table: UnasmRegister, index: UnasmOperand, value: NodeOutput) {
         match value {
             NodeOutput::Constant(c) => {
@@ -474,8 +353,6 @@ impl CompilerContext<'_> {
         )
     }
 
-    /// Instruct the compiler to emit a sequence of instructions corresponding
-    /// to calling a function.
     /// Lookup the appropriate register for a specific identifier.
     pub(crate) fn read_variable(&mut self, ident: Ident) -> Result<UnasmRegister, CompileError> {
         Ok(self.scope.get_in_scope(ident)?.into())
@@ -775,33 +652,6 @@ impl CompilerContext<'_> {
         Ok(None)
     }
 
-    /// Instruct the compiler to emit a sequence of instructions for local
-    /// variable initialization.
-    pub(crate) fn write_assign_all_locals(
-        &mut self,
-        targets: impl ExactSizeIterator<Item = LocalVariableTarget>,
-        initializers: impl ExactSizeIterator<Item = impl CompileExpression>,
-    ) -> Result<Option<OpError>, CompileError> {
-        self.write_assignment(targets, initializers)
-    }
-
-    /// Instruct the compiler to emit a sequence of instructions for variable
-    /// initialization.
-    /// Note that LUA 5.4 has special, undocumented, rules for how multiple
-    /// return values from a function & multiple assignments interact. If
-    /// you have a function with multiple return values in the middle of a
-    /// list of initializers, only the first value returned from that function
-    /// will be used. If a function with multiple return values is the _last_
-    /// item in the list, it will yield up to all of its values to initialize
-    /// each variable.
-    pub(crate) fn write_assign_all(
-        &mut self,
-        targets: impl ExactSizeIterator<Item = VariableTarget>,
-        initializers: impl ExactSizeIterator<Item = impl CompileExpression>,
-    ) -> Result<Option<OpError>, CompileError> {
-        self.write_assignment(targets, initializers)
-    }
-
     /// Instruct the compiler to emit a sequence of instructions corresponding
     /// to a binary operation on the result of two nodes.
     pub(crate) fn write_binop<Op, Lhs, Rhs, ConstEval>(
@@ -903,16 +753,9 @@ impl CompilerContext<'_> {
         if let NodeOutput::Register(UnasmRegister::Immediate(reg)) = value {
             reg
         } else {
-            let reg = self.new_anon_reg();
-            match value {
-                NodeOutput::Constant(c) => reg.init_from_const(self, c),
-                NodeOutput::Register(r) => reg.init_from_reg(self, r),
-                NodeOutput::ReturnValues => reg.init_from_ret(self),
-                NodeOutput::VAStack => reg.init_from_va(self, 0),
-                NodeOutput::Err(_) => {
-                    unreachable!("Errors should not be handled by storing them in registers.")
-                }
-            }
+            self.new_anon_reg()
+                .init_from_node_output(self, value)
+                .expect_left("Errors should not be handled by storing them in registers.")
         }
     }
 }
