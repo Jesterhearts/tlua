@@ -33,21 +33,9 @@ pub(crate) type MappedLocalRegister = MappedRegister<LocalRegister>;
 pub(crate) type UnasmRegister = AnyReg<LocalRegister>;
 pub(crate) type UnasmOperand = Operand<LocalRegister>;
 
-impl From<LocalRegister> for Register {
-    fn from(val: LocalRegister) -> Self {
-        val.0.into()
-    }
-}
-
-impl From<OffsetRegister> for MappedLocalRegister {
-    fn from(reg: OffsetRegister) -> Self {
-        Self::from(LocalRegister::from(reg))
-    }
-}
-
 impl From<OffsetRegister> for UnasmRegister {
     fn from(reg: OffsetRegister) -> Self {
-        Self::Register(LocalRegister::Mutable(reg).into())
+        Self::Register(reg.into())
     }
 }
 
