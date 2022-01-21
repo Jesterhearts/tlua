@@ -266,30 +266,6 @@ pub(crate) struct CompilerContext<'function> {
 }
 
 impl CompilerContext<'_> {
-    fn write_store_table(&mut self, table: UnasmRegister, index: UnasmOperand, value: NodeOutput) {
-        match value {
-            NodeOutput::Constant(c) => {
-                self.emit(opcodes::Store::from((table, index, UnasmOperand::from(c))));
-            }
-            NodeOutput::Register(reg) => {
-                self.emit(opcodes::Store::from((
-                    table,
-                    index,
-                    UnasmOperand::from(reg),
-                )));
-            }
-            NodeOutput::ReturnValues => {
-                self.emit(opcodes::StoreRet::from((table, index)));
-            }
-            NodeOutput::VAStack => {
-                self.emit(opcodes::StoreFromVa::from((table, index, 0)));
-            }
-            NodeOutput::Err(_) => unreachable!("Errors should already be handled."),
-        }
-    }
-}
-
-impl CompilerContext<'_> {
     /// Check if varargs are available in scope
     pub(crate) fn check_varargs(&self) -> Result<(), CompileError> {
         match self.has_va_args {
@@ -487,47 +463,31 @@ impl CompilerContext<'_> {
         self.new_anon_reg().init_alloc_table(self).into()
     }
 
-    /// Instruct the compiler to emit the instructions required to set a value
-    /// in a table based on an index.
-    pub(crate) fn assign_to_array(
+    pub(crate) fn emit_store_table(
         &mut self,
         table: UnasmRegister,
-        zero_based_index: usize,
+        index: UnasmOperand,
         value: NodeOutput,
-    ) -> Result<(), CompileError> {
-        let index = UnasmOperand::from(i64::try_from(zero_based_index + 1).map_err(|_| {
-            CompileError::TooManyTableEntries {
-                max: i64::MAX as usize,
-            }
-        })?);
-
-        self.write_store_table(table, index, value);
-
-        Ok(())
-    }
-
-    /// Instruct the compiler to emit the instructions required copy a list of
-    /// va arguments to the arraylike indicies of a table starting at
-    /// `start_index`.
-    pub(crate) fn copy_va_to_array(&mut self, table: UnasmRegister, zero_based_start_index: usize) {
-        self.emit(opcodes::StoreAllFromVa::from((
-            table,
-            zero_based_start_index + 1,
-        )));
-    }
-
-    /// Instruct the compiler to emit the instructions required copy a list of
-    /// return values to the arraylike indicies of a table starting at
-    /// `start_index`.
-    pub(crate) fn copy_ret_to_array(
-        &mut self,
-        table: UnasmRegister,
-        zero_based_start_index: usize,
     ) {
-        self.emit(opcodes::StoreAllRet::from((
-            table,
-            zero_based_start_index + 1,
-        )));
+        match value {
+            NodeOutput::Constant(c) => {
+                self.emit(opcodes::Store::from((table, index, UnasmOperand::from(c))));
+            }
+            NodeOutput::Register(reg) => {
+                self.emit(opcodes::Store::from((
+                    table,
+                    index,
+                    UnasmOperand::from(reg),
+                )));
+            }
+            NodeOutput::ReturnValues => {
+                self.emit(opcodes::StoreRet::from((table, index)));
+            }
+            NodeOutput::VAStack => {
+                self.emit(opcodes::StoreFromVa::from((table, index, 0)));
+            }
+            NodeOutput::Err(_) => unreachable!("Errors should already be handled."),
+        }
     }
 
     pub(crate) fn load_from_table(
@@ -567,7 +527,7 @@ impl CompilerContext<'_> {
                 | value @ NodeOutput::ReturnValues
                 | value @ NodeOutput::VAStack,
             ) => {
-                self.write_store_table(table, index.into(), value);
+                self.emit_store_table(table, index.into(), value);
                 Ok(None)
             }
             (
@@ -580,7 +540,7 @@ impl CompilerContext<'_> {
                 | value @ NodeOutput::VAStack,
             ) => {
                 let index = self.write_move_to_reg(index).into();
-                self.write_store_table(table, index, value);
+                self.emit_store_table(table, index, value);
 
                 Ok(None)
             }

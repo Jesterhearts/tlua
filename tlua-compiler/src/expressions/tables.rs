@@ -1,4 +1,7 @@
-use tlua_bytecode::OpError;
+use tlua_bytecode::{
+    opcodes,
+    OpError,
+};
 use tlua_parser::ast::{
     constant_string::ConstantString,
     expressions::tables::{
@@ -8,7 +11,10 @@ use tlua_parser::ast::{
 };
 
 use crate::{
-    compiler::unasm::UnasmRegister,
+    compiler::unasm::{
+        UnasmOperand,
+        UnasmRegister,
+    },
     CompileError,
     CompileExpression,
     CompilerContext,
@@ -61,7 +67,7 @@ where
         }
     }
 
-    let (last, rest) = if last_field_va {
+    let (last, initializers) = if last_field_va {
         arraylike
             .split_last()
             .map(|(last, rest)| (Some(last), rest))
@@ -70,14 +76,28 @@ where
         (None, arraylike.as_slice())
     };
 
-    for (index, init) in rest.iter().enumerate() {
-        compiler.assign_to_array(table, index, *init)?;
+    for (index, init) in initializers.iter().enumerate() {
+        let value = *init;
+        let index = UnasmOperand::from(i64::try_from(index + 1).map_err(|_| {
+            CompileError::TooManyTableEntries {
+                max: i64::MAX as usize,
+            }
+        })?);
+
+        compiler.emit_store_table(table, index, value);
     }
 
     if let Some(last) = last {
         match last {
-            NodeOutput::ReturnValues => compiler.copy_ret_to_array(table, rest.len()),
-            NodeOutput::VAStack => compiler.copy_va_to_array(table, rest.len()),
+            NodeOutput::ReturnValues => {
+                compiler.emit(opcodes::StoreAllRet::from((table, initializers.len() + 1)));
+            }
+            NodeOutput::VAStack => {
+                compiler.emit(opcodes::StoreAllFromVa::from((
+                    table,
+                    initializers.len() + 1,
+                )));
+            }
             NodeOutput::Constant(_) | NodeOutput::Register(_) | NodeOutput::Err(_) => {
                 unreachable!("Only VA and return value nodes need special handling.")
             }
