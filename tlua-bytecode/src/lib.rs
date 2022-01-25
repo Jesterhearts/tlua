@@ -64,6 +64,8 @@ pub enum OpError {
     TableIndexOutOfBounds,
     #[error("Meta method {name} not found")]
     NoSuchMetaMethod { name: &'static str },
+    #[error("Missing label")]
+    MissingLabel,
     #[error("Miscompiled bytecode ({err}) at offset {offset} in sequence")]
     ByteCodeError { err: ByteCodeError, offset: usize },
 }

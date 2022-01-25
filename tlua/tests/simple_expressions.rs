@@ -1,3 +1,4 @@
+use indoc::indoc;
 use pretty_assertions::assert_eq;
 use tlua::{
     compile,
@@ -152,6 +153,29 @@ fn all_basic_math() -> anyhow::Result<()> {
             // ~11
             Some((-12).into()),
         ],
+        "{:#?} produced an incorrect result",
+        chunk
+    );
+
+    Ok(())
+}
+
+#[test]
+fn simple_local_assign() -> anyhow::Result<()> {
+    let src = indoc! {"
+        local a = 10
+        return a
+    "};
+
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+
+    let result = rt.execute(&chunk)?;
+
+    assert_eq!(
+        result,
+        vec![10.into()],
         "{:#?} produced an incorrect result",
         chunk
     );

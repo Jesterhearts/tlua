@@ -7,7 +7,11 @@ use std::{
     num::NonZeroUsize,
 };
 
-use tlua_bytecode::AnonymousRegister;
+use tlua_bytecode::{
+    opcodes,
+    AnonymousRegister,
+    OpError,
+};
 use tlua_parser::ast::identifiers::Ident;
 
 use crate::{
@@ -43,6 +47,7 @@ impl RootScope {
         FunctionScope {
             root: self,
             scope_id: NonZeroUsize::new(usize::from(GLOBAL_SCOPE + 1)).unwrap(),
+            labels: Default::default(),
             function: Default::default(),
         }
     }
@@ -57,6 +62,7 @@ pub(super) struct FunctionScope<'function> {
     root: &'function mut RootScope,
 
     scope_id: NonZeroUsize,
+    labels: HashMap<LabelId, usize>,
 
     function: UnasmFunction,
 }
@@ -87,7 +93,7 @@ pub(super) struct BlockScope<'block, 'function> {
     declared_locals: HashSet<Ident>,
     declared_labels: HashSet<LabelId>,
 
-    unresolved_jumps: HashMap<LabelId, usize>,
+    unresolved_jumps: HashMap<LabelId, Vec<usize>>,
 }
 
 impl Drop for BlockScope<'_, '_> {
@@ -104,6 +110,11 @@ impl Drop for BlockScope<'_, '_> {
                 }
                 Entry::Vacant(_) => unreachable!("Local decl not in root list."),
             }
+        }
+
+        for label in self.declared_labels.drain() {
+            let removed = self.function_scope.labels.remove(&label);
+            debug_assert!(removed.is_some());
         }
     }
 }
@@ -123,6 +134,7 @@ impl<'function> BlockScope<'_, 'function> {
         FunctionScope {
             root: self.function_scope.root,
             scope_id: NonZeroUsize::new(self.scope_id.get() + 1).unwrap(),
+            labels: Default::default(),
             function: UnasmFunction {
                 named_args: params,
                 ..Default::default()
@@ -134,11 +146,55 @@ impl<'function> BlockScope<'_, 'function> {
         &self.function_scope.function.instructions
     }
 
-    pub(super) fn emit(&mut self, opcode: impl Into<UnasmOp>) {
+    pub(super) fn add_label(&mut self, label: LabelId) -> Result<(), CompileError> {
+        let location = self.instructions().len();
+
+        if !self.declared_labels.insert(label)
+            || self.function_scope.labels.insert(label, location).is_some()
+        {
+            return Err(CompileError::DuplicateLabel {
+                label: format!("{:?}", label),
+            });
+        }
+
+        for pending_jump in self
+            .unresolved_jumps
+            .remove(&label)
+            .into_iter()
+            .flat_map(IntoIterator::into_iter)
+        {
+            self.overwrite(pending_jump, opcodes::Jump::from(location))
+        }
+
+        Ok(())
+    }
+
+    pub(super) fn emit_jump_label(&mut self, label: LabelId) -> usize {
+        match self.function_scope.labels.get(&label) {
+            Some(&location) => self.emit(opcodes::Jump::from(location)),
+            None => {
+                let position = self.emit(opcodes::Raise::from(OpError::MissingLabel));
+                match self.unresolved_jumps.entry(label) {
+                    Entry::Occupied(mut list) => {
+                        list.get_mut().push(position);
+                    }
+                    Entry::Vacant(new) => {
+                        new.insert(vec![position]);
+                    }
+                };
+
+                position
+            }
+        }
+    }
+
+    pub(super) fn emit(&mut self, opcode: impl Into<UnasmOp>) -> usize {
+        let position = self.instructions().len();
         self.function_scope
             .function
             .instructions
             .push(opcode.into());
+        position
     }
 
     pub(super) fn overwrite(&mut self, location: usize, opcode: impl Into<UnasmOp>) {

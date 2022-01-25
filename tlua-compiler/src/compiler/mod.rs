@@ -10,6 +10,7 @@ use tlua_bytecode::{
 };
 use tlua_parser::ast::{
     block::Block,
+    constant_string::ConstantString,
     identifiers::Ident,
 };
 
@@ -38,7 +39,11 @@ pub(crate) enum HasVaArgs {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum LabelId {}
+pub(crate) enum LabelId {
+    Named(Ident),
+    If(usize),
+    Loop(usize),
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct Compiler {
@@ -236,11 +241,23 @@ impl CompilerContext<'_, '_, '_> {
         self.scope.instructions().len()
     }
 
+    /// Add a label tracking the current instruction position that can be
+    /// referenced by labeled jumps.
+    pub(crate) fn add_label(&mut self, label: LabelId) -> Result<(), CompileError> {
+        self.scope.add_label(label)
+    }
+
+    /// Emit an instruction jumping to a label. If the specified label does not
+    /// exist, it will default to raising an error. If the label is added later
+    /// in the scope, the instruction will be updated to jump to that location.
+    pub(crate) fn emit_jump_label(&mut self, label: LabelId) {
+        self.scope.emit_jump_label(label);
+    }
+
     /// Emit a new opcode to the current instruction stream. Returns the
     /// location in the instruction stream.
     pub(crate) fn emit(&mut self, opcode: impl Into<UnasmOp>) -> usize {
-        self.scope.emit(opcode);
-        self.current_instruction() - 1
+        self.scope.emit(opcode)
     }
 
     /// Overwrite the instruction at location.

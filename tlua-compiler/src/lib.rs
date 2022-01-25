@@ -62,6 +62,8 @@ impl TypeIds {
 pub enum CompileError {
     #[error("Error parsing lua source: {0:?}")]
     ParseError(ChunkParseError),
+    #[error("Duplicate label: {label}")]
+    DuplicateLabel { label: String },
     #[error("Cannot use ... outside of a vararg function")]
     NoVarArgsAvailable,
     #[error("Allocated globals exceeded the maximum of {max:}")]

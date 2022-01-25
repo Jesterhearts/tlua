@@ -7,6 +7,7 @@ use tlua_parser::ast::statement::{
 };
 
 use crate::{
+    compiler::LabelId,
     CompileError,
     CompileStatement,
     CompilerContext,
@@ -34,13 +35,14 @@ impl CompileStatement for Break {
 }
 
 impl CompileStatement for Label {
-    fn compile(&self, _compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        todo!()
+    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
+        compiler.add_label(LabelId::Named(self.0)).map(|()| None)
     }
 }
 
 impl CompileStatement for Goto {
-    fn compile(&self, _compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        todo!()
+    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
+        compiler.emit_jump_label(LabelId::Named(self.0));
+        Ok(None)
     }
 }
