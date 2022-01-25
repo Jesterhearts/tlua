@@ -10,7 +10,6 @@ use tlua_bytecode::{
 };
 use tlua_parser::ast::{
     block::Block,
-    constant_string::ConstantString,
     identifiers::Ident,
 };
 
@@ -41,8 +40,8 @@ pub(crate) enum HasVaArgs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum LabelId {
     Named(Ident),
-    If(usize),
-    Loop(usize),
+    If { scope: usize, id: usize },
+    Loop { scope: usize, id: usize },
 }
 
 #[derive(Debug, Default)]
@@ -243,8 +242,19 @@ impl CompilerContext<'_, '_, '_> {
 
     /// Add a label tracking the current instruction position that can be
     /// referenced by labeled jumps.
-    pub(crate) fn add_label(&mut self, label: LabelId) -> Result<(), CompileError> {
+    pub(crate) fn label_current_instruction(&mut self, label: LabelId) -> Result<(), CompileError> {
         self.scope.add_label(label)
+    }
+
+    /// Create a new, unique label for an if statement.
+    pub(crate) fn create_if_label(&mut self) -> LabelId {
+        self.scope.next_if_id()
+    }
+
+    /// Get the current active loop label if the current scope is nested inside
+    /// of a loop.
+    pub(crate) fn current_loop_label(&self) -> Option<LabelId> {
+        self.scope.current_loop_id()
     }
 
     /// Emit an instruction jumping to a label. If the specified label does not

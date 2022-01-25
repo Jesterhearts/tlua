@@ -48,6 +48,8 @@ impl RootScope {
             root: self,
             scope_id: NonZeroUsize::new(usize::from(GLOBAL_SCOPE + 1)).unwrap(),
             labels: Default::default(),
+            next_loop_id: 0,
+            next_if_id: 0,
             function: Default::default(),
         }
     }
@@ -63,6 +65,9 @@ pub(super) struct FunctionScope<'function> {
 
     scope_id: NonZeroUsize,
     labels: HashMap<LabelId, usize>,
+
+    next_loop_id: usize,
+    next_if_id: usize,
 
     function: UnasmFunction,
 }
@@ -81,6 +86,37 @@ impl<'function> FunctionScope<'function> {
 
     pub(super) fn complete(self) -> UnasmFunction {
         self.function
+    }
+
+    fn next_if_id(&mut self) -> LabelId {
+        let id = self.next_if_id;
+        self.next_if_id += 1;
+
+        LabelId::If {
+            scope: self.scope_id.get(),
+            id,
+        }
+    }
+
+    fn push_loop_id(&mut self) -> LabelId {
+        let id = self.next_loop_id;
+        self.next_loop_id += 1;
+
+        LabelId::Loop {
+            scope: self.scope_id.get(),
+            id,
+        }
+    }
+
+    fn pop_loop_id(&mut self) {
+        self.next_loop_id -= 1;
+    }
+
+    fn current_loop_id(&self) -> Option<LabelId> {
+        self.next_loop_id.checked_sub(1).map(|id| LabelId::Loop {
+            scope: self.scope_id.get(),
+            id,
+        })
     }
 }
 
@@ -135,11 +171,29 @@ impl<'function> BlockScope<'_, 'function> {
             root: self.function_scope.root,
             scope_id: NonZeroUsize::new(self.scope_id.get() + 1).unwrap(),
             labels: Default::default(),
+            next_loop_id: 0,
+            next_if_id: 0,
             function: UnasmFunction {
                 named_args: params,
                 ..Default::default()
             },
         }
+    }
+
+    pub(super) fn next_if_id(&mut self) -> LabelId {
+        self.function_scope.next_if_id()
+    }
+
+    pub(super) fn push_loop_id(&mut self) -> LabelId {
+        self.function_scope.push_loop_id()
+    }
+
+    pub(super) fn pop_loop_id(&mut self) {
+        self.function_scope.pop_loop_id()
+    }
+
+    pub(super) fn current_loop_id(&self) -> Option<LabelId> {
+        self.function_scope.current_loop_id()
     }
 
     pub(super) fn instructions(&self) -> &Vec<UnasmOp> {

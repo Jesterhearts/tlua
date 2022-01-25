@@ -1,4 +1,7 @@
-use tlua_bytecode::OpError;
+use tlua_bytecode::{
+    opcodes,
+    OpError,
+};
 use tlua_parser::ast::statement::{
     Break,
     Empty,
@@ -29,14 +32,25 @@ impl CompileStatement for Empty {
 }
 
 impl CompileStatement for Break {
-    fn compile(&self, _compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        todo!()
+    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
+        match compiler.current_loop_label() {
+            Some(label) => {
+                compiler.emit_jump_label(label);
+                Ok(None)
+            }
+            None => {
+                compiler.emit(opcodes::Raise::from(OpError::BreakNotInLoop));
+                Ok(Some(OpError::BreakNotInLoop))
+            }
+        }
     }
 }
 
 impl CompileStatement for Label {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        compiler.add_label(LabelId::Named(self.0)).map(|()| None)
+        compiler
+            .label_current_instruction(LabelId::Named(self.0))
+            .map(|()| None)
     }
 }
 
