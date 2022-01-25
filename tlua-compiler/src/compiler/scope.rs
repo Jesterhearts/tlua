@@ -12,7 +12,12 @@ use tlua_parser::ast::identifiers::Ident;
 
 use crate::{
     compiler::{
-        unasm::OffsetRegister,
+        unasm::{
+            OffsetRegister,
+            UnasmFunction,
+            UnasmOp,
+        },
+        LabelId,
         UninitRegister,
     },
     CompileError,
@@ -23,62 +28,133 @@ pub(super) const GLOBAL_SCOPE: u16 = 0;
 /// Manages tracking the maping from identifier to register for a particular
 /// scope.
 #[derive(Debug, Default)]
-pub(super) struct Scope {
+pub(super) struct RootScope {
     /// Globals - tracked separately since the runtime may need to perform
     /// initialization or provide access to client code.
-    pub(super) globals: HashMap<Ident, OffsetRegister>,
+    globals: HashMap<Ident, OffsetRegister>,
 
     /// All locals currently in scope, with the last value for each vec
     /// representing the current register mapped for the local.
-    in_scope: HashMap<Ident, Vec<OffsetRegister>>,
+    all_locals: HashMap<Ident, Vec<OffsetRegister>>,
 }
 
-impl Scope {
-    pub(super) fn new_context(&mut self, parent_id: usize) -> ScopeContext {
-        let scope_id = NonZeroUsize::new(parent_id + 1).unwrap();
-
-        ScopeContext {
-            scope: self,
-            scope_id,
-            total_locals: 0,
-            total_anons: 0,
-            local_decls: Default::default(),
+impl RootScope {
+    pub(super) fn main_function(&mut self) -> FunctionScope {
+        FunctionScope {
+            root: self,
+            scope_id: NonZeroUsize::new(usize::from(GLOBAL_SCOPE + 1)).unwrap(),
+            function: Default::default(),
         }
+    }
+
+    pub(super) fn into_globals(self) -> HashMap<Ident, OffsetRegister> {
+        self.globals
     }
 }
 
 #[derive(Debug)]
-pub(super) struct ScopeContext<'function> {
-    scope: &'function mut Scope,
+pub(super) struct FunctionScope<'function> {
+    root: &'function mut RootScope,
 
-    local_decls: HashSet<Ident>,
+    scope_id: NonZeroUsize,
 
-    pub(super) scope_id: NonZeroUsize,
-    pub(super) total_locals: usize,
-    pub(super) total_anons: usize,
+    function: UnasmFunction,
 }
 
-impl Drop for ScopeContext<'_> {
-    fn drop(&mut self) {
-        // Cleanup shadows
-        for decl in self.local_decls.drain() {
-            let popped = self.scope.in_scope.get_mut(&decl).and_then(|vec| vec.pop());
-            debug_assert!(popped.is_some());
+impl<'function> FunctionScope<'function> {
+    pub(super) fn start<'block>(&'block mut self) -> BlockScope<'block, 'function> {
+        let scope_id = self.scope_id;
+        BlockScope {
+            function_scope: self,
+            scope_id,
+            declared_locals: Default::default(),
+            declared_labels: Default::default(),
+            unresolved_jumps: Default::default(),
+        }
+    }
 
-            if self.scope.in_scope[&decl].is_empty() {
-                self.scope.in_scope.remove(&decl);
+    pub(super) fn complete(self) -> UnasmFunction {
+        self.function
+    }
+}
+
+#[derive(Debug)]
+pub(super) struct BlockScope<'block, 'function> {
+    function_scope: &'block mut FunctionScope<'function>,
+
+    scope_id: NonZeroUsize,
+
+    declared_locals: HashSet<Ident>,
+    declared_labels: HashSet<LabelId>,
+
+    unresolved_jumps: HashMap<LabelId, usize>,
+}
+
+impl Drop for BlockScope<'_, '_> {
+    fn drop(&mut self) {
+        for decl in self.declared_locals.drain() {
+            match self.function_scope.root.all_locals.entry(decl) {
+                Entry::Occupied(mut shadows) => {
+                    let popped = shadows.get_mut().pop();
+                    debug_assert!(popped.is_some());
+
+                    if shadows.get_mut().is_empty() {
+                        shadows.remove();
+                    }
+                }
+                Entry::Vacant(_) => unreachable!("Local decl not in root list."),
             }
         }
     }
 }
 
-impl ScopeContext<'_> {
-    pub(super) fn subcontext(&mut self) -> ScopeContext {
-        self.scope.new_context(self.scope_id.get())
+impl<'function> BlockScope<'_, 'function> {
+    pub(super) fn subscope<'sub>(&'sub mut self) -> BlockScope<'sub, 'function> {
+        BlockScope {
+            function_scope: self.function_scope,
+            scope_id: NonZeroUsize::new(self.scope_id.get() + 1).unwrap(),
+            declared_locals: Default::default(),
+            declared_labels: Default::default(),
+            unresolved_jumps: Default::default(),
+        }
+    }
+
+    pub(super) fn new_function(&mut self, params: usize) -> FunctionScope {
+        FunctionScope {
+            root: self.function_scope.root,
+            scope_id: NonZeroUsize::new(self.scope_id.get() + 1).unwrap(),
+            function: UnasmFunction {
+                named_args: params,
+                ..Default::default()
+            },
+        }
+    }
+
+    pub(super) fn instructions(&self) -> &Vec<UnasmOp> {
+        &self.function_scope.function.instructions
+    }
+
+    pub(super) fn emit(&mut self, opcode: impl Into<UnasmOp>) {
+        self.function_scope
+            .function
+            .instructions
+            .push(opcode.into());
+    }
+
+    pub(super) fn overwrite(&mut self, location: usize, opcode: impl Into<UnasmOp>) {
+        self.function_scope.function.instructions[location] = opcode.into();
+    }
+
+    pub(super) fn total_locals(&self) -> usize {
+        self.declared_locals.len()
+    }
+
+    pub(super) fn total_anons(&self) -> usize {
+        self.function_scope.function.anon_registers
     }
 
     pub(super) fn get_in_scope(&mut self, ident: Ident) -> Result<OffsetRegister, CompileError> {
-        match self.scope.in_scope.entry(ident) {
+        match self.function_scope.root.all_locals.entry(ident) {
             Entry::Occupied(exists) => Ok(exists
                 .get()
                 .last()
@@ -86,17 +162,21 @@ impl ScopeContext<'_> {
                 .expect("Empty shadows lists should be removed.")),
             Entry::Vacant(unknown) => {
                 // No ident is in scope, must be a global
-                let offset_register = OffsetRegister {
-                    source_scope: GLOBAL_SCOPE,
-                    offset: self.scope.globals.len().try_into().map_err(|_| {
-                        CompileError::TooManyGlobals {
-                            max: u16::MAX.into(),
-                        }
-                    })?,
-                };
+                let offset_register =
+                    OffsetRegister {
+                        source_scope: GLOBAL_SCOPE,
+                        offset: self.function_scope.root.globals.len().try_into().map_err(
+                            |_| CompileError::TooManyGlobals {
+                                max: u16::MAX.into(),
+                            },
+                        )?,
+                    };
 
                 unknown.insert(vec![offset_register]);
-                self.scope.globals.insert(ident, offset_register);
+                self.function_scope
+                    .root
+                    .globals
+                    .insert(ident, offset_register);
 
                 Ok(offset_register)
             }
@@ -104,8 +184,8 @@ impl ScopeContext<'_> {
     }
 
     pub(super) fn new_anonymous(&mut self) -> UninitRegister<AnonymousRegister> {
-        let reg = self.total_anons;
-        self.total_anons += 1;
+        let reg = self.function_scope.function.anon_registers;
+        self.function_scope.function.anon_registers += 1;
 
         UninitRegister {
             register: reg.into(),
@@ -125,25 +205,28 @@ impl ScopeContext<'_> {
                 self.scope_id.get().try_into().unwrap()
             },
             offset: self
-                .total_locals
+                .function_scope
+                .function
+                .local_registers
                 .try_into()
                 .map_err(|_| CompileError::TooManyLocals {
                     max: u16::MAX.into(),
                 })?,
         };
-        self.total_locals += 1;
+        self.function_scope.function.local_registers += 1;
 
-        if self.local_decls.contains(&ident) {
+        if self.declared_locals.contains(&ident) {
             *self
-                .scope
-                .in_scope
+                .function_scope
+                .root
+                .all_locals
                 .get_mut(&ident)
                 .and_then(|vec| vec.last_mut())
                 .expect("Previous local decl") = offset_register;
         } else {
-            self.local_decls.insert(ident);
+            self.declared_locals.insert(ident);
 
-            match self.scope.in_scope.entry(ident) {
+            match self.function_scope.root.all_locals.entry(ident) {
                 Entry::Occupied(mut shadow_list) => {
                     shadow_list.get_mut().push(offset_register);
                 }

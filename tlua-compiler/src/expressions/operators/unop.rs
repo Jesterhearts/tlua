@@ -73,9 +73,12 @@ mod tests {
         let ast = BitNot(&Expression::Number(Number::Float(10.0)));
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Integer(-11)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Integer(-11)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -85,9 +88,12 @@ mod tests {
         let ast = BitNot(&Expression::Number(Number::Integer(0)));
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Integer(-1)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Integer(-1)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -95,13 +101,16 @@ mod tests {
     #[test]
     fn string_bitnot() -> anyhow::Result<()> {
         let mut compiler = Compiler::default();
-        let result =
-            BitNot(&Expression::String("abc".into())).compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = BitNot(&Expression::String("abc".into())).compile(context)?;
 
-        assert_eq!(
-            result,
-            NodeOutput::Err(OpError::InvalidType { op: "bitwise" })
-        );
+            assert_eq!(
+                result,
+                NodeOutput::Err(OpError::InvalidType { op: "bitwise" })
+            );
+
+            Ok(())
+        })?;
 
         Ok(())
     }

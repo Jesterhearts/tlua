@@ -237,9 +237,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Integer(3)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Integer(3)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -252,10 +255,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
-
+            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -267,10 +272,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Bool(false)));
-
+            assert_eq!(result, NodeOutput::Constant(Constant::Bool(false)));
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -283,9 +290,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Bool(false)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Bool(false)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -298,9 +308,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -313,9 +326,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -328,9 +344,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -343,9 +362,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Bool(false)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Bool(false)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -358,9 +380,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -373,15 +398,18 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(
-            result,
-            NodeOutput::Err(OpError::CmpErr {
-                lhs: Constant::String("abc".into()).short_type_name(),
-                rhs: Constant::Nil.short_type_name()
-            })
-        );
+            assert_eq!(
+                result,
+                NodeOutput::Err(OpError::CmpErr {
+                    lhs: Constant::String("abc".into()).short_type_name(),
+                    rhs: Constant::Nil.short_type_name()
+                })
+            );
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -394,9 +422,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Integer(10)));
+            assert_eq!(result, NodeOutput::Constant(Constant::Integer(10)));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -409,9 +440,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Nil));
+            assert_eq!(result, NodeOutput::Constant(Constant::Nil));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -424,9 +458,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::String("abc".into())));
+            assert_eq!(result, NodeOutput::Constant(Constant::String("abc".into())));
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -439,9 +476,12 @@ mod tests {
         };
 
         let mut compiler = Compiler::default();
-        let result = ast.compile(&mut compiler.new_context())?;
+        compiler.emit_in_main(|context| {
+            let result = ast.compile(context)?;
 
-        assert_eq!(result, NodeOutput::Constant(Constant::Nil));
+            assert_eq!(result, NodeOutput::Constant(Constant::Nil));
+            Ok(())
+        })?;
 
         Ok(())
     }

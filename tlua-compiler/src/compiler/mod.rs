@@ -1,10 +1,4 @@
-use std::{
-    num::NonZeroUsize,
-    ops::{
-        Deref,
-        DerefMut,
-    },
-};
+use std::num::NonZeroUsize;
 
 use derive_more::From;
 use either::Either;
@@ -37,52 +31,53 @@ use self::{
     unasm::*,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum HasVaArgs {
     None,
     Some,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum LabelId {}
+
 #[derive(Debug, Default)]
 pub(crate) struct Compiler {
-    scope: Scope,
-
+    scope: RootScope,
     functions: Vec<UnasmFunction>,
 }
 
 impl Compiler {
     pub(crate) fn compile_ast(mut self, ast: Block) -> Result<Chunk, CompileError> {
-        let mut main = self.new_context();
-
-        let _ = ast.compile(&mut main)?;
-
-        let main = main.complete();
+        let main = self.emit_in_main(|context| ast.compile(context).map(|_| ()))?;
 
         Ok(self.into_chunk(main))
     }
 
-    pub(super) fn new_context(&mut self) -> MainCompilerContext {
-        MainCompilerContext {
-            context: CompilerContext {
+    pub(super) fn emit_in_main(
+        &mut self,
+        mut emitter: impl FnMut(&mut CompilerContext) -> Result<(), CompileError>,
+    ) -> Result<UnasmFunction, CompileError> {
+        let mut main = self.scope.main_function();
+        {
+            let scope = main.start();
+            let mut context = CompilerContext {
                 functions: &mut self.functions,
-
-                scope: self.scope.new_context(GLOBAL_SCOPE.into()),
-
+                scope,
                 has_va_args: HasVaArgs::None,
+            };
 
-                function: UnasmFunction::default(),
-            },
+            let () = emitter(&mut context)?;
         }
+
+        Ok(main.complete())
     }
 
     fn into_chunk(self, main: UnasmFunction) -> Chunk {
-        let Self {
-            scope: Scope { globals, .. },
-            functions,
-        } = self;
+        let Self { functions, scope } = self;
 
         Chunk {
-            globals_map: globals
+            globals_map: scope
+                .into_globals()
                 .into_iter()
                 .map(|(global, reg)| {
                     debug_assert_eq!(reg.source_scope, GLOBAL_SCOPE);
@@ -211,43 +206,6 @@ where
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct MainCompilerContext<'chunk> {
-    context: CompilerContext<'chunk>,
-}
-
-impl<'chunk> Deref for MainCompilerContext<'chunk> {
-    type Target = CompilerContext<'chunk>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.context
-    }
-}
-
-impl DerefMut for MainCompilerContext<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.context
-    }
-}
-
-impl MainCompilerContext<'_> {
-    pub(crate) fn complete(self) -> UnasmFunction {
-        let Self {
-            context:
-                CompilerContext {
-                    functions: _,
-                    scope,
-                    has_va_args: _,
-                    mut function,
-                },
-        } = self;
-
-        function.anon_registers = scope.total_anons;
-        function.local_registers = scope.total_locals;
-        function
-    }
-}
-
 /// Instruction sequence creation. This is implemented here rather than exposing
 /// a global write function since the compiler needs to make sure that e.g. the
 /// stack is reset prior to a return or raise and it is tricky to get that write
@@ -256,16 +214,15 @@ impl MainCompilerContext<'_> {
 /// stack is cleared before every raise instruction if the only way to create is
 /// via `write_raise`.
 #[derive(Debug)]
-pub(crate) struct CompilerContext<'function> {
-    functions: &'function mut Vec<UnasmFunction>,
+pub(crate) struct CompilerContext<'context, 'block, 'function> {
+    functions: &'context mut Vec<UnasmFunction>,
 
-    scope: ScopeContext<'function>,
+    scope: BlockScope<'block, 'function>,
 
     has_va_args: HasVaArgs,
-    function: UnasmFunction,
 }
 
-impl CompilerContext<'_> {
+impl CompilerContext<'_, '_, '_> {
     /// Check if varargs are available in scope
     pub(crate) fn check_varargs(&self) -> Result<(), CompileError> {
         match self.has_va_args {
@@ -276,24 +233,24 @@ impl CompilerContext<'_> {
 
     /// Get the current offset in the instruction stream.
     pub(crate) fn current_instruction(&self) -> usize {
-        self.function.instructions.len()
+        self.scope.instructions().len()
     }
 
     /// Emit a new opcode to the current instruction stream. Returns the
     /// location in the instruction stream.
     pub(crate) fn emit(&mut self, opcode: impl Into<UnasmOp>) -> usize {
-        self.function.instructions.push(opcode.into());
+        self.scope.emit(opcode);
         self.current_instruction() - 1
     }
 
     /// Overwrite the instruction at location.
     pub(crate) fn overwrite(&mut self, location: usize, opcode: impl Into<UnasmOp>) {
-        self.function.instructions[location] = opcode.into();
+        self.scope.overwrite(location, opcode);
     }
 
-    /// Get the number of locals created in this scope so far.
-    pub(crate) fn total_locals(&self) -> usize {
-        self.scope.total_locals
+    /// Get the number of locals created in this function so far.
+    pub(crate) fn scope_declared_locals_count(&self) -> usize {
+        self.scope.total_locals()
     }
 
     /// Map a new register for a local variable.
@@ -317,7 +274,7 @@ impl CompilerContext<'_> {
         usize,
         impl ExactSizeIterator<Item = UninitRegister<AnonymousRegister>>,
     ) {
-        let start = self.scope.total_anons;
+        let start = self.scope.total_anons();
         let range = start..(start + size);
         for _ in range.clone() {
             let _ = self.new_anon_reg().no_init_needed();
@@ -341,120 +298,66 @@ impl CompilerContext<'_> {
         err
     }
 
-    /// Create a new subcontext for compiling a function.
-    pub(crate) fn function_subcontext(&mut self, has_va_args: HasVaArgs) -> CompilerContext {
-        let scope = self.scope.subcontext();
-
-        CompilerContext {
-            functions: self.functions,
-            has_va_args,
-            function: UnasmFunction {
-                anon_registers: 0,
-                local_registers: 0,
-                named_args: 0,
-                instructions: Vec::default(),
-            },
-
-            scope,
-        }
-    }
-
-    /// Finalize a subcontext and return the type metadata for it.
-    pub(crate) fn complete_subcontext(self) -> TypeMeta {
-        let Self {
-            functions,
-            mut function,
-            scope,
-            ..
-        } = self;
-
-        function.anon_registers = scope.total_anons;
-        function.local_registers = scope.total_locals;
-
-        let fn_id = functions.len();
-
-        functions.push(function);
-
-        TypeMeta::from(NonZeroUsize::try_from(fn_id + 1).ok())
-    }
-
     /// Emit the instructions for a function.
     pub(crate) fn emit_fn(
         &mut self,
+        has_va_args: HasVaArgs,
         params: impl ExactSizeIterator<Item = Ident>,
         body: impl ExactSizeIterator<Item = impl CompileStatement>,
         ret: Option<&impl CompileStatement>,
-    ) -> Result<(), CompileError> {
-        for param in params {
-            // TODO(compiler-opt): Technically today this allocates an extra, unused
-            // register for every duplicate identifier in the parameter list. It
-            // still works fine though, because the number of registers is
-            // correct.
-            self.new_local(param)?.no_init_needed();
-            self.function.named_args += 1;
-        }
+    ) -> Result<TypeMeta, CompileError> {
+        let mut new_function = self.scope.new_function(params.len());
 
-        for stat in body {
-            stat.compile(self)?;
-        }
+        {
+            let mut new_context = CompilerContext {
+                functions: self.functions,
+                scope: new_function.start(),
+                has_va_args,
+            };
 
-        match ret {
-            Some(ret) => ret.compile(self)?,
-            None => {
-                self.emit(opcodes::Op::Ret);
-                None
+            for param in params {
+                // TODO(compiler-opt): Technically today this allocates an extra, unused
+                // register for every duplicate identifier in the parameter list. It
+                // still works fine though, because the number of registers is
+                // correct.
+                new_context.new_local(param)?.no_init_needed();
             }
-        };
 
-        Ok(())
+            for stat in body {
+                stat.compile(&mut new_context)?;
+            }
+
+            match ret {
+                Some(ret) => ret.compile(&mut new_context)?,
+                None => {
+                    new_context.emit(opcodes::Op::Ret);
+                    None
+                }
+            };
+        }
+
+        let fn_id = self.functions.len();
+
+        self.functions.push(new_function.complete());
+
+        Ok(TypeMeta::from(NonZeroUsize::try_from(fn_id + 1).ok()))
     }
 
     /// Instruct the compiler to create a new context for the current function
     /// in its own subscope and run the provided closure in that scope.
     pub(crate) fn emit_in_subscope(
         &mut self,
-        subscope: &mut impl FnMut(&mut CompilerContext) -> Result<Option<OpError>, CompileError>,
+        mut emitter: impl FnMut(&mut CompilerContext) -> Result<Option<OpError>, CompileError>,
     ) -> Result<Option<OpError>, CompileError> {
-        let mut result = Ok(None);
+        let scope = self.scope.subscope();
 
-        // We don't want to allocate and merge in another sequence of instructions for
-        // this function, but we do need a new subscope. Honestly this could be
-        // done with traits, or a separate delegate object that handles this stuff, but
-        // at that point things start to get hard to follow.
-        // Here we just temporarily borrow ourselves, keep the current scope on the
-        // stack and make a new scope which steals our function for a bit.
-        take_mut::take(self, |context| {
-            let CompilerContext {
-                functions,
-                mut scope,
-                has_va_args,
-                function,
-            } = context;
+        let mut new_context = CompilerContext {
+            functions: self.functions,
+            scope,
+            has_va_args: self.has_va_args,
+        };
 
-            let (has_va_args, function, total_anons) = {
-                let mut inner = CompilerContext {
-                    functions,
-                    scope: scope.subcontext(),
-                    has_va_args,
-                    function,
-                };
-
-                result = subscope(&mut inner);
-
-                (inner.has_va_args, inner.function, inner.scope.total_anons)
-            };
-
-            scope.total_anons += total_anons;
-
-            CompilerContext {
-                functions,
-                scope,
-                has_va_args,
-                function,
-            }
-        });
-
-        result
+        emitter(&mut new_context)
     }
 
     /// Instruct the compiler to emit the instructions required to initialize a

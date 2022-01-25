@@ -38,7 +38,7 @@ impl CompileStatement for RetStatement<'_> {
 
 impl CompileStatement for Block<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        compiler.emit_in_subscope(&mut |compiler| {
+        compiler.emit_in_subscope(|compiler| {
             let pending_scope_push = compiler.emit(opcodes::Raise::from(OpError::ByteCodeError {
                 err: ByteCodeError::MissingScopeDescriptor,
                 offset: compiler.current_instruction(),
@@ -52,7 +52,7 @@ impl CompileStatement for Block<'_> {
 
             compiler.overwrite(
                 pending_scope_push,
-                opcodes::ScopeDescriptor::from(compiler.total_locals()),
+                opcodes::ScopeDescriptor::from(compiler.scope_declared_locals_count()),
             );
 
             match self.ret.as_ref() {

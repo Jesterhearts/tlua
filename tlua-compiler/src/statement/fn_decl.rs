@@ -9,7 +9,6 @@ use crate::{
         HasVaArgs,
         InitRegister,
     },
-    expressions::function_defs::compile_global_fn_body,
     CompileError,
     CompileStatement,
     CompilerContext,
@@ -20,7 +19,16 @@ impl CompileStatement for FnDecl<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
         match self {
             FnDecl::Function { body, name } => {
-                let func_id = compile_global_fn_body(body, compiler)?;
+                let func_id = compiler.emit_fn(
+                    if body.params.varargs {
+                        HasVaArgs::Some
+                    } else {
+                        HasVaArgs::None
+                    },
+                    body.params.named_params.iter().copied(),
+                    body.body.statements.iter(),
+                    body.body.ret.as_ref(),
+                )?;
 
                 if name.path.is_empty() {
                     let _func = compiler.new_anon_reg().init_alloc_fn(compiler, func_id);
@@ -44,19 +52,16 @@ impl CompileStatement for FnDecl<'_> {
                 // body.
                 let register = compiler.new_local(*name)?;
 
-                let mut context = compiler.function_subcontext(if body.params.varargs {
-                    HasVaArgs::Some
-                } else {
-                    HasVaArgs::None
-                });
-
-                context.emit_fn(
+                let fn_id = compiler.emit_fn(
+                    if body.params.varargs {
+                        HasVaArgs::Some
+                    } else {
+                        HasVaArgs::None
+                    },
                     body.params.named_params.iter().copied(),
                     body.body.statements.iter(),
                     body.body.ret.as_ref(),
                 )?;
-
-                let fn_id = context.complete_subcontext();
 
                 // Because this is a local function declaration, we know we're the first write
                 // to it in scope. We had to have the register already allocated though so it
