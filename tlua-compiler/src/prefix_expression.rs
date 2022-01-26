@@ -1,4 +1,3 @@
-use either::Either;
 use tlua_bytecode::{
     opcodes,
     OpError,
@@ -36,10 +35,7 @@ impl CompileExpression for VarAtom<'_> {
 
 impl CompileExpression for VarPrefixExpression<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        map_var(compiler, self).map(|reg_or_err| match reg_or_err {
-            Either::Left(reg) => NodeOutput::Register(reg),
-            Either::Right(err) => NodeOutput::Err(err),
-        })
+        map_var(compiler, self).map(NodeOutput::Register)
     }
 }
 
@@ -47,20 +43,14 @@ impl CompileExpression for FnCallPrefixExpression<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
         match self {
             FnCallPrefixExpression::Call { head, args } => {
-                let target = match emit_load_head(compiler, head)? {
-                    Either::Left(reg) => reg,
-                    Either::Right(err) => return Ok(NodeOutput::Err(err)),
-                };
+                let target = emit_load_head(compiler, head)?;
 
                 if let Some(err) = emit_call(compiler, target, args)? {
                     return Ok(NodeOutput::Err(err));
                 }
             }
             FnCallPrefixExpression::CallPath { head, middle, last } => {
-                let src_reg = match emit_table_path_traversal(compiler, head, middle.iter())? {
-                    Either::Left(reg) => reg,
-                    Either::Right(err) => return Ok(NodeOutput::Err(err)),
-                };
+                let src_reg = emit_table_path_traversal(compiler, head, middle.iter())?;
 
                 if let Some(err) = emit_call(compiler, src_reg, last)? {
                     return Ok(NodeOutput::Err(err));
@@ -84,20 +74,21 @@ impl CompileStatement for FnCallPrefixExpression<'_> {
 fn emit_load_head(
     compiler: &mut CompilerContext,
     head: &HeadAtom,
-) -> Result<Either<UnasmRegister, OpError>, CompileError> {
+) -> Result<UnasmRegister, CompileError> {
     match head {
         HeadAtom::Name(ident) => {
             let reg = NodeOutput::Register(compiler.read_variable(*ident)?);
-            Ok(Either::Left(compiler.write_move_to_reg(reg).into()))
+            Ok(compiler.write_move_to_reg(reg).into())
         }
         HeadAtom::Parenthesized(expr) => match expr.compile(compiler)? {
             NodeOutput::Constant(c) => {
-                return Ok(Either::Right(compiler.write_raise(OpError::NotATable {
+                compiler.write_raise(OpError::NotATable {
                     ty: c.short_type_name(),
-                })))
+                });
+                Ok(compiler.new_anon_reg().init_from_const(compiler, c).into())
             }
-            NodeOutput::Err(err) => Ok(Either::Right(err)),
-            src => Ok(Either::Left(compiler.write_move_to_reg(src).into())),
+            NodeOutput::Err(_) => Ok(compiler.new_anon_reg().no_init_needed().into()),
+            src => Ok(compiler.write_move_to_reg(src).into()),
         },
     }
 }
@@ -106,24 +97,20 @@ fn emit_table_path_traversal<'a, 'p>(
     compiler: &mut CompilerContext,
     head: &HeadAtom,
     middle: impl Iterator<Item = &'a PrefixAtom<'p>>,
-) -> Result<Either<UnasmRegister, OpError>, CompileError>
+) -> Result<UnasmRegister, CompileError>
 where
     'p: 'a,
 {
-    let src_reg = match emit_load_head(compiler, head)? {
-        Either::Left(reg) => reg,
-        Either::Right(err) => return Ok(Either::Right(err)),
-    };
+    let src_reg = emit_load_head(compiler, head)?;
 
     for next in middle {
-        if let Some(err) = match next {
+        match next {
             PrefixAtom::Var(v) => compiler.load_from_table(src_reg, v)?,
             PrefixAtom::Function(atom) => emit_call(compiler, src_reg, atom)?,
-        } {
-            return Ok(Either::Right(err));
         };
     }
-    Ok(Either::Left(src_reg))
+
+    Ok(src_reg)
 }
 
 fn emit_call(
@@ -178,9 +165,8 @@ fn emit_standard_call(
             .next()
             .expect("Still in bounds for args")
             .compile(compiler)?;
-        if let Either::Right(err) = arg_reg.init_from_node_output(compiler, arg_init) {
-            return Ok(Some(err));
-        }
+
+        arg_reg.init_from_node_output(compiler, arg_init);
     }
 
     let last_reg = arg_registers.last().expect("Should have at least 1 arg");
@@ -213,7 +199,9 @@ fn emit_standard_call(
             )));
             return Ok(None);
         }
-        NodeOutput::Err(err) => return Ok(Some(err)),
+        NodeOutput::Err(_) => {
+            last_reg.no_init_needed();
+        }
     }
 
     compiler.emit(opcodes::Call::from((target, first_reg_idx, argc)));
@@ -223,14 +211,11 @@ fn emit_standard_call(
 pub(crate) fn map_var(
     compiler: &mut CompilerContext,
     expr: &VarPrefixExpression,
-) -> Result<Either<UnasmRegister, OpError>, CompileError> {
+) -> Result<UnasmRegister, CompileError> {
     match expr {
-        VarPrefixExpression::Name(ident) => compiler.read_variable(*ident).map(Either::Left),
+        VarPrefixExpression::Name(ident) => compiler.read_variable(*ident),
         VarPrefixExpression::TableAccess { head, middle, last } => {
-            let src_reg = match emit_table_path_traversal(compiler, head, middle.iter())? {
-                Either::Left(reg) => reg,
-                Either::Right(err) => return Ok(Either::Right(err)),
-            };
+            let src_reg = emit_table_path_traversal(compiler, head, middle.iter())?;
 
             match last {
                 VarAtom::Name(ident) => {
@@ -238,7 +223,7 @@ pub(crate) fn map_var(
                 }
                 VarAtom::IndexOp(index) => compiler.load_from_table(src_reg, index),
             }
-            .map(|err| err.map(Either::Right).unwrap_or(Either::Left(src_reg)))
+            .map(|_| src_reg)
         }
     }
 }

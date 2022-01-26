@@ -1,4 +1,3 @@
-use either::Either;
 use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::variables::LocalVarList;
 
@@ -14,7 +13,7 @@ impl CompileStatement for LocalVarList<'_> {
         assignment::emit_assignments(
             compiler,
             |compiler, var| match var.attribute {
-                None => compiler.new_local(var.name).map(Either::Left),
+                None => compiler.new_local(var.name),
                 Some(_) => todo!(),
             },
             self.vars.iter(),

@@ -1,7 +1,6 @@
 use std::num::NonZeroUsize;
 
 use derive_more::From;
-use either::Either;
 use tlua_bytecode::{
     opcodes,
     AnonymousRegister,
@@ -111,13 +110,13 @@ where
         self,
         compiler: &mut CompilerContext,
         value: NodeOutput,
-    ) -> Either<RegisterTy, OpError> {
+    ) -> RegisterTy {
         match value {
-            NodeOutput::Constant(value) => Either::Left(self.init_from_const(compiler, value)),
-            NodeOutput::Register(source) => Either::Left(self.init_from_reg(compiler, source)),
-            NodeOutput::ReturnValues => Either::Left(self.init_from_ret(compiler)),
-            NodeOutput::VAStack => Either::Left(self.init_from_va(compiler, 0)),
-            NodeOutput::Err(err) => Either::Right(err),
+            NodeOutput::Constant(value) => self.init_from_const(compiler, value),
+            NodeOutput::Register(source) => self.init_from_reg(compiler, source),
+            NodeOutput::ReturnValues => self.init_from_ret(compiler),
+            NodeOutput::VAStack => self.init_from_va(compiler, 0),
+            NodeOutput::Err(_) => self.no_init_needed(),
         }
     }
 
@@ -236,7 +235,7 @@ impl CompilerContext<'_, '_, '_> {
     }
 
     /// Get the current offset in the instruction stream.
-    pub(crate) fn current_instruction(&self) -> usize {
+    pub(crate) fn next_instruction(&self) -> usize {
         self.scope.instructions().len()
     }
 
@@ -255,6 +254,17 @@ impl CompilerContext<'_, '_, '_> {
     /// of a loop.
     pub(crate) fn current_loop_label(&self) -> Option<LabelId> {
         self.scope.current_loop_id()
+    }
+
+    /// Create a new loop label. The caller must call pop_loop_label after
+    /// using.
+    pub(crate) fn push_loop_label(&mut self) -> LabelId {
+        self.scope.push_loop_id()
+    }
+
+    /// Pop the current loop label.
+    pub(crate) fn pop_loop_label(&mut self) {
+        self.scope.pop_loop_id();
     }
 
     /// Emit an instruction jumping to a label. If the specified label does not
@@ -416,7 +426,7 @@ impl CompilerContext<'_, '_, '_> {
             NodeOutput::VAStack => {
                 self.emit(opcodes::StoreFromVa::from((table, index, 0)));
             }
-            NodeOutput::Err(_) => unreachable!("Errors should already be handled."),
+            NodeOutput::Err(_) => (),
         }
     }
 
@@ -503,15 +513,13 @@ impl CompilerContext<'_, '_, '_> {
                 NodeOutput::Register(register) => {
                     self.emit(opcodes::SetRet::from(UnasmOperand::from(register)));
                 }
-                NodeOutput::Err(err) => {
-                    return Ok(Some(err));
-                }
                 NodeOutput::ReturnValues => {
                     self.emit(opcodes::Op::SetRetFromRet0);
                 }
                 NodeOutput::VAStack => {
                     self.emit(opcodes::Op::SetRetVa0);
                 }
+                NodeOutput::Err(_) => {}
             }
         }
 
@@ -538,6 +546,8 @@ impl CompilerContext<'_, '_, '_> {
                 return Ok(Some(err));
             }
         }
+
+        debug_assert!(outputs.next().is_none());
 
         Ok(None)
     }
@@ -643,9 +653,7 @@ impl CompilerContext<'_, '_, '_> {
         if let NodeOutput::Register(UnasmRegister::Immediate(reg)) = value {
             reg
         } else {
-            self.new_anon_reg()
-                .init_from_node_output(self, value)
-                .expect_left("Errors should not be handled by storing them in registers.")
+            self.new_anon_reg().init_from_node_output(self, value)
         }
     }
 }

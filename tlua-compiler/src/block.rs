@@ -41,13 +41,11 @@ impl CompileStatement for Block<'_> {
         compiler.emit_in_subscope(|compiler| {
             let pending_scope_push = compiler.emit(opcodes::Raise::from(OpError::ByteCodeError {
                 err: ByteCodeError::MissingScopeDescriptor,
-                offset: compiler.current_instruction(),
+                offset: compiler.next_instruction(),
             }));
 
             for stat in self.statements.iter() {
-                if let Some(err) = stat.compile(compiler)? {
-                    return Ok(Some(err));
-                }
+                stat.compile(compiler)?;
             }
 
             compiler.overwrite(

@@ -1,4 +1,3 @@
-use either::Either;
 use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::assignment::Assignment;
 
@@ -29,10 +28,7 @@ impl CompileStatement for Assignment<'_> {
 
 pub(crate) fn emit_assignments<VarExpr, InVarRegTy: Copy, OutVarRegTy: InitRegister<InVarRegTy>>(
     compiler: &mut CompilerContext,
-    mut compile_var: impl FnMut(
-        &mut CompilerContext,
-        VarExpr,
-    ) -> Result<Either<OutVarRegTy, OpError>, CompileError>,
+    mut compile_var: impl FnMut(&mut CompilerContext, VarExpr) -> Result<OutVarRegTy, CompileError>,
     mut vars: impl ExactSizeIterator<Item = VarExpr> + Clone,
     mut inits: impl ExactSizeIterator<Item = impl CompileExpression> + Clone,
 ) -> Result<Option<OpError>, CompileError>
@@ -41,25 +37,18 @@ where
 {
     let common_length = 0..(vars.len().min(inits.len().saturating_sub(1)));
     for _ in common_length {
-        let dest = match compile_var(compiler, vars.next().expect("Still in common length"))? {
-            Either::Left(reg) => reg,
-            Either::Right(err) => return Ok(Some(err)),
-        };
+        let dest = compile_var(compiler, vars.next().expect("Still in common length"))?;
 
         let init = inits
             .next()
             .expect("Still in common length")
             .compile(compiler)?;
-        if let Either::Right(err) = dest.init_from_node_output(compiler, init) {
-            return Ok(Some(err));
-        }
+
+        dest.init_from_node_output(compiler, init);
     }
 
     if let Some(dest) = vars.next() {
-        let dest = match compile_var(compiler, dest)? {
-            Either::Left(reg) => reg,
-            Either::Right(err) => return Ok(Some(err)),
-        };
+        let dest = compile_var(compiler, dest)?;
 
         match inits.next() {
             Some(init) => match init.compile(compiler)? {
@@ -73,24 +62,14 @@ where
                     dest.init_from_ret(compiler);
 
                     for v in vars {
-                        match compile_var(compiler, v)? {
-                            Either::Left(reg) => {
-                                reg.init_from_ret(compiler);
-                            }
-                            Either::Right(err) => return Ok(Some(err)),
-                        };
+                        compile_var(compiler, v)?.init_from_ret(compiler);
                     }
                 }
                 NodeOutput::VAStack => {
                     dest.init_from_va(compiler, 0);
 
                     for (index, v) in vars.enumerate() {
-                        match compile_var(compiler, v)? {
-                            Either::Left(reg) => {
-                                reg.init_from_va(compiler, index + 1);
-                            }
-                            Either::Right(err) => return Ok(Some(err)),
-                        };
+                        compile_var(compiler, v)?.init_from_va(compiler, index + 1);
                     }
                 }
                 NodeOutput::Err(err) => return Ok(Some(err)),
@@ -103,9 +82,7 @@ where
         debug_assert!(inits.next().is_none());
     } else {
         for init in inits {
-            if let NodeOutput::Err(err) = init.compile(compiler)? {
-                return Ok(Some(err));
-            }
+            init.compile(compiler)?;
         }
     }
 

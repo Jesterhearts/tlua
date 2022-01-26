@@ -58,7 +58,7 @@ fn compile_if_block(
     let pending_skip_body = compiler.emit(opcodes::Raise {
         err: OpError::ByteCodeError {
             err: ByteCodeError::MissingJump,
-            offset: compiler.current_instruction(),
+            offset: compiler.next_instruction(),
         },
     });
 
@@ -68,19 +68,17 @@ fn compile_if_block(
 
     let jump_op: UnasmOp = match cond_value {
         NodeOutput::Register(reg) => {
-            opcodes::JumpNot::from((reg, compiler.current_instruction())).into()
+            opcodes::JumpNot::from((reg, compiler.next_instruction())).into()
         }
-        NodeOutput::ReturnValues => {
-            opcodes::JumpNotRet0::from(compiler.current_instruction()).into()
-        }
-        NodeOutput::VAStack => opcodes::JumpNotVa0::from(compiler.current_instruction()).into(),
+        NodeOutput::ReturnValues => opcodes::JumpNotRet0::from(compiler.next_instruction()).into(),
+        NodeOutput::VAStack => opcodes::JumpNotVa0::from(compiler.next_instruction()).into(),
         NodeOutput::Constant(c) => {
             if c.as_bool() {
                 // Always true, do nothing and just enter the block
                 UnasmOp::Nop
             } else {
                 // Always false, jump without examining the condition.
-                opcodes::Jump::from(compiler.current_instruction()).into()
+                opcodes::Jump::from(compiler.next_instruction()).into()
             }
         }
         NodeOutput::Err(_) => UnasmOp::Nop,

@@ -48,6 +48,7 @@ impl RootScope {
             root: self,
             scope_id: NonZeroUsize::new(usize::from(GLOBAL_SCOPE + 1)).unwrap(),
             labels: Default::default(),
+            unresolved_jumps: Default::default(),
             next_loop_id: 0,
             next_if_id: 0,
             function: Default::default(),
@@ -66,6 +67,8 @@ pub(super) struct FunctionScope<'function> {
     scope_id: NonZeroUsize,
     labels: HashMap<LabelId, usize>,
 
+    unresolved_jumps: HashMap<LabelId, Vec<usize>>,
+
     next_loop_id: usize,
     next_if_id: usize,
 
@@ -80,7 +83,6 @@ impl<'function> FunctionScope<'function> {
             scope_id,
             declared_locals: Default::default(),
             declared_labels: Default::default(),
-            unresolved_jumps: Default::default(),
         }
     }
 
@@ -128,8 +130,6 @@ pub(super) struct BlockScope<'block, 'function> {
 
     declared_locals: HashSet<Ident>,
     declared_labels: HashSet<LabelId>,
-
-    unresolved_jumps: HashMap<LabelId, Vec<usize>>,
 }
 
 impl Drop for BlockScope<'_, '_> {
@@ -162,7 +162,6 @@ impl<'function> BlockScope<'_, 'function> {
             scope_id: NonZeroUsize::new(self.scope_id.get() + 1).unwrap(),
             declared_locals: Default::default(),
             declared_labels: Default::default(),
-            unresolved_jumps: Default::default(),
         }
     }
 
@@ -171,6 +170,7 @@ impl<'function> BlockScope<'_, 'function> {
             root: self.function_scope.root,
             scope_id: NonZeroUsize::new(self.scope_id.get() + 1).unwrap(),
             labels: Default::default(),
+            unresolved_jumps: Default::default(),
             next_loop_id: 0,
             next_if_id: 0,
             function: UnasmFunction {
@@ -203,15 +203,17 @@ impl<'function> BlockScope<'_, 'function> {
     pub(super) fn add_label(&mut self, label: LabelId) -> Result<(), CompileError> {
         let location = self.instructions().len();
 
-        if !self.declared_labels.insert(label)
-            || self.function_scope.labels.insert(label, location).is_some()
-        {
+        if self.function_scope.labels.insert(label, location).is_some() {
             return Err(CompileError::DuplicateLabel {
                 label: format!("{:?}", label),
             });
         }
 
+        let is_new_label = self.declared_labels.insert(label);
+        debug_assert!(is_new_label);
+
         for pending_jump in self
+            .function_scope
             .unresolved_jumps
             .remove(&label)
             .into_iter()
@@ -228,7 +230,7 @@ impl<'function> BlockScope<'_, 'function> {
             Some(&location) => self.emit(opcodes::Jump::from(location)),
             None => {
                 let position = self.emit(opcodes::Raise::from(OpError::MissingLabel));
-                match self.unresolved_jumps.entry(label) {
+                match self.function_scope.unresolved_jumps.entry(label) {
                     Entry::Occupied(mut list) => {
                         list.get_mut().push(position);
                     }
