@@ -15,7 +15,6 @@ fn constant_cond_fails_multiple_labels() {
 }
 
 #[test]
-#[ignore = "TODO: locals don't properly invalidate pending jumps."]
 fn goto_across_local() {
     let src = indoc! {"
         goto a
@@ -26,5 +25,9 @@ fn goto_across_local() {
         return b
     "};
     let result = compile(src);
-    assert!(matches!(result, Err(_)));
+
+    assert!(matches!(
+        result,
+        Err(CompileError::JumpIntoLocalScope { .. })
+    ));
 }

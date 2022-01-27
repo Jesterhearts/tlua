@@ -64,6 +64,8 @@ pub enum CompileError {
     ParseError(ChunkParseError),
     #[error("Duplicate label: {label}")]
     DuplicateLabel { label: String },
+    #[error("Goto {label} jumps into scope of local")]
+    JumpIntoLocalScope { label: String },
     #[error("Cannot use ... outside of a vararg function")]
     NoVarArgsAvailable,
     #[error("Allocated globals exceeded the maximum of {max:}")]

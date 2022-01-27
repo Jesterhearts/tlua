@@ -2,6 +2,8 @@ use indoc::indoc;
 use tlua::{
     compile,
     vm::runtime::Runtime,
+    LuaError,
+    OpError,
 };
 
 #[test]
@@ -120,6 +122,94 @@ fn goto_forwards_in_scope() -> anyhow::Result<()> {
     assert_eq!(
         result,
         vec![2.into()],
+        "{:#?} produced an incorrect result",
+        chunk
+    );
+
+    Ok(())
+}
+
+#[test]
+fn goto_forwards_label_in_sibling_error() -> anyhow::Result<()> {
+    let src = indoc! {"
+        local b = 1
+
+        if true then
+            goto a
+        end
+
+        if true then
+            ::a::
+        end
+
+        return b
+    "};
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+
+    let result = rt.execute(&chunk);
+    assert!(matches!(
+        result,
+        Err(LuaError::ExecutionError(OpError::MissingLabel))
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn goto_forwards_label_in_deeper_sibling_error() -> anyhow::Result<()> {
+    let src = indoc! {"
+        local b = 1
+
+        if true then
+            goto a
+        end
+
+        if true then
+            if true then
+                ::a::
+            end
+        end
+
+        return b
+    "};
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+
+    let result = rt.execute(&chunk);
+    assert!(matches!(
+        result,
+        Err(LuaError::ExecutionError(OpError::MissingLabel))
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn goto_local_in_scope_label_outside_still_valid() -> anyhow::Result<()> {
+    let src = indoc! {"
+        local b = 1
+
+        if b == 1 then
+            goto c
+            local d = 2
+        end
+
+        ::c::
+
+        return b
+    "};
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+
+    let result = rt.execute(&chunk)?;
+
+    assert_eq!(
+        result,
+        vec![1.into()],
         "{:#?} produced an incorrect result",
         chunk
     );

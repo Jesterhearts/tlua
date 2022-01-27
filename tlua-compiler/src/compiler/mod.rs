@@ -83,7 +83,7 @@ impl Compiler {
                 .into_globals()
                 .into_iter()
                 .map(|(global, reg)| {
-                    debug_assert_eq!(reg.source_scope, GLOBAL_SCOPE);
+                    debug_assert_eq!(reg.source_scope_depth, GLOBAL_SCOPE);
                     (global, reg.offset.into())
                 })
                 .collect(),

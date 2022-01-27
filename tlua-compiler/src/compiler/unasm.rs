@@ -14,14 +14,14 @@ pub(crate) trait AssembleOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct OffsetRegister {
-    pub(super) source_scope: u16,
+    pub(super) source_scope_depth: u16,
     pub(super) offset: u16,
 }
 
 impl From<OffsetRegister> for Register {
     fn from(val: OffsetRegister) -> Self {
         Register {
-            scope: val.source_scope,
+            scope: val.source_scope_depth,
             offset: val.offset,
         }
     }
