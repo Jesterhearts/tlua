@@ -172,7 +172,7 @@ impl Context<'_> {
                 }
 
                 // Table operations
-                Op::Load(Load { dest, index }) => {
+                Op::Lookup(Lookup { dest, index }) => {
                     let value = match self.in_scope.load(dest) {
                         Value::Table(t) => t
                             .borrow()

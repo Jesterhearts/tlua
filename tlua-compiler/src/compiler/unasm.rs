@@ -138,7 +138,7 @@ impl AssembleOp for UnasmOp {
             .into(),
             Op::JumpNotRet0(op) => op.into(),
             Op::JumpNotVa0(op) => op.into(),
-            Op::Load(Load { dest, index }) => Load {
+            Op::Lookup(Lookup { dest, index }) => Lookup {
                 dest: dest.assemble(),
                 index: index.assemble(),
             }

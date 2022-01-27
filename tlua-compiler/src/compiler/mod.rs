@@ -436,16 +436,22 @@ impl CompilerContext<'_, '_, '_> {
         index: impl CompileExpression,
     ) -> Result<Option<OpError>, CompileError> {
         let index = index.compile(self)?;
-        match index {
-            NodeOutput::Constant(c) => {
-                self.emit(opcodes::Load::from((table, UnasmOperand::from(c))));
-                Ok(None)
+        let index = match index {
+            NodeOutput::Constant(c) => UnasmOperand::from(c),
+            NodeOutput::Register(reg) => UnasmOperand::from(reg),
+            NodeOutput::ReturnValues => {
+                let reg: UnasmRegister = self.new_anon_reg().init_from_ret(self).into();
+                UnasmOperand::from(reg)
             }
-            NodeOutput::Register(_) => todo!(),
-            NodeOutput::ReturnValues => todo!(),
-            NodeOutput::VAStack => todo!(),
-            NodeOutput::Err(err) => Ok(Some(err)),
-        }
+            NodeOutput::VAStack => {
+                let reg: UnasmRegister = self.new_anon_reg().init_from_va(self, 0).into();
+                UnasmOperand::from(reg)
+            }
+            NodeOutput::Err(err) => return Ok(Some(err)),
+        };
+
+        self.emit(opcodes::Lookup::from((table, index)));
+        Ok(None)
     }
 
     /// Instruct the compiler to emit the instructions required to set a value

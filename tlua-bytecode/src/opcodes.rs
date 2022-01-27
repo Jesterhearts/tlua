@@ -127,7 +127,7 @@ pub enum Op<RegisterTy> {
     /// Jump to a specific instruction if the first variadic argument
     JumpNotVa0(JumpNotVa0),
     /// `[dest] = `[dest].table[[src]]`
-    Load(Load<RegisterTy>),
+    Lookup(Lookup<RegisterTy>),
     /// `[dest].table[[index]]` = `[src]`
     Store(Store<RegisterTy>),
     /// `[dest].table[[index]]` = `va[c]`
@@ -283,7 +283,7 @@ pub struct StoreAllFromVa<RegTy> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, From)]
-pub struct Load<RegTy> {
+pub struct Lookup<RegTy> {
     pub dest: AnyReg<RegTy>,
     pub index: Operand<RegTy>,
 }
