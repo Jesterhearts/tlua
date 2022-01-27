@@ -157,20 +157,14 @@ impl<'function> FunctionScope<'function> {
         let id = self.next_if_id;
         self.next_if_id += 1;
 
-        LabelId::If {
-            scope: self.scope_depth.get(),
-            id,
-        }
+        LabelId::If { id }
     }
 
     fn push_loop_id(&mut self) -> LabelId {
         let id = self.next_loop_id;
         self.next_loop_id += 1;
 
-        LabelId::Loop {
-            scope: self.scope_depth.get(),
-            id,
-        }
+        LabelId::Loop { id }
     }
 
     fn pop_loop_id(&mut self) {
@@ -178,10 +172,9 @@ impl<'function> FunctionScope<'function> {
     }
 
     fn current_loop_id(&self) -> Option<LabelId> {
-        self.next_loop_id.checked_sub(1).map(|id| LabelId::Loop {
-            scope: self.scope_depth.get(),
-            id,
-        })
+        self.next_loop_id
+            .checked_sub(1)
+            .map(|id| LabelId::Loop { id })
     }
 }
 

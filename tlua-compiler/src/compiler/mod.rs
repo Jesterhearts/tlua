@@ -4,6 +4,7 @@ use derive_more::From;
 use tlua_bytecode::{
     opcodes,
     AnonymousRegister,
+    ByteCodeError,
     OpError,
     TypeMeta,
 };
@@ -39,8 +40,8 @@ pub(crate) enum HasVaArgs {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum LabelId {
     Named(Ident),
-    If { scope: usize, id: usize },
-    Loop { scope: usize, id: usize },
+    If { id: usize },
+    Loop { id: usize },
 }
 
 #[derive(Debug, Default)]
@@ -394,7 +395,20 @@ impl CompilerContext<'_, '_, '_> {
             has_va_args: self.has_va_args,
         };
 
-        emitter(&mut new_context)
+        let pending_scope_push = new_context.emit(opcodes::Raise::from(OpError::ByteCodeError {
+            err: ByteCodeError::MissingScopeDescriptor,
+            offset: new_context.next_instruction(),
+        }));
+
+        emitter(&mut new_context)?;
+
+        new_context.overwrite(
+            pending_scope_push,
+            opcodes::ScopeDescriptor::from(new_context.scope_declared_locals_count()),
+        );
+        new_context.emit(opcodes::Op::PopScope);
+
+        Ok(None)
     }
 
     /// Instruct the compiler to emit the instructions required to initialize a

@@ -1,8 +1,4 @@
-use tlua_bytecode::{
-    opcodes,
-    ByteCodeError,
-    OpError,
-};
+use tlua_bytecode::OpError;
 use tlua_parser::{
     ast::{
         block::{
@@ -38,28 +34,20 @@ impl CompileStatement for RetStatement<'_> {
 
 impl CompileStatement for Block<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        compiler.emit_in_subscope(|compiler| {
-            let pending_scope_push = compiler.emit(opcodes::Raise::from(OpError::ByteCodeError {
-                err: ByteCodeError::MissingScopeDescriptor,
-                offset: compiler.next_instruction(),
-            }));
+        compiler.emit_in_subscope(|compiler| emit_block(compiler, self))
+    }
+}
 
-            for stat in self.statements.iter() {
-                stat.compile(compiler)?;
-            }
+pub(crate) fn emit_block(
+    compiler: &mut CompilerContext,
+    block: &Block,
+) -> Result<Option<OpError>, CompileError> {
+    for stat in block.statements.iter() {
+        stat.compile(compiler)?;
+    }
 
-            compiler.overwrite(
-                pending_scope_push,
-                opcodes::ScopeDescriptor::from(compiler.scope_declared_locals_count()),
-            );
-
-            match self.ret.as_ref() {
-                Some(ret) => ret.compile(compiler),
-                None => {
-                    compiler.emit(opcodes::Op::PopScope);
-                    Ok(None)
-                }
-            }
-        })
+    match block.ret.as_ref() {
+        Some(ret) => ret.compile(compiler),
+        None => Ok(None),
     }
 }
