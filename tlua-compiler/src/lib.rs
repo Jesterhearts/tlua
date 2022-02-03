@@ -1,5 +1,13 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    num::NonZeroUsize,
+};
 
+use derive_more::{
+    Deref,
+    From,
+    Into,
+};
 use thiserror::Error;
 use tlua_bytecode::{
     opcodes::Instruction,
@@ -51,11 +59,37 @@ impl Default for NodeOutput {
     }
 }
 
-pub struct TypeIds();
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Into)]
+pub struct FuncId(usize);
 
-impl TypeIds {
-    pub const FUNCTION: TypeId = TypeId::const_from(0);
-    pub const TABLE: TypeId = TypeId::const_from(1);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BuiltinType {
+    Function(FuncId),
+    Table,
+}
+
+impl From<BuiltinType> for TypeId {
+    fn from(id: BuiltinType) -> Self {
+        match id {
+            BuiltinType::Function(id) => Self::Any(NonZeroUsize::new(1).unwrap(), id.into()),
+            BuiltinType::Table => Self::Any(NonZeroUsize::new(2).unwrap(), 0),
+        }
+    }
+}
+
+impl TryFrom<TypeId> for BuiltinType {
+    type Error = ();
+
+    fn try_from(value: TypeId) -> Result<Self, Self::Error> {
+        match value {
+            TypeId::Primitive(_) => Err(()),
+            TypeId::Any(type_id, id) => match type_id.get() {
+                1 => Ok(Self::Function(id.into())),
+                2 => Ok(Self::Table),
+                _ => Err(()),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -148,12 +182,25 @@ where
     }
 }
 
+#[derive(Clone, Deref, From)]
+pub struct Instructions(Vec<Instruction>);
+
+impl std::fmt::Debug for Instructions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut list = f.debug_list();
+        for (idx, op) in self.0.iter().enumerate() {
+            list.entry(&format_args!("{:4}: {:?}", idx, op));
+        }
+        list.finish()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
     pub named_args: usize,
     pub local_registers: usize,
     pub anon_registers: usize,
-    pub instructions: Vec<Instruction>,
+    pub instructions: Instructions,
 }
 
 #[derive(Debug, Clone)]

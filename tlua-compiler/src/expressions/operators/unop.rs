@@ -1,6 +1,7 @@
 use tlua_bytecode::{
     binop::f64inbounds,
     opcodes::{
+        self,
         UnaryBitNot,
         UnaryMinus,
     },
@@ -29,7 +30,7 @@ impl CompileExpression for Negation<'_> {
 
 impl CompileExpression for Not<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        compiler.write_unary_op::<UnaryMinus<LocalRegister>, _, _>(&self.0, |v| {
+        compiler.write_unary_op::<opcodes::Not<LocalRegister>, _, _>(&self.0, |v| {
             Ok((!v.as_bool()).into())
         })
     }

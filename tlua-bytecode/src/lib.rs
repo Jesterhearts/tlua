@@ -3,10 +3,6 @@ use std::{
     num::NonZeroUsize,
 };
 
-use derive_more::{
-    From,
-    Into,
-};
 use thiserror::Error;
 
 pub mod binop;
@@ -47,6 +43,12 @@ pub enum ByteCodeError {
 pub enum OpError {
     #[error("Invalid types for operator {op:?}")]
     InvalidType { op: &'static str },
+    #[error("Invalid 'for' initial value - expected number")]
+    InvalidForInit,
+    #[error("Invalid 'for' condition - expected number")]
+    InvalidForCond,
+    #[error("Invalid 'for' step - expected number")]
+    InvalidForStep,
     #[error("Attempted to index a {ty} value")]
     NotATable { ty: &'static str },
     #[error("Attempted to compare {lhs} with {rhs}")]
@@ -91,18 +93,19 @@ impl StringLike for ConstantString {
     }
 }
 
-/// A type identifier used for bytecodes like `Alloc`. The exact meaning is up
-/// to the runtime/compiler.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
-pub struct TypeId(usize);
-
-impl TypeId {
-    pub const fn const_from(v: usize) -> Self {
-        Self(v)
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PrimitiveType {
+    Nil = 1,
+    Bool = 2,
+    Float = 3,
+    Integer = 4,
+    String = 5,
 }
 
-/// Extended type information used for bytecodes. The exact meaning is up to the
-/// runtime/compiler.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
-pub struct TypeMeta(Option<NonZeroUsize>);
+/// A type identifier used for bytecodes like `Alloc`. The exact meaning is up
+/// to the runtime/compiler.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TypeId {
+    Primitive(PrimitiveType),
+    Any(NonZeroUsize, usize),
+}

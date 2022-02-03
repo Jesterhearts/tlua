@@ -15,7 +15,7 @@ use crate::{
     OpError,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct FloatOp<OpTy: FloatBinop, RegisterTy> {
     pub lhs: AnyReg<RegisterTy>,
     pub rhs: Operand<RegisterTy>,
@@ -82,7 +82,7 @@ macro_rules! float_binop_impl {
         pub struct $name;
 
         impl OpName for $name {
-            const NAME: &'static str = stringify!($name);
+            const NAME: &'static str = paste::paste! { stringify!([< $name:snake >])};
         }
 
         impl FloatBinop for $name {
@@ -154,3 +154,13 @@ float_binop!(Exponetiation => {
     (lhs: int, rhs: int) =>  Number::Float((lhs as f64).powf(rhs as f64)),
     (lhs: float, rhs: float) => Number::Float(lhs.powf(rhs)),
 });
+
+impl<T, Reg> ::std::fmt::Debug for FloatOp<T, Reg>
+where
+    T: std::fmt::Debug + FloatBinop + OpName,
+    Reg: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {:?} {:?}", T::NAME, self.lhs, self.rhs)
+    }
+}

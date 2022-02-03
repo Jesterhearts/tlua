@@ -400,14 +400,11 @@ impl<'function> BlockScope<'_, 'function> {
             } else {
                 self.scope_depth.get().try_into().unwrap()
             },
-            offset: self
-                .function_scope
-                .function
-                .local_registers
-                .try_into()
-                .map_err(|_| CompileError::TooManyLocals {
+            offset: self.declared_locals.len().try_into().map_err(|_| {
+                CompileError::TooManyLocals {
                     max: u16::MAX.into(),
-                })?,
+                }
+            })?,
         };
         self.function_scope.function.local_registers += 1;
 

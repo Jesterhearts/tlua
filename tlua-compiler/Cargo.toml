@@ -14,6 +14,10 @@ derive_more = '^0.99'
 take_mut = '^0.2'
 thiserror = '^1.0'
 
+[dependencies.strum]
+version = '^0.23'
+features = [ "derive" ]
+
 [dependencies.tlua-bytecode]
 path = "../tlua-bytecode"
 

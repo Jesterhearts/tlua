@@ -8,12 +8,14 @@ use tlua_bytecode::{
     },
     ByteCodeError,
     OpError,
+    PrimitiveType,
     Register,
     Truthy,
+    TypeId,
 };
 use tlua_compiler::{
+    BuiltinType,
     Chunk,
-    TypeIds,
 };
 use tracing_rc::rc::Gc;
 
@@ -287,20 +289,12 @@ impl Context<'_> {
                 }
 
                 // Allocate values
-                Op::Alloc(Alloc {
-                    dest,
-                    type_id,
-                    metadata,
-                }) => {
-                    let value = match type_id {
-                        TypeIds::FUNCTION => Value::Function(Gc::new(Function::new(
-                            &self.in_scope,
-                            metadata.try_into().map_err(|err| OpError::ByteCodeError {
-                                err,
-                                offset: self.ip_index(),
-                            })?,
-                        ))),
-                        TypeIds::TABLE => Value::Table(Gc::new(Table::default())),
+                Op::Alloc(Alloc { dest, type_id }) => {
+                    let value = match BuiltinType::try_from(type_id) {
+                        Ok(BuiltinType::Function(id)) => {
+                            Value::Function(Gc::new(Function::new(&self.in_scope, id)))
+                        }
+                        Ok(BuiltinType::Table) => Value::Table(Gc::new(Table::default())),
                         _ => {
                             return Err(OpError::ByteCodeError {
                                 err: ByteCodeError::InvalidTypeId,
@@ -309,6 +303,39 @@ impl Context<'_> {
                         }
                     };
                     self.in_scope.store(dest, value);
+                }
+
+                Op::CheckType(CheckType {
+                    dest,
+                    src,
+                    expected_type_id,
+                }) => {
+                    let target = self.in_scope.load(src);
+                    let matches_type = match (expected_type_id, target) {
+                        (TypeId::Primitive(PrimitiveType::Nil), Value::Nil)
+                        | (TypeId::Primitive(PrimitiveType::Bool), Value::Bool(_))
+                        | (
+                            TypeId::Primitive(PrimitiveType::Float),
+                            Value::Number(Number::Float(_)),
+                        )
+                        | (
+                            TypeId::Primitive(PrimitiveType::Integer),
+                            Value::Number(Number::Integer(_)),
+                        )
+                        | (TypeId::Primitive(PrimitiveType::String), Value::String(_)) => true,
+                        (id @ TypeId::Any(_, _), target) => {
+                            match (BuiltinType::try_from(id), target) {
+                                (Ok(BuiltinType::Table), Value::Table(_)) => true,
+                                (Ok(BuiltinType::Function(id)), Value::Function(f)) => {
+                                    f.borrow().id == id
+                                }
+                                (_, _) => false,
+                            }
+                        }
+                        _ => false,
+                    };
+
+                    self.in_scope.store(dest, matches_type.into());
                 }
 
                 // Alter the active scopes
@@ -332,6 +359,11 @@ impl Context<'_> {
 
                 // Stop execution by raising an error.
                 Op::Raise(Raise { err }) => return Err(err),
+                Op::RaiseIfNot(RaiseIfNot { src, err }) => {
+                    if !self.in_scope.load(src).as_bool() {
+                        return Err(err);
+                    }
+                }
 
                 Op::CallCopyRet(_)
                 | Op::MapRet(_)

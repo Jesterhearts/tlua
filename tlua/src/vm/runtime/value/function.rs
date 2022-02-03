@@ -1,6 +1,5 @@
 use std::{
     cell::RefCell,
-    num::NonZeroUsize,
     rc::Rc,
 };
 
@@ -15,31 +14,16 @@ use tlua_bytecode::{
         AnyReg,
         ScopeDescriptor,
     },
-    ByteCodeError,
     MappedRegister,
     Register,
-    TypeMeta,
 };
+use tlua_compiler::FuncId;
 use tracing_rc::{
     rc::Trace,
     Trace,
 };
 
 use crate::vm::runtime::Value;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, From, Into)]
-pub(crate) struct FuncId(usize);
-
-impl TryFrom<TypeMeta> for FuncId {
-    type Error = ByteCodeError;
-
-    fn try_from(value: TypeMeta) -> Result<Self, Self::Error> {
-        match Option::<NonZeroUsize>::from(value) {
-            Some(v) => Ok(Self(v.get() - 1)),
-            None => Err(ByteCodeError::InvalidTypeMetadata),
-        }
-    }
-}
 
 #[derive(Debug, Default, Clone)]
 pub struct Scope {

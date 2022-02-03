@@ -1,12 +1,9 @@
-use std::num::NonZeroUsize;
-
 use derive_more::From;
 use tlua_bytecode::{
     opcodes,
     AnonymousRegister,
     ByteCodeError,
     OpError,
-    TypeMeta,
 };
 use tlua_parser::ast::{
     block::Block,
@@ -14,13 +11,15 @@ use tlua_parser::ast::{
 };
 
 use crate::{
+    block::emit_block,
     constant::Constant,
+    BuiltinType,
     Chunk,
     CompileError,
     CompileExpression,
     CompileStatement,
+    FuncId,
     NodeOutput,
-    TypeIds,
 };
 
 mod scope;
@@ -52,7 +51,7 @@ pub(crate) struct Compiler {
 
 impl Compiler {
     pub(crate) fn compile_ast(mut self, ast: Block) -> Result<Chunk, CompileError> {
-        let main = self.emit_in_main(|context| ast.compile(context).map(|_| ()))?;
+        let main = self.emit_in_main(|context| emit_block(context, &ast).map(|_| ()))?;
 
         Ok(self.into_chunk(main))
     }
@@ -141,12 +140,11 @@ where
 
     /// Indicate the the register should be initialized by allocating a
     /// function.
-    fn init_alloc_fn(self, compiler: &mut CompilerContext, value: TypeMeta) -> RegisterTy {
+    fn init_alloc_fn(self, compiler: &mut CompilerContext, value: FuncId) -> RegisterTy {
         let register = self.no_init_needed();
         compiler.emit(opcodes::Alloc::from((
             UnasmRegister::from(register),
-            TypeIds::FUNCTION,
-            value,
+            BuiltinType::Function(value).into(),
         )));
         register
     }
@@ -156,8 +154,7 @@ where
         let register = self.no_init_needed();
         compiler.emit(opcodes::Alloc::from((
             UnasmRegister::from(register),
-            TypeIds::TABLE,
-            TypeMeta::from(None),
+            BuiltinType::Table.into(),
         )));
         register
     }
@@ -343,7 +340,7 @@ impl CompilerContext<'_, '_, '_> {
         params: impl ExactSizeIterator<Item = Ident>,
         body: impl ExactSizeIterator<Item = impl CompileStatement>,
         ret: Option<&impl CompileStatement>,
-    ) -> Result<TypeMeta, CompileError> {
+    ) -> Result<FuncId, CompileError> {
         let mut new_function = self.scope.new_function(params.len());
 
         {
@@ -378,7 +375,7 @@ impl CompilerContext<'_, '_, '_> {
 
         self.functions.push(new_function.complete());
 
-        Ok(TypeMeta::from(NonZeroUsize::try_from(fn_id + 1).ok()))
+        Ok(FuncId::from(fn_id))
     }
 
     /// Instruct the compiler to create a new context for the current function

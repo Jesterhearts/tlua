@@ -15,7 +15,7 @@ use crate::{
     OpError,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct IntOp<OpTy: IntBinop, RegisterTy> {
     pub lhs: AnyReg<RegisterTy>,
     pub rhs: Operand<RegisterTy>,
@@ -123,7 +123,7 @@ macro_rules! int_binop_impl {
         pub struct $name;
 
         impl OpName for $name {
-            const NAME: &'static str = stringify!($name);
+            const NAME: &'static str = paste::paste! { stringify!([< $name:snake >])};
         }
 
         impl IntBinop for $name {
@@ -149,15 +149,6 @@ macro_rules! int_binop {
             $name => {
                 ($lhs_int : int, $rhs_int : int) => $when_ints,
                 ($lhs_float : float, $rhs_float : float) => $when_floats
-            }
-        }
-
-        paste::paste! {
-            int_binop_impl! {
-                [< $name Indirect >] => {
-                    ($lhs_int : int, $rhs_int : int) => $when_ints,
-                    ($lhs_float : float, $rhs_float : float) => $when_floats
-                }
             }
         }
     };
@@ -187,3 +178,13 @@ int_binop!(ShiftRight => {
     (lhs: int, rhs: int) => Number::Integer(shift_right(lhs, rhs)),
     (lhs: float, rhs: float) => Number::Integer(shift_right(lhs, rhs)),
 });
+
+impl<T, Reg> ::std::fmt::Debug for IntOp<T, Reg>
+where
+    T: std::fmt::Debug + IntBinop + OpName,
+    Reg: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {:?} {:?}", T::NAME, self.lhs, self.rhs)
+    }
+}

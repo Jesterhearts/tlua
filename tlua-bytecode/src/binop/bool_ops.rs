@@ -10,7 +10,7 @@ use crate::{
     Truthy,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct BoolOp<OpTy: BooleanOpEval, RegisterTy> {
     pub lhs: AnyReg<RegisterTy>,
     pub rhs: Operand<RegisterTy>,
@@ -78,7 +78,7 @@ macro_rules! bool_binop_impl {
         pub struct $name;
 
         impl OpName for $name {
-            const NAME: &'static str = stringify!($name);
+            const NAME: &'static str = paste::paste! { stringify!([< $name:snake >])};
         }
 
         impl BooleanOpEval for $name {
@@ -98,11 +98,18 @@ macro_rules! bool_binop_impl {
 macro_rules! bool_binop {
     ($name:ident => ($lhs:ident : bool, $rhs:ident : bool) => $op:expr $(,)?) => {
         bool_binop_impl! { $name => ($lhs : bool, $rhs : bool) => $op }
-
-        paste::paste! { bool_binop_impl!{ [< $name Indirect >] => ($lhs :
-        bool, $rhs : bool) => $op }}
     };
 }
 
 bool_binop!(And => (lhs: bool, rhs: bool) => evaluate_and(lhs, rhs));
 bool_binop!(Or => (lhs: bool, rhs: bool) => evaluate_or(lhs, rhs));
+
+impl<T, Reg> ::std::fmt::Debug for BoolOp<T, Reg>
+where
+    T: std::fmt::Debug + BooleanOpEval + OpName,
+    Reg: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {:?} {:?}", T::NAME, self.lhs, self.rhs)
+    }
+}

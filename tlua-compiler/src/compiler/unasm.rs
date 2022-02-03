@@ -4,7 +4,10 @@ use tlua_bytecode::{
     Register,
 };
 
-use crate::Function;
+use crate::{
+    Function,
+    Instructions,
+};
 
 pub(crate) trait AssembleOp {
     type Target;
@@ -130,6 +133,11 @@ impl AssembleOp for UnasmOp {
             }
             .into(),
             Op::Raise(op) => op.into(),
+            Op::RaiseIfNot(RaiseIfNot { src, err }) => RaiseIfNot {
+                src: src.assemble(),
+                err,
+            }
+            .into(),
             Op::Jump(op) => op.into(),
             Op::JumpNot(JumpNot { cond, target }) => JumpNot {
                 cond: cond.assemble(),
@@ -174,14 +182,19 @@ impl AssembleOp for UnasmOp {
                 index,
             }
             .into(),
-            Op::Alloc(Alloc {
-                dest,
-                type_id,
-                metadata,
-            }) => Alloc {
+            Op::Alloc(Alloc { dest, type_id }) => Alloc {
                 dest: dest.assemble(),
                 type_id,
-                metadata,
+            }
+            .into(),
+            Op::CheckType(CheckType {
+                dest,
+                src,
+                expected_type_id,
+            }) => CheckType {
+                dest: dest.assemble(),
+                src: src.assemble(),
+                expected_type_id,
             }
             .into(),
             Op::PushScope(descriptor) => descriptor.into(),
@@ -264,7 +277,12 @@ impl UnasmFunction {
             local_registers,
             anon_registers,
             named_args,
-            instructions: instructions.into_iter().map(UnasmOp::assemble).collect(),
+            instructions: Instructions::from(
+                instructions
+                    .into_iter()
+                    .map(UnasmOp::assemble)
+                    .collect::<Vec<_>>(),
+            ),
         }
     }
 }

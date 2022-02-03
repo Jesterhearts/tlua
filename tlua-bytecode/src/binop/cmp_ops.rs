@@ -12,7 +12,7 @@ use crate::{
     StringLike,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct CompareOp<OpTy, RegisterTy> {
     pub lhs: AnyReg<RegisterTy>,
     pub rhs: Operand<RegisterTy>,
@@ -57,7 +57,7 @@ macro_rules! comparison_binop_impl {
         pub struct $name;
 
         impl OpName for $name {
-            const NAME: &'static str = stringify!($name);
+            const NAME: &'static str = paste::paste! { stringify!([< $name:snake >])};
         }
 
         impl<RegisterTy> ComparisonOpEval for CompareOp<$name, RegisterTy> {
@@ -170,3 +170,13 @@ comparison_binop!(NotEqual => {
     (lhs: table, rhs: table) => Ok(lhs != rhs),
     (lhs: func, rhs: func) => Ok(lhs != rhs)
 });
+
+impl<T, Reg> ::std::fmt::Debug for CompareOp<T, Reg>
+where
+    T: std::fmt::Debug + OpName,
+    Reg: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {:?} {:?}", T::NAME, self.lhs, self.rhs)
+    }
+}

@@ -9,10 +9,10 @@ use crate::{
         HasVaArgs,
         InitRegister,
     },
+    BuiltinType,
     CompileError,
     CompileStatement,
     CompilerContext,
-    TypeIds,
 };
 
 impl CompileStatement for FnDecl<'_> {
@@ -40,7 +40,10 @@ impl CompileStatement for FnDecl<'_> {
                     compiler.read_variable(path.next().copied().expect("Path is not empty"))?;
 
                 if path.len() == 1 {
-                    compiler.emit(opcodes::Alloc::from((reg, TypeIds::FUNCTION, func_id)));
+                    compiler.emit(opcodes::Alloc::from((
+                        reg,
+                        BuiltinType::Function(func_id).into(),
+                    )));
                     return Ok(None);
                 }
 

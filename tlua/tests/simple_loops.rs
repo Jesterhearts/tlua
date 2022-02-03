@@ -111,3 +111,58 @@ fn simple_repeat_break() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn simple_for() -> anyhow::Result<()> {
+    let src = indoc! {"
+        local b = 0 
+
+        for i = 1, 10 do
+            b = b + 1
+        end
+
+        return b
+    "};
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+
+    let result = rt.execute(&chunk)?;
+
+    assert_eq!(
+        result,
+        vec![10.into()],
+        "{:#?} produced an incorrect result",
+        chunk
+    );
+
+    Ok(())
+}
+
+#[test]
+fn simple_for_break() -> anyhow::Result<()> {
+    let src = indoc! {"
+        local b = 0 
+
+        for i = 1, 10 do
+            b = b + 1
+            break
+        end
+
+        return b
+    "};
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+
+    let result = rt.execute(&chunk)?;
+
+    assert_eq!(
+        result,
+        vec![1.into()],
+        "{:#?} produced an incorrect result",
+        chunk
+    );
+
+    Ok(())
+}
