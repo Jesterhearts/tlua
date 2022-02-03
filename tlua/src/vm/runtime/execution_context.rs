@@ -167,6 +167,13 @@ impl Context<'_> {
                     }
                 }
 
+                Op::JumpNil(JumpNil { cond, target }) => {
+                    let cond = self.in_scope.load(cond);
+                    if cond == Value::Nil {
+                        self.instruction_pointer = self.instructions.split_at(target).1;
+                    }
+                }
+
                 Op::JumpNotVa0(JumpNotVa0 { target }) => {
                     if !self.in_scope.load_va(0).as_bool() {
                         self.instruction_pointer = self.instructions.split_at(target).1;

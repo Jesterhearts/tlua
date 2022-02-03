@@ -9,7 +9,6 @@ use tlua_bytecode::{
 use tlua_parser::ast::statement::for_loop::ForLoop;
 
 use crate::{
-    block::emit_block,
     compiler::{
         unasm::{
             UnasmOperand,
@@ -27,8 +26,8 @@ use crate::{
 
 impl CompileStatement for ForLoop<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        let loop_exit_label = compiler.push_loop_label();
         compiler.emit_in_subscope(|compiler| {
+            let loop_exit_label = compiler.push_loop_label();
             let typecheck0: UnasmRegister = compiler.new_anon_reg().no_init_needed().into();
             let typecheck1: UnasmRegister = compiler.new_anon_reg().no_init_needed().into();
 
@@ -139,7 +138,7 @@ impl CompileStatement for ForLoop<'_> {
                 },
             });
 
-            emit_block(compiler, &self.body)?;
+            self.body.compile(compiler)?;
 
             compiler.emit(binop::FloatOp::<binop::Add, _>::from((
                 init,

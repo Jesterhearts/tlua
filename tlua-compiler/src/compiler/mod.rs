@@ -185,6 +185,12 @@ impl InitRegister<UnasmRegister> for UnasmRegister {
     }
 }
 
+impl InitRegister<AnonymousRegister> for AnonymousRegister {
+    fn no_init_needed(self) -> Self {
+        self
+    }
+}
+
 impl InitRegister<MappedLocalRegister> for MappedLocalRegister {
     fn no_init_needed(self) -> Self {
         self
@@ -307,7 +313,7 @@ impl CompilerContext<'_, '_, '_> {
         size: usize,
     ) -> (
         usize,
-        impl ExactSizeIterator<Item = UninitRegister<AnonymousRegister>>,
+        impl ExactSizeIterator<Item = UninitRegister<AnonymousRegister>> + Clone,
     ) {
         let start = self.scope.total_anons();
         let range = start..(start + size);

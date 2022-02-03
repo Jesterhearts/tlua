@@ -140,7 +140,7 @@ fn emit_call_with_args(
     })
 }
 
-fn emit_standard_call(
+pub(crate) fn emit_standard_call(
     compiler: &mut CompilerContext,
     target: UnasmRegister,
     mut args: impl ExactSizeIterator<Item = impl CompileExpression>,

@@ -144,6 +144,11 @@ impl AssembleOp for UnasmOp {
                 target,
             }
             .into(),
+            Op::JumpNil(JumpNil { cond, target }) => JumpNil {
+                cond: cond.assemble(),
+                target,
+            }
+            .into(),
             Op::JumpNotRet0(op) => op.into(),
             Op::JumpNotVa0(op) => op.into(),
             Op::Lookup(Lookup { dest, index }) => Lookup {

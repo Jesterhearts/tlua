@@ -152,6 +152,9 @@ pub enum Op<RegisterTy> {
     /// Jump to a specific instruction if the value in the register evaluates to
     /// false.
     JumpNot(JumpNot<RegisterTy>),
+    /// Jump to a specific instruction if the value in the register is exactly
+    /// Nil
+    JumpNil(JumpNil<RegisterTy>),
     /// Jump to a specific instruction if the first return value evaluates to
     /// false.
     JumpNotRet0(JumpNotRet0),
@@ -304,6 +307,21 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "not {:?} ? jmp {}", self.cond, self.target)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct JumpNil<RegTy> {
+    pub cond: AnyReg<RegTy>,
+    pub target: usize,
+}
+
+impl<Reg> std::fmt::Debug for JumpNil<Reg>
+where
+    Reg: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "notnil {:?} ? jmp {}", self.cond, self.target)
     }
 }
 
@@ -653,6 +671,7 @@ where
             Self::RaiseIfNot(arg0) => arg0.fmt(f),
             Self::Jump(arg0) => arg0.fmt(f),
             Self::JumpNot(arg0) => arg0.fmt(f),
+            Self::JumpNil(arg0) => arg0.fmt(f),
             Self::JumpNotRet0(arg0) => arg0.fmt(f),
             Self::JumpNotVa0(arg0) => arg0.fmt(f),
             Self::Lookup(arg0) => arg0.fmt(f),
