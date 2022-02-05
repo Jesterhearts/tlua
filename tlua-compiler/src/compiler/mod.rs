@@ -168,7 +168,7 @@ impl InitRegister for AnonymousRegister {
 
     fn init_from_ret(self, compiler: &mut CompilerContext) -> Self {
         let reg = self.no_init_needed();
-        compiler.emit(opcodes::LoadRet::from(reg));
+        compiler.emit(opcodes::ConsumeRetRange::from((usize::from(reg), 1)));
         reg
     }
 
@@ -226,7 +226,7 @@ impl InitRegister for AnonymousRegister {
 
     fn init_from_va(self, compiler: &mut CompilerContext, index: usize) -> Self {
         let reg = self.no_init_needed();
-        compiler.emit(opcodes::LoadVa::from((reg, index)));
+        compiler.emit(opcodes::LoadVa::from((usize::from(reg), index, 1)));
         reg
     }
 }
@@ -449,20 +449,14 @@ impl CompilerContext<'_, '_, '_> {
     pub(crate) fn new_anon_reg_range(
         &mut self,
         size: usize,
-    ) -> (
-        usize,
-        impl ExactSizeIterator<Item = UninitRegister<AnonymousRegister>> + Clone,
-    ) {
+    ) -> impl ExactSizeIterator<Item = UninitRegister<AnonymousRegister>> + Clone {
         let start = self.scope.total_anons();
         let range = start..(start + size);
         for _ in range.clone() {
             let _ = self.new_anon_reg().no_init_needed();
         }
 
-        (
-            start,
-            range.map(|idx| UninitRegister::from(AnonymousRegister::from(idx))),
-        )
+        range.map(|idx| UninitRegister::from(AnonymousRegister::from(idx)))
     }
 
     /// Allocate a new anonymous register.

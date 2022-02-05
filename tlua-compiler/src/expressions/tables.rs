@@ -42,10 +42,12 @@ where
     for field in fields {
         match field {
             Field::Named { name, expression } => {
-                let value = expression.compile(compiler)?;
                 let index = compiler
                     .new_anon_reg()
                     .init_from_const(compiler, ConstantString::from(name).into());
+
+                let value = expression.compile(compiler)?;
+
                 let value = compiler
                     .new_anon_reg()
                     .init_from_node_output(compiler, value);
@@ -55,11 +57,11 @@ where
             }
             Field::Indexed { index, expression } => {
                 let index = index.compile(compiler)?;
-                let value = expression.compile(compiler)?;
-
                 let index = compiler
                     .new_anon_reg()
                     .init_from_node_output(compiler, index);
+
+                let value = expression.compile(compiler)?;
                 let value = compiler
                     .new_anon_reg()
                     .init_from_node_output(compiler, value);

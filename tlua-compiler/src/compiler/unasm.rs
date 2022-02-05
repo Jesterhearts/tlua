@@ -111,7 +111,7 @@ impl AssembleOp for UnasmOp {
             Op::CallCopyRet(op) => op.into(),
             Op::CallCopyVa(op) => op.into(),
             Op::CopyRetFromRetAndRet => Op::CopyRetFromRetAndRet,
-            Op::LoadRet(op) => op.into(),
+            Op::ConsumeRetRange(op) => op.into(),
             Op::SetAllPropertiesFromRet(op) => op.into(),
         }
     }

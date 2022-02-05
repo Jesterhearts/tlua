@@ -6,6 +6,7 @@ use std::ops::{
 
 use derive_more::{
     Deref,
+    DerefMut,
     From,
 };
 use tlua_bytecode::{
@@ -49,7 +50,7 @@ use crate::vm::{
     },
 };
 
-#[derive(Debug, Deref, From)]
+#[derive(Debug, Deref, DerefMut, From)]
 pub(crate) struct Immediates(Vec<Value>);
 
 impl Index<AnonymousRegister> for Immediates {
@@ -281,8 +282,15 @@ impl Context<'_> {
                 Op::LoadConstant(LoadConstant { dst, src }) => {
                     self.anon[dst] = src.into();
                 }
-                Op::LoadVa(LoadVa { dst, idx }) => {
-                    self.anon[dst] = self.in_scope.load_va(idx);
+                Op::LoadVa(LoadVa {
+                    dst_start,
+                    va_start,
+                    count,
+                }) => {
+                    let mut va = self.in_scope.iter_va().skip(va_start);
+                    for dst in self.anon.iter_mut().skip(dst_start).take(count) {
+                        *dst = va.next().cloned().unwrap_or_default();
+                    }
                 }
                 Op::LoadRegister(LoadRegister { dst, src }) => {
                     self.anon[dst] = self.in_scope.load(src);
@@ -398,7 +406,7 @@ impl Context<'_> {
                 }
 
                 Op::CallCopyRet(_)
-                | Op::LoadRet(_)
+                | Op::ConsumeRetRange(_)
                 | Op::SetAllPropertiesFromRet(_)
                 | Op::CopyRetFromRetAndRet => {
                     return Err(OpError::ByteCodeError {
@@ -497,43 +505,44 @@ impl Context<'_> {
         self.subcontext(func, va_args, subscope).execute()
     }
 
-    fn map_results(&mut self, mut results: Vec<Value>) -> Result<(), OpError> {
-        let mut results = results.drain(..);
-        while let Some((&isn, next)) = self.instruction_pointer.split_first() {
-            match isn {
-                Op::LoadRet(LoadRet { dst }) => {
-                    self.anon[dst] = results.next().unwrap_or_default();
+    fn map_results(&mut self, results: Vec<Value>) -> Result<(), OpError> {
+        let (&isn, next) = if let Some(next) = self.instruction_pointer.split_first() {
+            next
+        } else {
+            return Ok(());
+        };
+
+        match isn {
+            Op::ConsumeRetRange(ConsumeRetRange { dst_start, count }) => {
+                let mut results = results.into_iter();
+                for dst in self.anon.iter_mut().skip(dst_start).take(count) {
+                    *dst = results.next().unwrap_or_default();
                 }
-
-                Op::Store(Store { dst, src }) => self.in_scope.store(dst, self.anon[src].clone()),
-
-                Op::SetAllPropertiesFromRet(SetAllPropertiesFromRet { dst, start_idx }) => {
-                    match &self.anon[dst] {
-                        Value::Table(t) => {
-                            let mut table = t.borrow_mut();
-                            for res in results.enumerate().map(|(index, v)| {
-                                i64::try_from(index + start_idx)
-                                    .map_err(|_| OpError::TableIndexOutOfBounds)
-                                    .map(Value::from)
-                                    .and_then(TableKey::try_from)
-                                    .map(|key| (key, v))
-                            }) {
-                                let (k, v) = res?;
-                                table.entries.insert(k, v);
-                            }
-                        }
-                        _ => todo!("metatables are unsupported"),
-                    };
-
-                    self.instruction_pointer = next;
-                    return Ok(());
-                }
-
-                _ => return Ok(()),
             }
 
-            self.instruction_pointer = next;
+            Op::SetAllPropertiesFromRet(SetAllPropertiesFromRet { dst, start_idx }) => {
+                match &self.anon[dst] {
+                    Value::Table(t) => {
+                        let mut table = t.borrow_mut();
+                        for res in results.into_iter().enumerate().map(|(index, v)| {
+                            i64::try_from(index + start_idx)
+                                .map_err(|_| OpError::TableIndexOutOfBounds)
+                                .map(Value::from)
+                                .and_then(TableKey::try_from)
+                                .map(|key| (key, v))
+                        }) {
+                            let (k, v) = res?;
+                            table.entries.insert(k, v);
+                        }
+                    }
+                    _ => todo!("metatables are unsupported"),
+                };
+            }
+
+            _ => return Ok(()),
         }
+
+        self.instruction_pointer = next;
 
         Ok(())
     }

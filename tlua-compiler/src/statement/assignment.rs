@@ -64,16 +64,42 @@ pub(crate) fn emit_assignments<VarExpr, VarDest>(
         match inits.next() {
             Some(init) => {
                 let init = init.compile(compiler)?;
-                assign_var(compiler, dest, init);
 
                 match init {
-                    init @ NodeOutput::ReturnValues | init @ NodeOutput::VAStack => {
-                        for dest in vars {
+                    NodeOutput::ReturnValues => {
+                        let consumed_values = vars.len() + 1;
+                        let mut regs = compiler.new_anon_reg_range(consumed_values);
+                        let first = regs.next().expect("At least one var.").no_init_needed();
+                        compiler.emit(opcodes::ConsumeRetRange::from((
+                            usize::from(first),
+                            consumed_values,
+                        )));
+
+                        assign_var(compiler, dest, NodeOutput::Immediate(first));
+                        for (dest, reg) in vars.zip(regs) {
                             let dest = compile_var(compiler, dest)?;
-                            assign_var(compiler, dest, init)
+                            assign_var(compiler, dest, NodeOutput::Immediate(reg.no_init_needed()));
                         }
                     }
-                    _ => (),
+                    NodeOutput::VAStack => {
+                        let consumed_values = vars.len() + 1;
+                        let mut regs = compiler.new_anon_reg_range(consumed_values);
+                        let first = regs.next().expect("At least one var.").no_init_needed();
+                        compiler.emit(opcodes::LoadVa::from((
+                            usize::from(first),
+                            0,
+                            consumed_values,
+                        )));
+
+                        assign_var(compiler, dest, NodeOutput::Immediate(first));
+                        for (dest, reg) in vars.zip(regs) {
+                            let dest = compile_var(compiler, dest)?;
+                            assign_var(compiler, dest, NodeOutput::Immediate(reg.no_init_needed()));
+                        }
+                    }
+                    init => {
+                        assign_var(compiler, dest, init);
+                    }
                 }
             }
             None => {

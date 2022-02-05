@@ -161,7 +161,7 @@ pub enum Op<RegisterTy> {
     /// and then return from the function.
     CopyRetFromRetAndRet,
     /// Copy the next available return value into the target register.
-    LoadRet(LoadRet),
+    ConsumeRetRange(ConsumeRetRange),
     /// Copy all the available return values into a table.
     SetAllPropertiesFromRet(SetAllPropertiesFromRet),
 }
@@ -273,10 +273,10 @@ impl std::fmt::Debug for Call {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "call {:?} (imm[{}..{}])",
+            "call {:?} ({:?}..{:?})",
             self.target,
-            self.mapped_args_start,
-            self.mapped_args_start + self.mapped_args_count
+            AnonymousRegister::from(self.mapped_args_start),
+            AnonymousRegister::from(self.mapped_args_start + self.mapped_args_count)
         )
     }
 }
@@ -292,10 +292,10 @@ impl std::fmt::Debug for CallCopyRet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "call {:?} (imm[{}..{}], results...)",
+            "call {:?} ({:?}..{:?}, results...)",
             self.target,
-            self.mapped_args_start,
-            self.mapped_args_start + self.mapped_args_count
+            AnonymousRegister::from(self.mapped_args_start),
+            AnonymousRegister::from(self.mapped_args_start + self.mapped_args_count)
         )
     }
 }
@@ -311,10 +311,10 @@ impl std::fmt::Debug for CallCopyVa {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "call {:?} (imm[{}..{}], va...)",
+            "call {:?} ({:?}..{:?}, results...)",
             self.target,
-            self.mapped_args_start,
-            self.mapped_args_start + self.mapped_args_count
+            AnonymousRegister::from(self.mapped_args_start),
+            AnonymousRegister::from(self.mapped_args_start + self.mapped_args_count)
         )
     }
 }
@@ -461,13 +461,20 @@ impl std::fmt::Debug for DuplicateRegister {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct LoadVa {
-    pub dst: AnonymousRegister,
-    pub idx: usize,
+    pub dst_start: usize,
+    pub va_start: usize,
+    pub count: usize,
 }
 
 impl std::fmt::Debug for LoadVa {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} = va[{:?}]", self.dst, self.idx)
+        write!(
+            f,
+            "{:?}..{:?} = va[{}..]",
+            AnonymousRegister::from(self.dst_start),
+            AnonymousRegister::from(self.dst_start + self.va_start),
+            self.count
+        )
     }
 }
 
@@ -498,13 +505,20 @@ impl std::fmt::Debug for ScopeDescriptor {
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct LoadRet {
-    pub dst: AnonymousRegister,
+pub struct ConsumeRetRange {
+    pub dst_start: usize,
+    pub count: usize,
 }
 
-impl std::fmt::Debug for LoadRet {
+impl std::fmt::Debug for ConsumeRetRange {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} = next(results)", self.dst)
+        write!(
+            f,
+            "{:?}..{:?} = results[..{}]",
+            AnonymousRegister::from(self.dst_start),
+            AnonymousRegister::from(self.dst_start + self.count),
+            self.count,
+        )
     }
 }
 
@@ -569,8 +583,7 @@ where
             Op::CheckType(op) => op.fmt(f),
             Op::SetRet(op) => op.fmt(f),
             Op::CopyRetFromVaAndRet => {
-                write!(f, "out += va...")?;
-                write!(f, "ret")
+                write!(f, "ret out += va...")
             }
             Op::Ret => write!(f, "ret"),
             Op::PushScope(op) => op.fmt(f),
@@ -578,11 +591,8 @@ where
             Op::Call(op) => op.fmt(f),
             Op::CallCopyRet(op) => op.fmt(f),
             Op::CallCopyVa(op) => op.fmt(f),
-            Op::CopyRetFromRetAndRet => {
-                write!(f, "out += results...")?;
-                write!(f, "ret")
-            }
-            Op::LoadRet(op) => op.fmt(f),
+            Op::CopyRetFromRetAndRet => write!(f, "ret out += results..."),
+            Op::ConsumeRetRange(op) => op.fmt(f),
             Op::SetAllPropertiesFromRet(op) => op.fmt(f),
         }
     }

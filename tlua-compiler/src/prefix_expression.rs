@@ -168,7 +168,14 @@ pub(crate) fn emit_standard_call(
         return Ok(None);
     }
 
-    let (first_reg_idx, mut arg_registers) = compiler.new_anon_reg_range(argc);
+    let mut arg_registers = compiler.new_anon_reg_range(argc);
+    let first_arg_idx = usize::from(
+        arg_registers
+            .clone()
+            .next()
+            .expect("At least one arg.")
+            .no_init_needed(),
+    );
 
     let regular_argc = argc - 1;
 
@@ -196,7 +203,7 @@ pub(crate) fn emit_standard_call(
         NodeOutput::ReturnValues => {
             compiler.emit(opcodes::CallCopyRet::from((
                 target,
-                first_reg_idx,
+                first_arg_idx,
                 regular_argc,
             )));
             return Ok(None);
@@ -204,7 +211,7 @@ pub(crate) fn emit_standard_call(
         NodeOutput::VAStack => {
             compiler.emit(opcodes::CallCopyVa::from((
                 target,
-                first_reg_idx,
+                first_arg_idx,
                 regular_argc,
             )));
             return Ok(None);
@@ -214,7 +221,7 @@ pub(crate) fn emit_standard_call(
         }
     }
 
-    compiler.emit(opcodes::Call::from((target, first_reg_idx, argc)));
+    compiler.emit(opcodes::Call::from((target, first_arg_idx, argc)));
     Ok(None)
 }
 
