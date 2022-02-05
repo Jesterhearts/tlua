@@ -52,6 +52,7 @@ fn compile_if_block(
     body: &Block,
 ) -> Result<(), CompileError> {
     let cond_value = cond.compile(compiler)?;
+    let cond_reg = compiler.output_to_reg_reuse_anon(cond_value);
 
     // Reserve an intruction for jumping to the next condition if the operand is
     // false.
@@ -67,11 +68,6 @@ fn compile_if_block(
     compiler.emit_jump_label(exit_label);
 
     let jump_op: UnasmOp = match cond_value {
-        NodeOutput::Register(reg) => {
-            opcodes::JumpNot::from((reg, compiler.next_instruction())).into()
-        }
-        NodeOutput::ReturnValues => opcodes::JumpNotRet0::from(compiler.next_instruction()).into(),
-        NodeOutput::VAStack => opcodes::JumpNotVa0::from(compiler.next_instruction()).into(),
         NodeOutput::Constant(c) => {
             if c.as_bool() {
                 // Always true, do nothing and just enter the block
@@ -81,7 +77,7 @@ fn compile_if_block(
                 opcodes::Jump::from(compiler.next_instruction()).into()
             }
         }
-        NodeOutput::Err(_) => UnasmOp::Nop,
+        _ => opcodes::JumpNot::from((cond_reg, compiler.next_instruction())).into(),
     };
 
     // Now that we know how big our body is, we can update our jump instruction for

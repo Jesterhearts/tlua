@@ -1,7 +1,4 @@
-use tlua_bytecode::{
-    opcodes,
-    OpError,
-};
+use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::fn_decl::FnDecl;
 
 use crate::{
@@ -9,7 +6,6 @@ use crate::{
         HasVaArgs,
         InitRegister,
     },
-    BuiltinType,
     CompileError,
     CompileStatement,
     CompilerContext,
@@ -40,10 +36,9 @@ impl CompileStatement for FnDecl<'_> {
                     compiler.read_variable(path.next().copied().expect("Path is not empty"))?;
 
                 if path.len() == 1 {
-                    compiler.emit(opcodes::Alloc::from((
-                        reg,
-                        BuiltinType::Function(func_id).into(),
-                    )));
+                    let src = compiler.new_anon_reg().init_alloc_fn(compiler, func_id);
+                    reg.init_from_anon_reg(compiler, src);
+
                     return Ok(None);
                 }
 

@@ -21,6 +21,8 @@ impl CompileStatement for WhileLoop<'_> {
 
         let cond_start = compiler.next_instruction();
         let init = self.cond.compile(compiler)?;
+        let cond = compiler.output_to_reg_reuse_anon(init);
+
         let pending_skip_body = compiler.emit(opcodes::Raise {
             err: OpError::ByteCodeError {
                 err: ByteCodeError::MissingJump,
@@ -32,13 +34,6 @@ impl CompileStatement for WhileLoop<'_> {
         compiler.emit(opcodes::Jump::from(cond_start));
 
         let jump_op: UnasmOp = match init {
-            NodeOutput::Register(reg) => {
-                opcodes::JumpNot::from((reg, compiler.next_instruction())).into()
-            }
-            NodeOutput::ReturnValues => {
-                opcodes::JumpNotRet0::from(compiler.next_instruction()).into()
-            }
-            NodeOutput::VAStack => opcodes::JumpNotVa0::from(compiler.next_instruction()).into(),
             NodeOutput::Constant(c) => {
                 if c.as_bool() {
                     // Infinite loop, no need to jump
@@ -48,7 +43,7 @@ impl CompileStatement for WhileLoop<'_> {
                     opcodes::Jump::from(compiler.next_instruction()).into()
                 }
             }
-            NodeOutput::Err(_) => UnasmOp::Nop,
+            _ => opcodes::JumpNot::from((cond, compiler.next_instruction())).into(),
         };
 
         compiler.overwrite(pending_skip_body, jump_op);

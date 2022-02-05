@@ -11,6 +11,7 @@ trace_mem = []
 
 [dependencies]
 derive_more = '^0.99'
+either = '^1.0'
 take_mut = '^0.2'
 thiserror = '^1.0'
 

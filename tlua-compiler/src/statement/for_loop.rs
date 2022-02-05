@@ -1,6 +1,6 @@
 use tlua_bytecode::{
-    binop,
     opcodes,
+    AnonymousRegister,
     ByteCodeError,
     OpError,
     PrimitiveType,
@@ -9,13 +9,7 @@ use tlua_bytecode::{
 use tlua_parser::ast::statement::for_loop::ForLoop;
 
 use crate::{
-    compiler::{
-        unasm::{
-            UnasmOperand,
-            UnasmRegister,
-        },
-        InitRegister,
-    },
+    compiler::InitRegister,
     constant::Constant,
     CompileError,
     CompileExpression,
@@ -28,67 +22,48 @@ impl CompileStatement for ForLoop<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
         compiler.emit_in_subscope(|compiler| {
             let loop_exit_label = compiler.push_loop_label();
-            let typecheck0: UnasmRegister = compiler.new_anon_reg().no_init_needed().into();
-            let typecheck1: UnasmRegister = compiler.new_anon_reg().no_init_needed().into();
+            let typecheck0 = compiler.new_anon_reg().no_init_needed();
+            let typecheck1 = compiler.new_anon_reg().no_init_needed();
 
             let init = self.init.compile(compiler)?;
+
             let init = emit_assert_isnum(
                 compiler,
                 init,
-                |compiler, target| {
-                    Ok(compiler
-                        // TODO(lang-5.4): This cannot be assigned to.
-                        .new_local(self.var)?
-                        .init_from_node_output(compiler, target)
-                        .into())
-                },
                 typecheck0,
                 typecheck1,
                 OpError::InvalidForInit,
-            )?;
+            );
 
             let limit = self.condition.compile(compiler)?;
             let limit = emit_assert_isnum(
                 compiler,
                 limit,
-                |compiler, target| {
-                    Ok(compiler
-                        .new_anon_reg()
-                        .init_from_node_output(compiler, target)
-                        .into())
-                },
                 typecheck0,
                 typecheck1,
                 OpError::InvalidForCond,
-            )?;
+            );
 
             let step = self
                 .increment
                 .as_ref()
                 .map(|inc| inc.compile(compiler))
                 .unwrap_or(Ok(NodeOutput::Constant(Constant::Integer(1))))?;
+
             let step = emit_assert_isnum(
                 compiler,
                 step,
-                |compiler, target| {
-                    Ok(compiler
-                        .new_anon_reg()
-                        .init_from_node_output(compiler, target)
-                        .into())
-                },
                 typecheck0,
                 typecheck1,
                 OpError::InvalidForStep,
-            )?;
+            );
+
+            let zero = compiler.new_anon_reg().init_from_const(compiler, 0.into());
 
             // Check for a negative step, we always want to be dealing with negative steps
             // for simplicity.
-            let ge_zero: UnasmRegister =
-                compiler.new_anon_reg().init_from_reg(compiler, step).into();
-            compiler.emit(binop::CompareOp::<binop::GreaterEqual, _>::from((
-                ge_zero,
-                UnasmOperand::from(0),
-            )));
+            let ge_zero = compiler.new_anon_reg().no_init_needed();
+            compiler.emit(opcodes::GreaterEqual::from((ge_zero, step, zero)));
 
             // If the step is negative, skip the extra work to negate it.
             let pending_skip_flip_step = compiler.emit(opcodes::Raise {
@@ -99,12 +74,8 @@ impl CompileStatement for ForLoop<'_> {
             });
 
             // Check for a zero step to raise an error.
-            let gt_zero: UnasmRegister =
-                compiler.new_anon_reg().init_from_reg(compiler, step).into();
-            compiler.emit(binop::CompareOp::<binop::GreaterThan, _>::from((
-                gt_zero,
-                UnasmOperand::from(0),
-            )));
+            let gt_zero = compiler.new_anon_reg().no_init_needed();
+            compiler.emit(opcodes::GreaterThan::from((gt_zero, step, zero)));
 
             compiler.emit(opcodes::RaiseIfNot::from((
                 gt_zero,
@@ -113,9 +84,9 @@ impl CompileStatement for ForLoop<'_> {
 
             // Positive step, flip it and terminating condition so they're always negative.
             // This is okay because |i64::MIN| >= i64::MAX
-            compiler.emit(opcodes::UnaryMinus::from(init));
-            compiler.emit(opcodes::UnaryMinus::from(limit));
-            compiler.emit(opcodes::UnaryMinus::from(step));
+            compiler.emit(opcodes::UnaryMinus::from((init, init)));
+            compiler.emit(opcodes::UnaryMinus::from((limit, limit)));
+            compiler.emit(opcodes::UnaryMinus::from((step, step)));
 
             compiler.overwrite(
                 pending_skip_flip_step,
@@ -123,13 +94,8 @@ impl CompileStatement for ForLoop<'_> {
             );
 
             let cond_check_start = compiler.next_instruction();
-            // Copy the cond register value into the outcome register so we can test it.
-            let cond_outcome: UnasmRegister =
-                compiler.new_anon_reg().init_from_reg(compiler, init).into();
-            compiler.emit(binop::CompareOp::<binop::GreaterEqual, _>::from((
-                cond_outcome,
-                UnasmOperand::from(limit),
-            )));
+            let cond_outcome = compiler.new_anon_reg().no_init_needed();
+            compiler.emit(opcodes::GreaterEqual::from((cond_outcome, init, limit)));
 
             let pending_skip_body = compiler.emit(opcodes::Raise {
                 err: OpError::ByteCodeError {
@@ -138,12 +104,13 @@ impl CompileStatement for ForLoop<'_> {
                 },
             });
 
+            compiler
+                .new_local(self.var)?
+                .init_from_anon_reg(compiler, init);
+
             self.body.compile(compiler)?;
 
-            compiler.emit(binop::FloatOp::<binop::Add, _>::from((
-                init,
-                UnasmOperand::from(step),
-            )));
+            compiler.emit(opcodes::Add::from((init, init, step)));
             compiler.emit(opcodes::Jump::from(cond_check_start));
 
             compiler.overwrite(
@@ -162,24 +129,24 @@ impl CompileStatement for ForLoop<'_> {
 fn emit_assert_isnum(
     compiler: &mut CompilerContext,
     target: NodeOutput,
-    mut target_to_reg: impl FnMut(
-        &mut CompilerContext,
-        NodeOutput,
-    ) -> Result<UnasmRegister, CompileError>,
-    typecheck0: UnasmRegister,
-    typecheck1: UnasmRegister,
+    typecheck0: AnonymousRegister,
+    typecheck1: AnonymousRegister,
     err: OpError,
-) -> Result<UnasmRegister, CompileError> {
+) -> AnonymousRegister {
     let target = match target {
         target @ NodeOutput::Constant(Constant::Integer(_))
         | target @ NodeOutput::Constant(Constant::Float(_)) => {
-            return target_to_reg(compiler, target);
+            return compiler
+                .new_anon_reg()
+                .init_from_node_output(compiler, target);
         }
         NodeOutput::Constant(_) => {
             compiler.emit(opcodes::Raise::from(err));
-            return target_to_reg(compiler, target);
+            return compiler.new_anon_reg().no_init_needed();
         }
-        target => target_to_reg(compiler, target)?,
+        target => compiler
+            .new_anon_reg()
+            .init_from_node_output(compiler, target),
     };
 
     compiler.emit(opcodes::CheckType::from((
@@ -192,11 +159,8 @@ fn emit_assert_isnum(
         target,
         TypeId::Primitive(PrimitiveType::Float),
     )));
-    compiler.emit(binop::BoolOp::<binop::Or, _>::from((
-        typecheck0,
-        UnasmOperand::from(typecheck1),
-    )));
+    compiler.emit(opcodes::Or::from((typecheck0, typecheck0, typecheck1)));
     compiler.emit(opcodes::RaiseIfNot::from((typecheck0, err)));
 
-    Ok(target)
+    target
 }

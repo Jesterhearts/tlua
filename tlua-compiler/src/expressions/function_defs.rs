@@ -24,11 +24,8 @@ impl CompileExpression for FnBody<'_> {
             self.body.ret.as_ref(),
         )?;
 
-        Ok(NodeOutput::Register(
-            compiler
-                .new_anon_reg()
-                .init_alloc_fn(compiler, func_id)
-                .into(),
+        Ok(NodeOutput::Immediate(
+            compiler.new_anon_reg().init_alloc_fn(compiler, func_id),
         ))
     }
 }

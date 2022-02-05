@@ -1,5 +1,6 @@
 use tlua_bytecode::{
     opcodes,
+    AnonymousRegister,
     OpError,
 };
 use tlua_parser::ast::{
@@ -11,10 +12,7 @@ use tlua_parser::ast::{
 };
 
 use crate::{
-    compiler::unasm::{
-        UnasmOperand,
-        UnasmRegister,
-    },
+    compiler::InitRegister,
     CompileError,
     CompileExpression,
     CompilerContext,
@@ -27,13 +25,13 @@ impl CompileExpression for TableConstructor<'_> {
 
         emit_init_sequence(compiler, table, self.fields.iter())?;
 
-        Ok(NodeOutput::Register(table))
+        Ok(NodeOutput::Immediate(table))
     }
 }
 
 pub(crate) fn emit_init_sequence<'a, 'f>(
     compiler: &mut CompilerContext,
-    table: UnasmRegister,
+    table: AnonymousRegister,
     fields: impl Iterator<Item = &'a Field<'f>>,
 ) -> Result<Option<OpError>, CompileError>
 where
@@ -44,17 +42,30 @@ where
     for field in fields {
         match field {
             Field::Named { name, expression } => {
-                if let err @ Some(_) =
-                    compiler.assign_to_table(table, ConstantString::from(name), expression)?
-                {
-                    return Ok(err);
-                }
+                let value = expression.compile(compiler)?;
+                let index = compiler
+                    .new_anon_reg()
+                    .init_from_const(compiler, ConstantString::from(name).into());
+                let value = compiler
+                    .new_anon_reg()
+                    .init_from_node_output(compiler, value);
+
+                compiler.emit(opcodes::SetProperty::from((table, index, value)));
                 last_field_va = false;
             }
             Field::Indexed { index, expression } => {
-                if let err @ Some(_) = compiler.assign_to_table(table, index, expression)? {
-                    return Ok(err);
-                }
+                let index = index.compile(compiler)?;
+                let value = expression.compile(compiler)?;
+
+                let index = compiler
+                    .new_anon_reg()
+                    .init_from_node_output(compiler, index);
+                let value = compiler
+                    .new_anon_reg()
+                    .init_from_node_output(compiler, value);
+
+                compiler.emit(opcodes::SetProperty::from((table, index, value)));
+
                 last_field_va = false;
             }
             Field::Arraylike { expression } => {
@@ -77,28 +88,37 @@ where
     };
 
     for (index, init) in initializers.iter().enumerate() {
-        let value = *init;
-        let index = UnasmOperand::from(i64::try_from(index + 1).map_err(|_| {
-            CompileError::TooManyTableEntries {
-                max: i64::MAX as usize,
-            }
-        })?);
+        let value = compiler
+            .new_anon_reg()
+            .init_from_node_output(compiler, *init);
 
-        compiler.emit_store_table(table, index, value);
+        let index = compiler.new_anon_reg().init_from_const(
+            compiler,
+            i64::try_from(index + 1)
+                .map_err(|_| CompileError::TooManyTableEntries {
+                    max: i64::MAX as usize,
+                })?
+                .into(),
+        );
+
+        compiler.emit(opcodes::SetProperty::from((table, index, value)));
     }
 
     if let Some(last) = last {
         match last {
             NodeOutput::ReturnValues => {
-                compiler.emit(opcodes::StoreAllRet::from((table, initializers.len() + 1)));
-            }
-            NodeOutput::VAStack => {
-                compiler.emit(opcodes::StoreAllFromVa::from((
+                compiler.emit(opcodes::SetAllPropertiesFromRet::from((
                     table,
                     initializers.len() + 1,
                 )));
             }
-            NodeOutput::Constant(_) | NodeOutput::Register(_) | NodeOutput::Err(_) => {
+            NodeOutput::VAStack => {
+                compiler.emit(opcodes::SetAllPropertiesFromVa::from((
+                    table,
+                    initializers.len() + 1,
+                )));
+            }
+            _ => {
                 unreachable!("Only VA and return value nodes need special handling.")
             }
         }

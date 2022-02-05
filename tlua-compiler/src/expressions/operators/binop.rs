@@ -8,6 +8,7 @@ use tlua_bytecode::{
         },
         *,
     },
+    AnonymousRegister,
     OpError,
 };
 use tlua_parser::ast::expressions::{
@@ -16,12 +17,7 @@ use tlua_parser::ast::expressions::{
 };
 
 use crate::{
-    compiler::unasm::{
-        LocalRegister,
-        UnasmOp,
-        UnasmOperand,
-        UnasmRegister,
-    },
+    compiler::unasm::UnasmOp,
     constant::Constant,
     CompileError,
     CompileExpression,
@@ -35,7 +31,9 @@ fn write_numeric_binop<Op>(
     rhs: &Expression,
 ) -> Result<NodeOutput, CompileError>
 where
-    Op: NumericOpEval + From<(UnasmRegister, UnasmOperand)> + Into<UnasmOp>,
+    Op: NumericOpEval
+        + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
+        + Into<UnasmOp>,
 {
     compiler.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| {
         Op::evaluate(lhs, rhs).map(|num| num.into())
@@ -48,7 +46,9 @@ fn write_cmp_binop<Op>(
     rhs: &Expression,
 ) -> Result<NodeOutput, CompileError>
 where
-    Op: ComparisonOpEval + From<(UnasmRegister, UnasmOperand)> + Into<UnasmOp>,
+    Op: ComparisonOpEval
+        + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
+        + Into<UnasmOp>,
 {
     compiler.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| match (lhs, rhs) {
         (Constant::Nil, Constant::Nil) => Op::apply_nils().map(Constant::from),
@@ -80,80 +80,82 @@ fn write_boolean_binop<Op>(
     rhs: &Expression,
 ) -> Result<NodeOutput, CompileError>
 where
-    Op: BooleanOpEval + From<(UnasmRegister, UnasmOperand)> + Into<UnasmOp>,
+    Op: BooleanOpEval
+        + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
+        + Into<UnasmOp>,
 {
     compiler.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
 }
 
 impl CompileExpression for operator::Plus<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<FloatOp<Add, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<Add>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Minus<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<FloatOp<Subtract, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<Subtract>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Times<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<FloatOp<Times, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<Times>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Divide<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<FloatOp<Divide, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<Divide>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::IDiv<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<FloatOp<IDiv, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<IDiv>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Modulo<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<FloatOp<Modulo, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<Modulo>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Exponetiation<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<FloatOp<Exponetiation, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<Exponetiation>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::BitAnd<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<IntOp<BitAnd, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<BitAnd>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::BitOr<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<IntOp<BitOr, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<BitOr>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::BitXor<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<IntOp<BitXor, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<BitXor>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::ShiftLeft<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<IntOp<ShiftLeft, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<ShiftLeft>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::ShiftRight<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<IntOp<ShiftRight, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_numeric_binop::<ShiftRight>(compiler, self.lhs, self.rhs)
     }
 }
 
@@ -165,49 +167,49 @@ impl CompileExpression for operator::Concat<'_> {
 
 impl CompileExpression for operator::LessThan<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<CompareOp<LessThan, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_cmp_binop::<LessThan>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::LessEqual<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<CompareOp<LessEqual, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_cmp_binop::<LessEqual>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::GreaterThan<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<CompareOp<GreaterThan, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_cmp_binop::<GreaterThan>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::GreaterEqual<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<CompareOp<GreaterEqual, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_cmp_binop::<GreaterEqual>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Equals<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<CompareOp<Equals, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_cmp_binop::<Equals>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::NotEqual<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<CompareOp<NotEqual, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_cmp_binop::<NotEqual>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::And<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_boolean_binop::<BoolOp<And, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_boolean_binop::<And>(compiler, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Or<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_boolean_binop::<BoolOp<Or, LocalRegister>>(compiler, self.lhs, self.rhs)
+        write_boolean_binop::<Or>(compiler, self.lhs, self.rhs)
     }
 }
 

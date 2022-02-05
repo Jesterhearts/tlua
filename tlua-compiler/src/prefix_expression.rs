@@ -1,5 +1,7 @@
+use either::Either;
 use tlua_bytecode::{
     opcodes,
+    AnonymousRegister,
     OpError,
 };
 use tlua_parser::ast::{
@@ -13,7 +15,7 @@ use tlua_parser::ast::{
 
 use crate::{
     compiler::{
-        unasm::UnasmRegister,
+        unasm::MappedLocalRegister,
         InitRegister,
     },
     expressions::tables,
@@ -23,6 +25,11 @@ use crate::{
     CompilerContext,
     NodeOutput,
 };
+
+pub(crate) struct TableIndex {
+    pub(crate) table: AnonymousRegister,
+    pub(crate) index: AnonymousRegister,
+}
 
 impl CompileExpression for VarAtom<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
@@ -35,7 +42,10 @@ impl CompileExpression for VarAtom<'_> {
 
 impl CompileExpression for VarPrefixExpression<'_> {
     fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        map_var(compiler, self).map(NodeOutput::Register)
+        map_var(compiler, self).map(|out| match out {
+            Either::Left(reg) => NodeOutput::MappedRegister(reg),
+            Either::Right(TableIndex { table, index }) => NodeOutput::TableEntry { table, index },
+        })
     }
 }
 
@@ -74,21 +84,21 @@ impl CompileStatement for FnCallPrefixExpression<'_> {
 fn emit_load_head(
     compiler: &mut CompilerContext,
     head: &HeadAtom,
-) -> Result<UnasmRegister, CompileError> {
+) -> Result<AnonymousRegister, CompileError> {
     match head {
         HeadAtom::Name(ident) => {
-            let reg = NodeOutput::Register(compiler.read_variable(*ident)?);
-            Ok(compiler.write_move_to_reg(reg).into())
+            let reg = compiler.read_variable(*ident)?;
+            Ok(compiler.new_anon_reg().init_from_mapped_reg(compiler, reg))
         }
         HeadAtom::Parenthesized(expr) => match expr.compile(compiler)? {
             NodeOutput::Constant(c) => {
                 compiler.write_raise(OpError::NotATable {
                     ty: c.short_type_name(),
                 });
-                Ok(compiler.new_anon_reg().init_from_const(compiler, c).into())
+                Ok(compiler.new_anon_reg().no_init_needed())
             }
-            NodeOutput::Err(_) => Ok(compiler.new_anon_reg().no_init_needed().into()),
-            src => Ok(compiler.write_move_to_reg(src).into()),
+            NodeOutput::Err(_) => Ok(compiler.new_anon_reg().no_init_needed()),
+            src => Ok(compiler.output_to_reg_reuse_anon(src)),
         },
     }
 }
@@ -97,25 +107,31 @@ fn emit_table_path_traversal<'a, 'p>(
     compiler: &mut CompilerContext,
     head: &HeadAtom,
     middle: impl Iterator<Item = &'a PrefixAtom<'p>>,
-) -> Result<UnasmRegister, CompileError>
+) -> Result<AnonymousRegister, CompileError>
 where
     'p: 'a,
 {
-    let src_reg = emit_load_head(compiler, head)?;
+    let table_reg = emit_load_head(compiler, head)?;
 
     for next in middle {
         match next {
-            PrefixAtom::Var(v) => compiler.load_from_table(src_reg, v)?,
-            PrefixAtom::Function(atom) => emit_call(compiler, src_reg, atom)?,
+            PrefixAtom::Var(v) => {
+                let index = v.compile(compiler)?;
+                let index = compiler.output_to_reg_reuse_anon(index);
+                compiler.emit(opcodes::Lookup::from((table_reg, table_reg, index)));
+            }
+            PrefixAtom::Function(atom) => {
+                emit_call(compiler, table_reg, atom)?;
+            }
         };
     }
 
-    Ok(src_reg)
+    Ok(table_reg)
 }
 
 fn emit_call(
     compiler: &mut CompilerContext,
-    target: UnasmRegister,
+    target: AnonymousRegister,
     atom: &FunctionAtom,
 ) -> Result<Option<OpError>, CompileError> {
     Ok(match atom {
@@ -126,7 +142,7 @@ fn emit_call(
 
 fn emit_call_with_args(
     compiler: &mut CompilerContext,
-    target: UnasmRegister,
+    target: AnonymousRegister,
     args: &FnArgs,
 ) -> Result<Option<OpError>, CompileError> {
     Ok(match args {
@@ -142,7 +158,7 @@ fn emit_call_with_args(
 
 pub(crate) fn emit_standard_call(
     compiler: &mut CompilerContext,
-    target: UnasmRegister,
+    target: AnonymousRegister,
     mut args: impl ExactSizeIterator<Item = impl CompileExpression>,
 ) -> Result<Option<OpError>, CompileError> {
     let argc = args.len();
@@ -177,12 +193,6 @@ pub(crate) fn emit_standard_call(
         .expect("Still in bounds args")
         .compile(compiler)?
     {
-        NodeOutput::Constant(c) => {
-            last_reg.init_from_const(compiler, c);
-        }
-        NodeOutput::Register(r) => {
-            last_reg.init_from_reg(compiler, r);
-        }
         NodeOutput::ReturnValues => {
             compiler.emit(opcodes::CallCopyRet::from((
                 target,
@@ -199,8 +209,8 @@ pub(crate) fn emit_standard_call(
             )));
             return Ok(None);
         }
-        NodeOutput::Err(_) => {
-            last_reg.no_init_needed();
+        arg => {
+            last_reg.init_from_node_output(compiler, arg);
         }
     }
 
@@ -211,19 +221,21 @@ pub(crate) fn emit_standard_call(
 pub(crate) fn map_var(
     compiler: &mut CompilerContext,
     expr: &VarPrefixExpression,
-) -> Result<UnasmRegister, CompileError> {
+) -> Result<Either<MappedLocalRegister, TableIndex>, CompileError> {
     match expr {
-        VarPrefixExpression::Name(ident) => compiler.read_variable(*ident),
+        VarPrefixExpression::Name(ident) => Ok(Either::Left(compiler.read_variable(*ident)?)),
         VarPrefixExpression::TableAccess { head, middle, last } => {
-            let src_reg = emit_table_path_traversal(compiler, head, middle.iter())?;
-
-            match last {
-                VarAtom::Name(ident) => {
-                    compiler.load_from_table(src_reg, ConstantString::from(ident))
+            let table = emit_table_path_traversal(compiler, head, middle.iter())?;
+            let index = match last {
+                VarAtom::Name(ident) => compiler
+                    .new_anon_reg()
+                    .init_from_const(compiler, ConstantString::from(ident).into()),
+                VarAtom::IndexOp(index) => {
+                    let index = index.compile(compiler)?;
+                    compiler.output_to_reg_reuse_anon(index)
                 }
-                VarAtom::IndexOp(index) => compiler.load_from_table(src_reg, index),
-            }
-            .map(|_| src_reg)
+            };
+            Ok(Either::Right(TableIndex { table, index }))
         }
     }
 }

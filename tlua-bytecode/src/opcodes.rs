@@ -4,8 +4,8 @@ use derive_more::{
 };
 use tlua_parser::ast::constant_string::ConstantString;
 
+pub use crate::binop::*;
 use crate::{
-    binop::*,
     register::{
         AnonymousRegister,
         MappedRegister,
@@ -17,38 +17,15 @@ use crate::{
 };
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub enum AnyReg<RegisterTy> {
-    Register(MappedRegister<RegisterTy>),
-    Immediate(AnonymousRegister),
-}
-
-impl<RegisterTy> std::fmt::Debug for AnyReg<RegisterTy>
-where
-    RegisterTy: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Register(arg0) => arg0.fmt(f),
-            Self::Immediate(arg0) => arg0.fmt(f),
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub enum Operand<RegisterTy> {
+pub enum Constant {
     Nil,
     Bool(bool),
     Float(f64),
     Integer(i64),
     String(ConstantString),
-    Register(MappedRegister<RegisterTy>),
-    Immediate(AnonymousRegister),
 }
 
-impl<RegisterTy> std::fmt::Debug for Operand<RegisterTy>
-where
-    RegisterTy: std::fmt::Debug,
-{
+impl std::fmt::Debug for Constant {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Nil => write!(f, "nil"),
@@ -56,26 +33,11 @@ where
             Self::Float(arg0) => arg0.fmt(f),
             Self::Integer(arg0) => arg0.fmt(f),
             Self::String(arg0) => arg0.fmt(f),
-            Self::Register(arg0) => arg0.fmt(f),
-            Self::Immediate(arg0) => arg0.fmt(f),
         }
     }
 }
 
-impl<T, O> From<AnyReg<O>> for Operand<T>
-where
-    T: From<O>,
-    O: Copy,
-{
-    fn from(a: AnyReg<O>) -> Self {
-        match a {
-            AnyReg::Register(r) => MappedRegister::from(T::from(*r)).into(),
-            AnyReg::Immediate(i) => i.into(),
-        }
-    }
-}
-
-impl<T> From<Number> for Operand<T> {
+impl From<Number> for Constant {
     fn from(n: Number) -> Self {
         match n {
             Number::Float(f) => Self::Float(f),
@@ -93,96 +55,90 @@ pub type Instruction = Op<Register>;
 pub enum Op<RegisterTy> {
     Nop,
     /// `[dest] += [src]`
-    Add(FloatOp<Add, RegisterTy>),
+    Add(Add),
     /// `[dest] -= [src]`, preserving types.
-    Subtract(FloatOp<Subtract, RegisterTy>),
+    Subtract(Subtract),
     /// `[dest] *= [src]`, preserving types.
-    Times(FloatOp<Times, RegisterTy>),
+    Times(Times),
     /// `[dest] %= [src]`, preserving types.
-    Modulo(FloatOp<Modulo, RegisterTy>),
+    Modulo(Modulo),
     /// `[dest] = [dest] / [src]`, producing a float.
-    Divide(FloatOp<Divide, RegisterTy>),
+    Divide(Divide),
     /// `[dest] = [dest].exp([src])`, producing a float.
-    Exponetiation(FloatOp<Exponetiation, RegisterTy>),
+    Exponetiation(Exponetiation),
     /// `[dest] = floor([dest] / [src])`, type preserving.
-    IDiv(FloatOp<IDiv, RegisterTy>),
+    IDiv(IDiv),
     /// `[dest] = [dest] & [src]`, producing an int.
-    BitAnd(IntOp<BitAnd, RegisterTy>),
+    BitAnd(BitAnd),
     /// `[dest] = [dest] | [src]`, producing an int.
-    BitOr(IntOp<BitOr, RegisterTy>),
+    BitOr(BitOr),
     /// `[dest] = [dest] ^ [src]`, producing an int.
-    BitXor(IntOp<BitXor, RegisterTy>),
+    BitXor(BitXor),
     /// `[dest] = [dest] << [src]`, producing an int.
-    ShiftLeft(IntOp<ShiftLeft, RegisterTy>),
+    ShiftLeft(ShiftLeft),
     /// `[dest] = [dest] >> [src]`, producing an int.
-    ShiftRight(IntOp<ShiftRight, RegisterTy>),
+    ShiftRight(ShiftRight),
     /// `[dest] = -[dest]`, type preserving.
-    UnaryMinus(UnaryMinus<RegisterTy>),
-    /// `[dest] = !([dest] as bool)`, producing a bool.
-    Not(Not<RegisterTy>),
+    UnaryMinus(UnaryMinus),
     /// `[dest] = ![dest]`, producing an int.
-    UnaryBitNot(UnaryBitNot<RegisterTy>),
+    UnaryBitNot(UnaryBitNot),
+    /// `[dest] = !([dest] as bool)`, producing a bool.
+    Not(Not),
     /// `[dest] = [dest] < [src]`.
-    LessThan(CompareOp<LessThan, RegisterTy>),
+    LessThan(LessThan),
     /// `[dest] = [dest] <= [src]`.
-    LessEqual(CompareOp<LessEqual, RegisterTy>),
+    LessEqual(LessEqual),
     /// `[dest] = [dest] > [src]`.
-    GreaterThan(CompareOp<GreaterThan, RegisterTy>),
+    GreaterThan(GreaterThan),
     /// `[dest] = [dest] >= [src]`.
-    GreaterEqual(CompareOp<GreaterEqual, RegisterTy>),
+    GreaterEqual(GreaterEqual),
     /// `[dest] = [dest] == [src]`.
-    Equals(CompareOp<Equals, RegisterTy>),
+    Equals(Equals),
     /// `[dest] = [dest] != [src]`.
-    NotEqual(CompareOp<NotEqual, RegisterTy>),
+    NotEqual(NotEqual),
     /// `[dest] = [dest] as bool ? [src] : [dest]`.
-    And(BoolOp<And, RegisterTy>),
+    And(And),
     /// `[dest] = [dest] as bool ? [dest] : [src]`.
-    Or(BoolOp<Or, RegisterTy>),
+    Or(Or),
     /// `[dest] = [dest].to_string() + [src].to_string()`.
-    Concat(Concat<RegisterTy>),
+    Concat(Concat),
     /// `[dest] = [dest].len()`.
-    Length(Length<RegisterTy>),
+    Length(Length),
     /// Immediately return from the current function with a specific error.
     Raise(Raise),
     /// Immediately return from the current function with a specific error if
     /// [src] is false.
-    RaiseIfNot(RaiseIfNot<RegisterTy>),
+    RaiseIfNot(RaiseIfNot),
     /// Unconditionally jump to the targt instruction
     Jump(Jump),
     /// Jump to a specific instruction if the value in the register evaluates to
     /// false.
-    JumpNot(JumpNot<RegisterTy>),
+    JumpNot(JumpNot),
     /// Jump to a specific instruction if the value in the register is exactly
     /// Nil
-    JumpNil(JumpNil<RegisterTy>),
-    /// Jump to a specific instruction if the first return value evaluates to
-    /// false.
-    JumpNotRet0(JumpNotRet0),
-    /// Jump to a specific instruction if the first variadic argument
-    JumpNotVa0(JumpNotVa0),
+    JumpNil(JumpNil),
     /// `[dest] = `[dest].table[[src]]`
-    Lookup(Lookup<RegisterTy>),
+    Lookup(Lookup),
     /// `[dest].table[[index]]` = `[src]`
-    Store(Store<RegisterTy>),
-    /// `[dest].table[[index]]` = `va[c]`
-    StoreFromVa(StoreFromVa<RegisterTy>),
+    SetProperty(SetProperty),
     /// `[dest].table[(start, ..)]` = `va...`
-    StoreAllFromVa(StoreAllFromVa<RegisterTy>),
+    SetAllPropertiesFromVa(SetAllPropertiesFromVa),
     /// Initialize a register from a value.
-    Set(Set<RegisterTy>),
+    LoadConstant(LoadConstant),
+    /// Initialize a register from a mapped register.
+    LoadRegister(LoadRegister<RegisterTy>),
+    /// Initialize a register from a register.
+    DuplicateRegister(DuplicateRegister),
     /// Initialize a register from a variadic argument.
-    SetFromVa(SetFromVa<RegisterTy>),
+    LoadVa(LoadVa),
+    /// Initialize a mapped register register from a register.
+    Store(Store<RegisterTy>),
     /// Allocate a type
-    Alloc(Alloc<RegisterTy>),
+    Alloc(Alloc),
     /// [dest] = [src].type == type_id
-    CheckType(CheckType<RegisterTy>),
+    CheckType(CheckType),
     /// Copy the target register value into this function's output list.
-    SetRet(SetRet<RegisterTy>),
-    /// Copy the first va arg into this function's output list.
-    SetRetVa0,
-    /// Copy the first return value from a function into this function's output
-    /// list.
-    SetRetFromRet0,
+    SetRet(SetRet),
     /// Copy all return values from this function's va list and then return from
     /// the function.
     CopyRetFromVaAndRet,
@@ -194,93 +150,80 @@ pub enum Op<RegisterTy> {
     PopScope,
     /// Load the target function as the current call target and copy a range of
     /// anonymous register as that function's arguments.
-    Call(Call<RegisterTy>),
+    Call(Call),
     /// Performs the same operations as `Call` but maps the results of the most
     /// recent call into the target's arguments.
-    CallCopyRet(CallCopyRet<RegisterTy>),
+    CallCopyRet(CallCopyRet),
     /// Performs the same operations as `Call`, but maps the current list of
     /// variadic arguments into the target's arguments.
-    CallCopyVa(CallCopyVa<RegisterTy>),
+    CallCopyVa(CallCopyVa),
     /// Copy all return values from a function into this function's output list
     /// and then return from the function.
     CopyRetFromRetAndRet,
     /// Copy the next available return value into the target register.
-    MapRet(MapRet<RegisterTy>),
-    /// Copy the next available return value into the index loaded from a
-    /// register into a table.
-    StoreRet(StoreRet<RegisterTy>),
+    LoadRet(LoadRet),
     /// Copy all the available return values into a table.
-    StoreAllRet(StoreAllRet<RegisterTy>),
+    SetAllPropertiesFromRet(SetAllPropertiesFromRet),
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct UnaryMinus {
+    pub dst: AnonymousRegister,
+    pub src: AnonymousRegister,
+}
+
+impl std::fmt::Debug for UnaryMinus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} = -{:?}", self.dst, self.src)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct UnaryBitNot {
+    pub dst: AnonymousRegister,
+    pub src: AnonymousRegister,
+}
+
+impl std::fmt::Debug for UnaryBitNot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} = ~{:?}", self.dst, self.src)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct Not {
+    pub dst: AnonymousRegister,
+    pub src: AnonymousRegister,
+}
+
+impl std::fmt::Debug for Not {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} = !{:?}", self.dst, self.src)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, From, Into)]
-pub struct Concat<RegTy> {
-    lhs: AnyReg<RegTy>,
-    rhs: Operand<RegTy>,
+pub struct Concat {
+    dst: AnonymousRegister,
+    lhs: AnonymousRegister,
+    rhs: AnonymousRegister,
 }
 
-impl<Reg> std::fmt::Debug for Concat<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for Concat {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "concat {:?} {:?}", self.lhs, self.rhs)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct UnaryMinus<RegTy> {
-    pub reg: AnyReg<RegTy>,
-}
-
-impl<Reg> std::fmt::Debug for UnaryMinus<Reg>
-where
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "-{:?}", self.reg)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct UnaryBitNot<RegTy> {
-    pub reg: AnyReg<RegTy>,
-}
-
-impl<Reg> std::fmt::Debug for UnaryBitNot<Reg>
-where
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "~{:?}", self.reg)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct Not<RegTy> {
-    pub reg: AnyReg<RegTy>,
-}
-
-impl<Reg> std::fmt::Debug for Not<Reg>
-where
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "not {:?}", self.reg)
+        write!(f, "concat {:?} {:?} {:?}", self.dst, self.lhs, self.rhs)
     }
 }
 
 #[derive(Clone, Copy, PartialEq)]
-pub struct Length<RegTy> {
-    pub reg: AnyReg<RegTy>,
+pub struct Length {
+    pub dst: AnonymousRegister,
+    pub src: AnonymousRegister,
 }
 
-impl<Reg> std::fmt::Debug for Length<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for Length {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "len({:?})", self.reg)
+        write!(f, "{:?} = len({:?})", self.dst, self.src)
     }
 }
 
@@ -296,68 +239,37 @@ impl std::fmt::Debug for Jump {
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct JumpNot<RegTy> {
-    pub cond: AnyReg<RegTy>,
+pub struct JumpNot {
+    pub cond: AnonymousRegister,
     pub target: usize,
 }
 
-impl<Reg> std::fmt::Debug for JumpNot<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for JumpNot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "not {:?} ? jmp {}", self.cond, self.target)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct JumpNil<RegTy> {
-    pub cond: AnyReg<RegTy>,
+pub struct JumpNil {
+    pub cond: AnonymousRegister,
     pub target: usize,
 }
 
-impl<Reg> std::fmt::Debug for JumpNil<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for JumpNil {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "notnil {:?} ? jmp {}", self.cond, self.target)
+        write!(f, "isnil {:?} ? jmp {}", self.cond, self.target)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct JumpNotRet0 {
-    pub target: usize,
-}
-
-impl std::fmt::Debug for JumpNotRet0 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "not results[0] ? jmp {}", self.target)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct JumpNotVa0 {
-    pub target: usize,
-}
-
-impl std::fmt::Debug for JumpNotVa0 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "not va[0] ? {}", self.target)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct Call<RegTy> {
-    pub target: AnyReg<RegTy>,
+pub struct Call {
+    pub target: AnonymousRegister,
     pub mapped_args_start: usize,
     pub mapped_args_count: usize,
 }
 
-impl<Reg> std::fmt::Debug for Call<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for Call {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -370,16 +282,13 @@ where
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct CallCopyRet<RegTy> {
-    pub target: AnyReg<RegTy>,
+pub struct CallCopyRet {
+    pub target: AnonymousRegister,
     pub mapped_args_start: usize,
     pub mapped_args_count: usize,
 }
 
-impl<Reg> std::fmt::Debug for CallCopyRet<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for CallCopyRet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -392,16 +301,13 @@ where
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct CallCopyVa<RegTy> {
-    pub target: AnyReg<RegTy>,
+pub struct CallCopyVa {
+    pub target: AnonymousRegister,
     pub mapped_args_start: usize,
     pub mapped_args_count: usize,
 }
 
-impl<Reg> std::fmt::Debug for CallCopyVa<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for CallCopyVa {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -414,14 +320,11 @@ where
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct SetRet<RegTy> {
-    pub src: Operand<RegTy>,
+pub struct SetRet {
+    pub src: AnonymousRegister,
 }
 
-impl<Reg> std::fmt::Debug for SetRet<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for SetRet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "out += {:?}", self.src)
     }
@@ -439,60 +342,139 @@ impl std::fmt::Debug for Raise {
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct RaiseIfNot<RegTy> {
-    pub src: AnyReg<RegTy>,
+pub struct RaiseIfNot {
+    pub src: AnonymousRegister,
     pub err: OpError,
 }
 
-impl<Reg> std::fmt::Debug for RaiseIfNot<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for RaiseIfNot {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "not {:?} ? raise {:?}", self.src, self.err)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct Alloc<RegTy> {
-    pub dest: AnyReg<RegTy>,
+pub struct Alloc {
+    pub dst: AnonymousRegister,
     pub type_id: TypeId,
 }
 
-impl<Reg> std::fmt::Debug for Alloc<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for Alloc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "alloc {:?} {:?}", self.dest, self.type_id)
+        write!(f, "alloc {:?} {:?}", self.dst, self.type_id)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct CheckType<RegTy> {
-    pub dest: AnyReg<RegTy>,
-    pub src: AnyReg<RegTy>,
+pub struct CheckType {
+    pub dst: AnonymousRegister,
+    pub src: AnonymousRegister,
     pub expected_type_id: TypeId,
 }
 
-impl<Reg> std::fmt::Debug for CheckType<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for CheckType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "checktype {:?} = {:?} {:?}",
-            self.dest, self.src, self.expected_type_id
+            self.dst, self.dst, self.expected_type_id
         )
     }
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
+pub struct SetProperty {
+    pub dst: AnonymousRegister,
+    pub idx: AnonymousRegister,
+    pub src: AnonymousRegister,
+}
+
+impl std::fmt::Debug for SetProperty {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}[{:?}] = {:?}", self.dst, self.idx, self.src)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct SetAllPropertiesFromVa {
+    pub dst: AnonymousRegister,
+    pub start_idx: usize,
+}
+
+impl std::fmt::Debug for SetAllPropertiesFromVa {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}[{}..] = va...", self.dst, self.start_idx)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct Lookup {
+    pub dst: AnonymousRegister,
+    pub src: AnonymousRegister,
+    pub idx: AnonymousRegister,
+}
+
+impl std::fmt::Debug for Lookup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} = {:?}[{:?}]", self.dst, self.src, self.idx)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct LoadConstant {
+    pub dst: AnonymousRegister,
+    pub src: Constant,
+}
+
+impl std::fmt::Debug for LoadConstant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} = {:?}", self.dst, self.src)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct LoadRegister<RegTy> {
+    pub dst: AnonymousRegister,
+    pub src: MappedRegister<RegTy>,
+}
+
+impl<Reg> std::fmt::Debug for LoadRegister<Reg>
+where
+    Reg: std::fmt::Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} = {:?}", self.dst, self.src)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct DuplicateRegister {
+    pub dst: AnonymousRegister,
+    pub src: AnonymousRegister,
+}
+
+impl std::fmt::Debug for DuplicateRegister {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} = {:?}", self.dst, self.src)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
+pub struct LoadVa {
+    pub dst: AnonymousRegister,
+    pub idx: usize,
+}
+
+impl std::fmt::Debug for LoadVa {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} = va[{:?}]", self.dst, self.idx)
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, From)]
 pub struct Store<RegTy> {
-    pub dest: AnyReg<RegTy>,
-    pub index: Operand<RegTy>,
-    pub src: Operand<RegTy>,
+    pub dst: MappedRegister<RegTy>,
+    pub src: AnonymousRegister,
 }
 
 impl<Reg> std::fmt::Debug for Store<Reg>
@@ -500,83 +482,7 @@ where
     Reg: std::fmt::Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}[{:?}] = {:?}", self.dest, self.index, self.src)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct StoreFromVa<RegTy> {
-    pub dest: AnyReg<RegTy>,
-    pub index: Operand<RegTy>,
-    pub va_index: usize,
-}
-
-impl<Reg> std::fmt::Debug for StoreFromVa<Reg>
-where
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}[{:?}] = va{}", self.dest, self.index, self.va_index)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct StoreAllFromVa<RegTy> {
-    pub dest: AnyReg<RegTy>,
-    pub start_index: usize,
-}
-
-impl<Reg> std::fmt::Debug for StoreAllFromVa<Reg>
-where
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}[{}..] = va...", self.dest, self.start_index)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct Lookup<RegTy> {
-    pub dest: AnyReg<RegTy>,
-    pub index: Operand<RegTy>,
-}
-
-impl<Reg> std::fmt::Debug for Lookup<Reg>
-where
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}[{:?}]", self.dest, self.index)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct Set<RegTy> {
-    pub dest: AnyReg<RegTy>,
-    pub source: Operand<RegTy>,
-}
-
-impl<Reg> std::fmt::Debug for Set<Reg>
-where
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} = {:?}", self.dest, self.source)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct SetFromVa<RegTy> {
-    pub dest: AnyReg<RegTy>,
-    pub index: usize,
-}
-
-impl<Reg> std::fmt::Debug for SetFromVa<Reg>
-where
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} = va[{:?}]", self.dest, self.index)
+        write!(f, "{:?} = {:?}", self.dst, self.src)
     }
 }
 
@@ -592,46 +498,25 @@ impl std::fmt::Debug for ScopeDescriptor {
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct MapRet<RegTy> {
-    pub dest: AnyReg<RegTy>,
+pub struct LoadRet {
+    pub dst: AnonymousRegister,
 }
 
-impl<Reg> std::fmt::Debug for MapRet<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for LoadRet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} = next(results)", self.dest)
+        write!(f, "{:?} = next(results)", self.dst)
     }
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
-pub struct StoreRet<RegTy> {
-    pub dest: AnyReg<RegTy>,
-    pub index: Operand<RegTy>,
+pub struct SetAllPropertiesFromRet {
+    pub dst: AnonymousRegister,
+    pub start_idx: usize,
 }
 
-impl<Reg> std::fmt::Debug for StoreRet<Reg>
-where
-    Reg: std::fmt::Debug,
-{
+impl std::fmt::Debug for SetAllPropertiesFromRet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}[{:?}] = next(results)", self.dest, self.index)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From)]
-pub struct StoreAllRet<RegTy> {
-    pub dest: AnyReg<RegTy>,
-    pub start_index: usize,
-}
-
-impl<Reg> std::fmt::Debug for StoreAllRet<Reg>
-where
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}[{}..] = results...", self.dest, self.start_index)
+        write!(f, "{:?}[{}..] = results...", self.dst, self.start_idx)
     }
 }
 
@@ -641,61 +526,64 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Nop => write!(f, "nop"),
-            Self::Add(arg0) => arg0.fmt(f),
-            Self::Subtract(arg0) => arg0.fmt(f),
-            Self::Times(arg0) => arg0.fmt(f),
-            Self::Modulo(arg0) => arg0.fmt(f),
-            Self::Divide(arg0) => arg0.fmt(f),
-            Self::Exponetiation(arg0) => arg0.fmt(f),
-            Self::IDiv(arg0) => arg0.fmt(f),
-            Self::BitAnd(arg0) => arg0.fmt(f),
-            Self::BitOr(arg0) => arg0.fmt(f),
-            Self::BitXor(arg0) => arg0.fmt(f),
-            Self::ShiftLeft(arg0) => arg0.fmt(f),
-            Self::ShiftRight(arg0) => arg0.fmt(f),
-            Self::UnaryMinus(arg0) => arg0.fmt(f),
-            Self::Not(arg0) => arg0.fmt(f),
-            Self::UnaryBitNot(arg0) => arg0.fmt(f),
-            Self::LessThan(arg0) => arg0.fmt(f),
-            Self::LessEqual(arg0) => arg0.fmt(f),
-            Self::GreaterThan(arg0) => arg0.fmt(f),
-            Self::GreaterEqual(arg0) => arg0.fmt(f),
-            Self::Equals(arg0) => arg0.fmt(f),
-            Self::NotEqual(arg0) => arg0.fmt(f),
-            Self::And(arg0) => arg0.fmt(f),
-            Self::Or(arg0) => arg0.fmt(f),
-            Self::Concat(arg0) => arg0.fmt(f),
-            Self::Length(arg0) => arg0.fmt(f),
-            Self::Raise(arg0) => arg0.fmt(f),
-            Self::RaiseIfNot(arg0) => arg0.fmt(f),
-            Self::Jump(arg0) => arg0.fmt(f),
-            Self::JumpNot(arg0) => arg0.fmt(f),
-            Self::JumpNil(arg0) => arg0.fmt(f),
-            Self::JumpNotRet0(arg0) => arg0.fmt(f),
-            Self::JumpNotVa0(arg0) => arg0.fmt(f),
-            Self::Lookup(arg0) => arg0.fmt(f),
-            Self::Store(arg0) => arg0.fmt(f),
-            Self::StoreFromVa(arg0) => arg0.fmt(f),
-            Self::StoreAllFromVa(arg0) => arg0.fmt(f),
-            Self::Set(arg0) => arg0.fmt(f),
-            Self::SetFromVa(arg0) => arg0.fmt(f),
-            Self::Alloc(arg0) => arg0.fmt(f),
-            Self::CheckType(arg0) => arg0.fmt(f),
-            Self::SetRet(arg0) => arg0.fmt(f),
-            Self::SetRetVa0 => write!(f, "out += va[0]"),
-            Self::SetRetFromRet0 => write!(f, "out += results[0]"),
-            Self::CopyRetFromVaAndRet => write!(f, "out += va...; ret"),
-            Self::Ret => write!(f, "ret"),
-            Self::PushScope(arg0) => arg0.fmt(f),
-            Self::PopScope => write!(f, "popscope"),
-            Self::Call(arg0) => arg0.fmt(f),
-            Self::CallCopyRet(arg0) => arg0.fmt(f),
-            Self::CallCopyVa(arg0) => arg0.fmt(f),
-            Self::CopyRetFromRetAndRet => write!(f, "out += results...; ret"),
-            Self::MapRet(arg0) => arg0.fmt(f),
-            Self::StoreRet(arg0) => arg0.fmt(f),
-            Self::StoreAllRet(arg0) => arg0.fmt(f),
+            Op::Nop => write!(f, "nop"),
+            Op::Add(op) => op.fmt(f),
+            Op::Subtract(op) => op.fmt(f),
+            Op::Times(op) => op.fmt(f),
+            Op::Modulo(op) => op.fmt(f),
+            Op::Divide(op) => op.fmt(f),
+            Op::Exponetiation(op) => op.fmt(f),
+            Op::IDiv(op) => op.fmt(f),
+            Op::BitAnd(op) => op.fmt(f),
+            Op::BitOr(op) => op.fmt(f),
+            Op::BitXor(op) => op.fmt(f),
+            Op::ShiftLeft(op) => op.fmt(f),
+            Op::ShiftRight(op) => op.fmt(f),
+            Op::UnaryMinus(op) => op.fmt(f),
+            Op::UnaryBitNot(op) => op.fmt(f),
+            Op::Not(op) => op.fmt(f),
+            Op::LessThan(op) => op.fmt(f),
+            Op::LessEqual(op) => op.fmt(f),
+            Op::GreaterThan(op) => op.fmt(f),
+            Op::GreaterEqual(op) => op.fmt(f),
+            Op::Equals(op) => op.fmt(f),
+            Op::NotEqual(op) => op.fmt(f),
+            Op::And(op) => op.fmt(f),
+            Op::Or(op) => op.fmt(f),
+            Op::Concat(op) => op.fmt(f),
+            Op::Length(op) => op.fmt(f),
+            Op::Raise(op) => op.fmt(f),
+            Op::RaiseIfNot(op) => op.fmt(f),
+            Op::Jump(op) => op.fmt(f),
+            Op::JumpNot(op) => op.fmt(f),
+            Op::JumpNil(op) => op.fmt(f),
+            Op::Lookup(op) => op.fmt(f),
+            Op::SetProperty(op) => op.fmt(f),
+            Op::SetAllPropertiesFromVa(op) => op.fmt(f),
+            Op::LoadConstant(op) => op.fmt(f),
+            Op::LoadRegister(op) => op.fmt(f),
+            Op::DuplicateRegister(op) => op.fmt(f),
+            Op::LoadVa(op) => op.fmt(f),
+            Op::Store(op) => op.fmt(f),
+            Op::Alloc(op) => op.fmt(f),
+            Op::CheckType(op) => op.fmt(f),
+            Op::SetRet(op) => op.fmt(f),
+            Op::CopyRetFromVaAndRet => {
+                write!(f, "out += va...")?;
+                write!(f, "ret")
+            }
+            Op::Ret => write!(f, "ret"),
+            Op::PushScope(op) => op.fmt(f),
+            Op::PopScope => write!(f, "popscope"),
+            Op::Call(op) => op.fmt(f),
+            Op::CallCopyRet(op) => op.fmt(f),
+            Op::CallCopyVa(op) => op.fmt(f),
+            Op::CopyRetFromRetAndRet => {
+                write!(f, "out += results...")?;
+                write!(f, "ret")
+            }
+            Op::LoadRet(op) => op.fmt(f),
+            Op::SetAllPropertiesFromRet(op) => op.fmt(f),
         }
     }
 }

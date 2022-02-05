@@ -1,45 +1,15 @@
+use derive_more::From;
+
 use crate::{
     binop::{
         traits::ComparisonOpEval,
         OpName,
     },
-    opcodes::{
-        AnyReg,
-        Operand,
-    },
+    AnonymousRegister,
     Number,
     OpError,
     StringLike,
 };
-
-#[derive(Clone, Copy, PartialEq)]
-pub struct CompareOp<OpTy, RegisterTy> {
-    pub lhs: AnyReg<RegisterTy>,
-    pub rhs: Operand<RegisterTy>,
-    op: OpTy,
-}
-
-impl<OpTy, RegisterTy> From<CompareOp<OpTy, RegisterTy>>
-    for (AnyReg<RegisterTy>, Operand<RegisterTy>)
-{
-    fn from(val: CompareOp<OpTy, RegisterTy>) -> Self {
-        (val.lhs, val.rhs)
-    }
-}
-
-impl<OpTy, RegisterTy> From<(AnyReg<RegisterTy>, Operand<RegisterTy>)>
-    for CompareOp<OpTy, RegisterTy>
-where
-    OpTy: Default,
-{
-    fn from((lhs, rhs): (AnyReg<RegisterTy>, Operand<RegisterTy>)) -> Self {
-        Self {
-            lhs,
-            rhs,
-            op: Default::default(),
-        }
-    }
-}
 
 macro_rules! comparison_binop_impl {
     (
@@ -53,14 +23,31 @@ macro_rules! comparison_binop_impl {
             ($lhs_func:ident : func, $rhs_func:ident : func) => $when_func:expr $(,)?
         }
     ) => {
-        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-        pub struct $name;
+        #[derive(Clone, Copy, PartialEq, Eq, From)]
+        pub struct $name {
+            pub dst: AnonymousRegister,
+            pub lhs: AnonymousRegister,
+            pub rhs: AnonymousRegister,
+        }
+
+        impl ::std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "{} {:?} {:?} {:?}",
+                    Self::NAME,
+                    self.dst,
+                    self.lhs,
+                    self.rhs
+                )
+            }
+        }
 
         impl OpName for $name {
             const NAME: &'static str = paste::paste! { stringify!([< $name:snake >])};
         }
 
-        impl<RegisterTy> ComparisonOpEval for CompareOp<$name, RegisterTy> {
+        impl ComparisonOpEval for $name {
             fn apply_numbers(lhs: Number, rhs: Number) -> bool {
                 let $lhs_num = lhs;
                 let $rhs_num = rhs;
@@ -170,13 +157,3 @@ comparison_binop!(NotEqual => {
     (lhs: table, rhs: table) => Ok(lhs != rhs),
     (lhs: func, rhs: func) => Ok(lhs != rhs)
 });
-
-impl<T, Reg> ::std::fmt::Debug for CompareOp<T, Reg>
-where
-    T: std::fmt::Debug + OpName,
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {:?} {:?}", T::NAME, self.lhs, self.rhs)
-    }
-}

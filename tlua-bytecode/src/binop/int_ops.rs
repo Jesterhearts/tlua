@@ -1,3 +1,5 @@
+use derive_more::From;
+
 use crate::{
     binop::{
         traits::{
@@ -6,43 +8,11 @@ use crate::{
         },
         OpName,
     },
-    opcodes::{
-        AnyReg,
-        Operand,
-    },
+    AnonymousRegister,
     NumLike,
     Number,
     OpError,
 };
-
-#[derive(Clone, Copy, PartialEq)]
-pub struct IntOp<OpTy: IntBinop, RegisterTy> {
-    pub lhs: AnyReg<RegisterTy>,
-    pub rhs: Operand<RegisterTy>,
-    op: OpTy,
-}
-
-impl<OpTy, RegisterTy> From<IntOp<OpTy, RegisterTy>> for (AnyReg<RegisterTy>, Operand<RegisterTy>)
-where
-    OpTy: IntBinop,
-{
-    fn from(val: IntOp<OpTy, RegisterTy>) -> Self {
-        (val.lhs, val.rhs)
-    }
-}
-
-impl<OpTy, RegisterTy> From<(AnyReg<RegisterTy>, Operand<RegisterTy>)> for IntOp<OpTy, RegisterTy>
-where
-    OpTy: IntBinop + Default,
-{
-    fn from((lhs, rhs): (AnyReg<RegisterTy>, Operand<RegisterTy>)) -> Self {
-        Self {
-            lhs,
-            rhs,
-            op: Default::default(),
-        }
-    }
-}
 
 /// Converts an `f64` to an `i64` if it falls within the range of `i64` and has
 /// no fractional component.
@@ -56,36 +26,6 @@ pub fn f64inbounds(f: f64) -> Result<i64, OpError> {
 
 /// Generic operation for anything that looks like a number, usable during
 /// compilation
-impl<OpTy, RegisterTy> NumericOpEval for IntOp<OpTy, RegisterTy>
-where
-    OpTy: IntBinop + OpName,
-{
-    fn evaluate<LHS, RHS>(lhs: LHS, rhs: RHS) -> Result<Number, OpError>
-    where
-        LHS: NumLike,
-        RHS: NumLike,
-    {
-        let lhs = if let Some(lhs) = lhs.as_int() {
-            lhs
-        } else {
-            f64inbounds(
-                lhs.as_float()
-                    .ok_or(OpError::InvalidType { op: OpTy::NAME })?,
-            )?
-        };
-
-        let rhs = if let Some(rhs) = rhs.as_int() {
-            rhs
-        } else {
-            f64inbounds(
-                rhs.as_float()
-                    .ok_or(OpError::InvalidType { op: OpTy::NAME })?,
-            )?
-        };
-
-        Ok(OpTy::apply_ints(lhs, rhs))
-    }
-}
 
 fn shift_left(lhs: i64, rhs: i64) -> i64 {
     if rhs < -64 || rhs > 64 {
@@ -119,8 +59,25 @@ macro_rules! int_binop_impl {
             ($lhs_float:ident : float, $rhs_float:ident : float) => $when_floats:expr $(,)?
         }
     ) => {
-        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-        pub struct $name;
+        #[derive(Clone, Copy, PartialEq, Eq, From)]
+        pub struct $name {
+            pub dst: AnonymousRegister,
+            pub lhs: AnonymousRegister,
+            pub rhs: AnonymousRegister,
+        }
+
+        impl ::std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "{} {:?} {:?} {:?}",
+                    Self::NAME,
+                    self.dst,
+                    self.lhs,
+                    self.rhs
+                )
+            }
+        }
 
         impl OpName for $name {
             const NAME: &'static str = paste::paste! { stringify!([< $name:snake >])};
@@ -132,6 +89,34 @@ macro_rules! int_binop_impl {
                 let $rhs_int = rhs;
 
                 $when_ints
+            }
+        }
+
+        impl NumericOpEval for $name {
+            fn evaluate<LHS, RHS>(lhs: LHS, rhs: RHS) -> Result<Number, OpError>
+            where
+                LHS: NumLike,
+                RHS: NumLike,
+            {
+                let lhs = if let Some(lhs) = lhs.as_int() {
+                    lhs
+                } else {
+                    f64inbounds(
+                        lhs.as_float()
+                            .ok_or(OpError::InvalidType { op: Self::NAME })?,
+                    )?
+                };
+
+                let rhs = if let Some(rhs) = rhs.as_int() {
+                    rhs
+                } else {
+                    f64inbounds(
+                        rhs.as_float()
+                            .ok_or(OpError::InvalidType { op: Self::NAME })?,
+                    )?
+                };
+
+                Ok(Self::apply_ints(lhs, rhs))
             }
         }
     };
@@ -178,13 +163,3 @@ int_binop!(ShiftRight => {
     (lhs: int, rhs: int) => Number::Integer(shift_right(lhs, rhs)),
     (lhs: float, rhs: float) => Number::Integer(shift_right(lhs, rhs)),
 });
-
-impl<T, Reg> ::std::fmt::Debug for IntOp<T, Reg>
-where
-    T: std::fmt::Debug + IntBinop + OpName,
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {:?} {:?}", T::NAME, self.lhs, self.rhs)
-    }
-}

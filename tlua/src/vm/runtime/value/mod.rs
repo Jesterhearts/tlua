@@ -11,12 +11,8 @@ use std::{
 use derive_more::From;
 pub use tlua_bytecode::Number;
 use tlua_bytecode::{
-    opcodes::{
-        AnyReg,
-        Operand,
-    },
+    Constant,
     NumLike,
-    Register,
     Truthy,
 };
 use tracing_rc::{
@@ -43,6 +39,18 @@ pub enum Value {
     Table(#[trace] Gc<Table>),
     Function(#[trace] Gc<Function>),
     Userdata(((),)),
+}
+
+impl From<Constant> for Value {
+    fn from(c: Constant) -> Self {
+        match c {
+            Constant::Nil => Self::Nil,
+            Constant::Bool(b) => Self::Bool(b),
+            Constant::Float(f) => Self::Number(Number::Float(f)),
+            Constant::Integer(i) => Self::Number(Number::Integer(i)),
+            Constant::String(s) => Self::String(Rc::new(RefCell::new(s.into()))),
+        }
+    }
 }
 
 impl Value {
@@ -107,22 +115,6 @@ impl PartialEq for Value {
     }
 }
 
-impl TryFrom<Operand<Register>> for Value {
-    type Error = AnyReg<Register>;
-
-    fn try_from(value: Operand<Register>) -> Result<Self, Self::Error> {
-        match value {
-            Operand::Nil => Ok(Self::Nil),
-            Operand::Bool(b) => Ok(b.into()),
-            Operand::Float(f) => Ok(f.into()),
-            Operand::Integer(i) => Ok(i.into()),
-            Operand::String(s) => Ok(Self::String(Rc::new(RefCell::new(s.into())))),
-            Operand::Register(r) => Err(r.into()),
-            Operand::Immediate(i) => Err(i.into()),
-        }
-    }
-}
-
 impl From<&str> for Value {
     fn from(s: &str) -> Self {
         Self::String(Rc::new(RefCell::new(s.into())))
@@ -141,7 +133,7 @@ impl From<f64> for Value {
     }
 }
 
-impl Truthy for Value {
+impl Truthy for &'_ Value {
     fn as_bool(&self) -> bool {
         match self {
             Value::Nil => false,
@@ -151,7 +143,13 @@ impl Truthy for Value {
     }
 }
 
-impl NumLike for Value {
+impl Truthy for Value {
+    fn as_bool(&self) -> bool {
+        (&self).as_bool()
+    }
+}
+
+impl NumLike for &'_ Value {
     fn as_float(&self) -> Option<f64> {
         match self {
             Value::Number(n) => n.as_float(),

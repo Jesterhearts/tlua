@@ -1,13 +1,17 @@
-use tlua_bytecode::OpError;
+use either::Either;
+use tlua_bytecode::{
+    opcodes,
+    OpError,
+};
 use tlua_parser::ast::statement::assignment::Assignment;
 
 use crate::{
-    compiler::{
-        unasm::UnasmRegister,
-        InitRegister,
-    },
+    compiler::InitRegister,
     constant::Constant,
-    prefix_expression,
+    prefix_expression::{
+        self,
+        TableIndex,
+    },
     CompileError,
     CompileExpression,
     CompileStatement,
@@ -20,21 +24,28 @@ impl CompileStatement for Assignment<'_> {
         emit_assignments(
             compiler,
             prefix_expression::map_var,
+            |compiler, dest, init| match dest {
+                Either::Left(var) => {
+                    var.init_from_node_output(compiler, init);
+                }
+                Either::Right(TableIndex { table, index }) => {
+                    let init = compiler.output_to_reg_reuse_anon(init);
+                    compiler.emit(opcodes::SetProperty::from((table, index, init)));
+                }
+            },
             self.varlist.iter(),
             self.expressions.iter(),
         )
     }
 }
 
-pub(crate) fn emit_assignments<VarExpr, InVarRegTy: Copy, OutVarRegTy: InitRegister<InVarRegTy>>(
+pub(crate) fn emit_assignments<VarExpr, VarDest>(
     compiler: &mut CompilerContext,
-    mut compile_var: impl FnMut(&mut CompilerContext, VarExpr) -> Result<OutVarRegTy, CompileError>,
+    mut compile_var: impl FnMut(&mut CompilerContext, VarExpr) -> Result<VarDest, CompileError>,
+    mut assign_var: impl FnMut(&mut CompilerContext, VarDest, NodeOutput),
     mut vars: impl ExactSizeIterator<Item = VarExpr> + Clone,
     mut inits: impl ExactSizeIterator<Item = impl CompileExpression> + Clone,
-) -> Result<Option<OpError>, CompileError>
-where
-    UnasmRegister: From<InVarRegTy>,
-{
+) -> Result<Option<OpError>, CompileError> {
     let common_length = 0..(vars.len().min(inits.len().saturating_sub(1)));
     for _ in common_length {
         let dest = compile_var(compiler, vars.next().expect("Still in common length"))?;
@@ -44,38 +55,29 @@ where
             .expect("Still in common length")
             .compile(compiler)?;
 
-        dest.init_from_node_output(compiler, init);
+        assign_var(compiler, dest, init);
     }
 
     if let Some(dest) = vars.next() {
         let dest = compile_var(compiler, dest)?;
 
         match inits.next() {
-            Some(init) => match init.compile(compiler)? {
-                NodeOutput::Constant(value) => {
-                    dest.init_from_const(compiler, value);
-                }
-                NodeOutput::Register(other) => {
-                    dest.init_from_reg(compiler, other);
-                }
-                NodeOutput::ReturnValues => {
-                    dest.init_from_ret(compiler);
+            Some(init) => {
+                let init = init.compile(compiler)?;
+                assign_var(compiler, dest, init);
 
-                    for v in vars {
-                        compile_var(compiler, v)?.init_from_ret(compiler);
+                match init {
+                    init @ NodeOutput::ReturnValues | init @ NodeOutput::VAStack => {
+                        for dest in vars {
+                            let dest = compile_var(compiler, dest)?;
+                            assign_var(compiler, dest, init)
+                        }
                     }
+                    _ => (),
                 }
-                NodeOutput::VAStack => {
-                    dest.init_from_va(compiler, 0);
-
-                    for (index, v) in vars.enumerate() {
-                        compile_var(compiler, v)?.init_from_va(compiler, index + 1);
-                    }
-                }
-                NodeOutput::Err(err) => return Ok(Some(err)),
-            },
+            }
             None => {
-                dest.init_from_const(compiler, Constant::Nil);
+                assign_var(compiler, dest, NodeOutput::Constant(Constant::Nil));
             }
         }
 

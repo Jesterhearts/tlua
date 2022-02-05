@@ -108,7 +108,7 @@ impl PartialOrd for Number {
     }
 }
 
-impl NumLike for Number {
+impl NumLike for &'_ Number {
     fn as_float(&self) -> Option<f64> {
         match self {
             Number::Float(f) => Some(*f),

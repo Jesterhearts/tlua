@@ -8,7 +8,7 @@ use tlua::{
 #[test]
 fn generic_for() -> anyhow::Result<()> {
     let src = indoc! {r#"
-        local b = 0 
+        local b = 777 
         local t = { "a", "b", "c" }
 
         local function next(state, control)

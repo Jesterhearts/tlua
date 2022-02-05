@@ -11,6 +11,7 @@ pub mod opcodes;
 mod register;
 
 pub use number::Number;
+pub use opcodes::Constant;
 pub use register::{
     AnonymousRegister,
     MappedRegister,
@@ -107,5 +108,5 @@ pub enum PrimitiveType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TypeId {
     Primitive(PrimitiveType),
-    Any(NonZeroUsize, usize),
+    Any(NonZeroUsize),
 }

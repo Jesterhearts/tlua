@@ -11,6 +11,7 @@ use derive_more::{
 use thiserror::Error;
 use tlua_bytecode::{
     opcodes::Instruction,
+    AnonymousRegister,
     OpError,
     TypeId,
 };
@@ -35,19 +36,24 @@ mod expressions;
 mod prefix_expression;
 mod statement;
 
-use self::compiler::{
-    unasm::UnasmRegister,
-    CompilerContext,
-};
+use self::compiler::CompilerContext;
 use crate::{
-    compiler::Compiler,
+    compiler::{
+        unasm::MappedLocalRegister,
+        Compiler,
+    },
     constant::Constant,
 };
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum NodeOutput {
     Constant(Constant),
-    Register(UnasmRegister),
+    Immediate(AnonymousRegister),
+    MappedRegister(MappedLocalRegister),
+    TableEntry {
+        table: AnonymousRegister,
+        index: AnonymousRegister,
+    },
     ReturnValues,
     VAStack,
     Err(OpError),
@@ -64,15 +70,15 @@ pub struct FuncId(usize);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BuiltinType {
-    Function(FuncId),
     Table,
+    Function(FuncId),
 }
 
 impl From<BuiltinType> for TypeId {
     fn from(id: BuiltinType) -> Self {
         match id {
-            BuiltinType::Function(id) => Self::Any(NonZeroUsize::new(1).unwrap(), id.into()),
-            BuiltinType::Table => Self::Any(NonZeroUsize::new(2).unwrap(), 0),
+            BuiltinType::Function(id) => Self::Any(NonZeroUsize::new(usize::from(id) + 2).unwrap()),
+            BuiltinType::Table => Self::Any(NonZeroUsize::new(1).unwrap()),
         }
     }
 }
@@ -83,10 +89,9 @@ impl TryFrom<TypeId> for BuiltinType {
     fn try_from(value: TypeId) -> Result<Self, Self::Error> {
         match value {
             TypeId::Primitive(_) => Err(()),
-            TypeId::Any(type_id, id) => match type_id.get() {
-                1 => Ok(Self::Function(id.into())),
-                2 => Ok(Self::Table),
-                _ => Err(()),
+            TypeId::Any(type_id) => match type_id.get() {
+                1 => Ok(Self::Table),
+                id => Ok(Self::Function(FuncId::from(id - 2))),
             },
         }
     }

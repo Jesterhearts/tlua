@@ -10,10 +10,7 @@ use derive_more::{
     Into,
 };
 use tlua_bytecode::{
-    opcodes::{
-        AnyReg,
-        ScopeDescriptor,
-    },
+    opcodes::ScopeDescriptor,
     MappedRegister,
     Register,
 };
@@ -70,10 +67,10 @@ pub struct Results(Vec<Value>);
 #[derive(Debug, Default, Deref, DerefMut, From, Into)]
 pub struct VaArgs(Vec<Value>);
 
+#[derive(Debug)]
 pub struct ScopeSet {
     referenced: Vec<Scope>,
     local: Scope,
-    anon: Vec<Value>,
 
     va_args: VaArgs,
     results: Results,
@@ -84,13 +81,11 @@ impl ScopeSet {
         // TODO(perf): This might benefit from being COW
         referenced: Vec<Scope>,
         local: Scope,
-        anon: Vec<Value>,
         va_args: Vec<Value>,
     ) -> ScopeSet {
         ScopeSet {
             referenced,
             local,
-            anon,
             va_args: va_args.into(),
             results: Default::default(),
         }
@@ -132,47 +127,29 @@ impl ScopeSet {
         self.results.extend(other.into_iter());
     }
 
-    #[track_caller]
-    pub fn load_anon_offset(&self, index: usize) -> Value {
-        self.anon[index].clone()
-    }
-
     // TODO(perf): This shouldn't be cloning its values.
     #[track_caller]
-    pub fn load(&self, addr: AnyReg<Register>) -> Value {
-        match addr {
-            AnyReg::Register(MappedRegister(Register { scope, offset })) => {
-                if usize::from(scope) == self.referenced.len() {
-                    self.local.registers[usize::from(offset)].borrow().clone()
-                } else {
-                    self.referenced[usize::from(scope)].registers[usize::from(offset)]
-                        .borrow()
-                        .clone()
-                }
-            }
-            AnyReg::Immediate(a) => self.anon[usize::from(a)].clone(),
+    pub fn load(&self, addr: MappedRegister<Register>) -> Value {
+        let MappedRegister(Register { scope, offset }) = addr;
+
+        if usize::from(scope) == self.referenced.len() {
+            self.local.registers[usize::from(offset)].borrow().clone()
+        } else {
+            self.referenced[usize::from(scope)].registers[usize::from(offset)]
+                .borrow()
+                .clone()
         }
     }
 
     #[track_caller]
-    pub fn store(&mut self, addr: AnyReg<Register>, value: Value) {
-        match addr {
-            AnyReg::Register(MappedRegister(Register { scope, offset })) => {
-                if usize::from(scope) == self.referenced.len() {
-                    self.local.registers[usize::from(offset)].replace(value);
-                } else {
-                    self.referenced[usize::from(scope)].registers[usize::from(offset)]
-                        .replace(value);
-                }
-            }
-            AnyReg::Immediate(a) => self.anon[usize::from(a)] = value,
-        }
-    }
+    pub fn store(&mut self, addr: MappedRegister<Register>, value: Value) {
+        let MappedRegister(Register { scope, offset }) = addr;
 
-    #[track_caller]
-    pub fn copy(&mut self, dest: AnyReg<Register>, src: AnyReg<Register>) {
-        let src_data = self.load(src);
-        self.store(dest, src_data);
+        if usize::from(scope) == self.referenced.len() {
+            self.local.registers[usize::from(offset)].replace(value);
+        } else {
+            self.referenced[usize::from(scope)].registers[usize::from(offset)].replace(value);
+        }
     }
 }
 

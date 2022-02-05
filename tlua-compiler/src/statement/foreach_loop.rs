@@ -8,10 +8,7 @@ use tlua_parser::ast::statement::foreach_loop::ForEachLoop;
 
 use crate::{
     block::emit_block,
-    compiler::{
-        unasm::UnasmRegister,
-        InitRegister,
-    },
+    compiler::InitRegister,
     statement::assignment::emit_assignments,
     CompileError,
     CompileStatement,
@@ -39,29 +36,29 @@ impl CompileStatement for ForEachLoop<'_> {
             emit_assignments(
                 compiler,
                 |_compiler, var| Ok(var),
+                |compiler, var, init| {
+                    var.init_from_node_output(compiler, init);
+                },
                 control_vars_list,
                 self.expressions.iter(),
             )?;
 
             // iter_func(state, control_init).
-            let loop_start = compiler.emit(opcodes::Call::from((
-                UnasmRegister::from(iter_func),
-                iter_func_args_start,
-                2,
-            )));
+            let loop_start =
+                compiler.emit(opcodes::Call::from((iter_func, iter_func_args_start, 2)));
 
             let mut vars = self.vars.iter().copied();
-
             let named_control = vars.next().expect("At least one named variable");
-            let named_control: UnasmRegister = compiler
-                .new_local(named_control)?
-                .init_from_ret(compiler)
-                .into();
+
+            anon_control.init_from_ret(compiler);
+
             for var in vars {
                 compiler.new_local(var)?.init_from_ret(compiler);
             }
 
-            anon_control.init_from_reg(compiler, named_control);
+            compiler
+                .new_local(named_control)?
+                .init_from_anon_reg(compiler, anon_control);
 
             let pending_skip_body = compiler.emit(opcodes::Raise {
                 err: OpError::ByteCodeError {
@@ -76,10 +73,7 @@ impl CompileStatement for ForEachLoop<'_> {
 
             compiler.overwrite(
                 pending_skip_body,
-                opcodes::JumpNil::from((
-                    UnasmRegister::from(anon_control),
-                    compiler.next_instruction(),
-                )),
+                opcodes::JumpNil::from((anon_control, compiler.next_instruction())),
             );
             compiler.label_current_instruction(loop_exit_label)?;
             compiler.pop_loop_label();

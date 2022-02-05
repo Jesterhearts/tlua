@@ -1,15 +1,23 @@
-use std::ops::Range;
+use std::ops::{
+    Index,
+    IndexMut,
+    Range,
+};
 
+use derive_more::{
+    Deref,
+    From,
+};
 use tlua_bytecode::{
     binop::f64inbounds,
     opcodes::{
         Op,
         *,
     },
+    AnonymousRegister,
     ByteCodeError,
     OpError,
     PrimitiveType,
-    Register,
     Truthy,
     TypeId,
 };
@@ -20,7 +28,12 @@ use tlua_compiler::{
 use tracing_rc::rc::Gc;
 
 use crate::vm::{
-    binop::traits::ApplyBinop,
+    binop::{
+        bool_op,
+        cmp_op,
+        fp_op,
+        int_op,
+    },
     runtime::{
         value::{
             function::{
@@ -36,8 +49,27 @@ use crate::vm::{
     },
 };
 
+#[derive(Debug, Deref, From)]
+pub(crate) struct Immediates(Vec<Value>);
+
+impl Index<AnonymousRegister> for Immediates {
+    type Output = Value;
+
+    fn index(&self, index: AnonymousRegister) -> &Self::Output {
+        &self.0[usize::from(index)]
+    }
+}
+
+impl IndexMut<AnonymousRegister> for Immediates {
+    fn index_mut(&mut self, index: AnonymousRegister) -> &mut Self::Output {
+        &mut self.0[usize::from(index)]
+    }
+}
+
+#[derive(Debug)]
 pub struct Context<'call> {
     in_scope: ScopeSet,
+    anon: Immediates,
 
     chunk: &'call Chunk,
     instructions: &'call [Instruction],
@@ -48,6 +80,7 @@ impl<'call> Context<'call> {
     pub fn new(scopes: ScopeSet, chunk: &'call Chunk) -> Self {
         Self {
             in_scope: scopes,
+            anon: vec![Value::Nil; chunk.main.anon_registers].into(),
             chunk,
             instructions: chunk.main.instructions.as_slice(),
             instruction_pointer: chunk.main.instructions.as_slice(),
@@ -68,12 +101,8 @@ impl Context<'_> {
         let func_def = &self.chunk.functions[usize::from(func.id)];
 
         Context {
-            in_scope: ScopeSet::new(
-                func.referenced_scopes.clone(),
-                new_scope,
-                vec![Value::Nil; func_def.anon_registers],
-                va_args,
-            ),
+            in_scope: ScopeSet::new(func.referenced_scopes.clone(), new_scope, va_args),
+            anon: vec![Value::Nil; func_def.anon_registers].into(),
 
             chunk: self.chunk,
             instructions: func_def.instructions.as_slice(),
@@ -89,67 +118,100 @@ impl Context<'_> {
                 Op::Nop => (),
 
                 // Numeric operations
-                Op::Add(data) => data.apply(&mut self.in_scope)?,
-                Op::Subtract(data) => data.apply(&mut self.in_scope)?,
-                Op::Times(data) => data.apply(&mut self.in_scope)?,
-                Op::Modulo(data) => data.apply(&mut self.in_scope)?,
-                Op::Divide(data) => data.apply(&mut self.in_scope)?,
-                Op::Exponetiation(data) => data.apply(&mut self.in_scope)?,
-                Op::IDiv(data) => data.apply(&mut self.in_scope)?,
-                Op::BitAnd(data) => data.apply(&mut self.in_scope)?,
-                Op::BitOr(data) => data.apply(&mut self.in_scope)?,
-                Op::BitXor(data) => data.apply(&mut self.in_scope)?,
-                Op::ShiftLeft(data) => data.apply(&mut self.in_scope)?,
-                Op::ShiftRight(data) => data.apply(&mut self.in_scope)?,
+                Op::Add(Add { dst, lhs, rhs }) => {
+                    self.anon[dst] = fp_op::<Add>(lhs, rhs, &self.anon)?;
+                }
+                Op::Subtract(Subtract { dst, lhs, rhs }) => {
+                    self.anon[dst] = fp_op::<Subtract>(lhs, rhs, &self.anon)?;
+                }
+                Op::Times(Times { dst, lhs, rhs }) => {
+                    self.anon[dst] = fp_op::<Times>(lhs, rhs, &self.anon)?;
+                }
+                Op::Modulo(Modulo { dst, lhs, rhs }) => {
+                    self.anon[dst] = fp_op::<Modulo>(lhs, rhs, &self.anon)?;
+                }
+                Op::Divide(Divide { dst, lhs, rhs }) => {
+                    self.anon[dst] = fp_op::<Divide>(lhs, rhs, &self.anon)?;
+                }
+                Op::Exponetiation(Exponetiation { dst, lhs, rhs }) => {
+                    self.anon[dst] = fp_op::<Exponetiation>(lhs, rhs, &self.anon)?;
+                }
+                Op::IDiv(IDiv { dst, lhs, rhs }) => {
+                    self.anon[dst] = fp_op::<IDiv>(lhs, rhs, &self.anon)?;
+                }
+                Op::BitAnd(BitAnd { dst, lhs, rhs }) => {
+                    self.anon[dst] = int_op::<BitAnd>(lhs, rhs, &self.anon)?;
+                }
+                Op::BitOr(BitOr { dst, lhs, rhs }) => {
+                    self.anon[dst] = int_op::<BitOr>(lhs, rhs, &self.anon)?;
+                }
+                Op::BitXor(BitXor { dst, lhs, rhs }) => {
+                    self.anon[dst] = int_op::<BitXor>(lhs, rhs, &self.anon)?;
+                }
+                Op::ShiftLeft(ShiftLeft { dst, lhs, rhs }) => {
+                    self.anon[dst] = int_op::<ShiftLeft>(lhs, rhs, &self.anon)?;
+                }
+                Op::ShiftRight(ShiftRight { dst, lhs, rhs }) => {
+                    self.anon[dst] = int_op::<ShiftRight>(lhs, rhs, &self.anon)?;
+                }
 
                 // Unary math operations
-                Op::UnaryMinus(UnaryMinus { reg }) => {
-                    self.in_scope.store(
-                        reg,
-                        match self.in_scope.load(reg) {
-                            Value::Number(operand) => Value::Number(match operand {
-                                Number::Float(f) => Number::Float(-f),
-                                Number::Integer(i) => Number::Integer(-i),
-                            }),
-                            _ => todo!(),
-                        },
-                    );
+                Op::UnaryMinus(UnaryMinus { dst, src }) => {
+                    self.anon[dst] = match self.anon[src].clone() {
+                        Value::Number(operand) => Value::Number(match operand {
+                            Number::Float(f) => Number::Float(-f),
+                            Number::Integer(i) => Number::Integer(-i),
+                        }),
+                        _ => todo!(),
+                    };
                 }
-                Op::UnaryBitNot(UnaryBitNot { reg }) => {
-                    self.in_scope.store(
-                        reg,
-                        Value::Number(Number::Integer(match self.in_scope.load(reg) {
-                            Value::Number(operand) => match operand {
-                                Number::Float(f) => {
-                                    if f.fract() == 0.0 {
-                                        !f64inbounds(f)?
-                                    } else {
-                                        return Err(OpError::FloatToIntConversionFailed { f });
-                                    }
+                Op::UnaryBitNot(UnaryBitNot { dst, src }) => {
+                    self.anon[dst] = match self.anon[src].clone() {
+                        Value::Number(operand) => Value::Number(match operand {
+                            Number::Float(f) => {
+                                if f.fract() == 0.0 {
+                                    Number::Integer(!f64inbounds(f)?)
+                                } else {
+                                    return Err(OpError::FloatToIntConversionFailed { f });
                                 }
-                                Number::Integer(i) => !i,
-                            },
-                            _ => todo!(),
-                        })),
-                    );
+                            }
+                            Number::Integer(i) => Number::Integer(!i),
+                        }),
+                        _ => todo!(),
+                    };
                 }
 
                 // Comparison operations
-                Op::LessThan(data) => data.apply(&mut self.in_scope)?,
-                Op::LessEqual(data) => data.apply(&mut self.in_scope)?,
-                Op::GreaterThan(data) => data.apply(&mut self.in_scope)?,
-                Op::GreaterEqual(data) => data.apply(&mut self.in_scope)?,
-                Op::Equals(data) => data.apply(&mut self.in_scope)?,
-                Op::NotEqual(data) => data.apply(&mut self.in_scope)?,
+                Op::LessThan(LessThan { dst, lhs, rhs }) => {
+                    self.anon[dst] = cmp_op::<LessThan>(lhs, rhs, &self.anon)?;
+                }
+                Op::LessEqual(LessEqual { dst, lhs, rhs }) => {
+                    self.anon[dst] = cmp_op::<LessEqual>(lhs, rhs, &self.anon)?;
+                }
+                Op::GreaterThan(GreaterThan { dst, lhs, rhs }) => {
+                    self.anon[dst] = cmp_op::<GreaterThan>(lhs, rhs, &self.anon)?;
+                }
+                Op::GreaterEqual(GreaterEqual { dst, lhs, rhs }) => {
+                    self.anon[dst] = cmp_op::<GreaterEqual>(lhs, rhs, &self.anon)?;
+                }
+                Op::Equals(Equals { dst, lhs, rhs }) => {
+                    self.anon[dst] = cmp_op::<Equals>(lhs, rhs, &self.anon)?;
+                }
+                Op::NotEqual(NotEqual { dst, lhs, rhs }) => {
+                    self.anon[dst] = cmp_op::<NotEqual>(lhs, rhs, &self.anon)?;
+                }
 
                 // Boolean operations
-                Op::And(data) => data.apply(&mut self.in_scope)?,
-                Op::Or(data) => data.apply(&mut self.in_scope)?,
+                Op::And(And { dst, lhs, rhs }) => {
+                    self.anon[dst] = bool_op::<And>(lhs, rhs, &self.anon);
+                }
+                Op::Or(Or { dst, lhs, rhs }) => {
+                    self.anon[dst] = bool_op::<Or>(lhs, rhs, &self.anon);
+                }
 
                 // Unary boolean operations
-                Op::Not(Not { reg }) => {
-                    self.in_scope
-                        .store(reg, Value::Bool(!self.in_scope.load(reg).as_bool()));
+                Op::Not(Not { dst, src }) => {
+                    self.anon[dst] = Value::Bool(!self.anon[src].as_bool());
                 }
 
                 // String & Array operations
@@ -161,81 +223,47 @@ impl Context<'_> {
                 }
 
                 Op::JumpNot(JumpNot { cond, target }) => {
-                    let cond = self.in_scope.load(cond);
-                    if !cond.as_bool() {
+                    if !self.anon[cond].as_bool() {
                         self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
                 Op::JumpNil(JumpNil { cond, target }) => {
-                    let cond = self.in_scope.load(cond);
-                    if cond == Value::Nil {
-                        self.instruction_pointer = self.instructions.split_at(target).1;
-                    }
-                }
-
-                Op::JumpNotVa0(JumpNotVa0 { target }) => {
-                    if !self.in_scope.load_va(0).as_bool() {
+                    if self.anon[cond] == Value::Nil {
                         self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
                 // Table operations
-                Op::Lookup(Lookup { dest, index }) => {
-                    let value = match self.in_scope.load(dest) {
+                Op::Lookup(Lookup { dst, src, idx }) => {
+                    self.anon[dst] = match &self.anon[src] {
                         Value::Table(t) => t
                             .borrow()
                             .entries
-                            .get(&TryFrom::<Value>::try_from(
-                                Value::try_from(index)
-                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
-                            )?)
+                            .get(&TableKey::try_from(self.anon[idx].clone())?)
                             .cloned()
                             .unwrap_or_default(),
                         _ => todo!("metatables are unsupported"),
                     };
-
-                    self.in_scope.store(dest, value);
                 }
 
-                // TODO(cleanup): These can have generic behavior across their arguments.
-                Op::Store(Store { dest, src, index }) => {
-                    let value = Value::try_from(src).unwrap_or_else(|reg| self.in_scope.load(reg));
-                    match self.in_scope.load(dest) {
+                Op::SetProperty(SetProperty { dst, idx, src }) => {
+                    match &self.anon[dst] {
                         Value::Table(t) => t.borrow_mut().entries.insert(
-                            TryFrom::<Value>::try_from(
-                                Value::try_from(index)
-                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
-                            )?,
-                            value,
-                        ),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
-                Op::StoreFromVa(StoreFromVa {
-                    dest,
-                    index,
-                    va_index,
-                }) => {
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t.borrow_mut().entries.insert(
-                            TryFrom::<Value>::try_from(
-                                Value::try_from(index)
-                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
-                            )?,
-                            self.in_scope.load_va(va_index),
+                            TableKey::try_from(self.anon[idx].clone())?,
+                            self.anon[src].clone(),
                         ),
                         _ => todo!("metatables are unsupported"),
                     };
                 }
 
-                Op::StoreAllFromVa(StoreAllFromVa { dest, start_index }) => {
+                Op::SetAllPropertiesFromVa(SetAllPropertiesFromVa { dst, start_idx }) => {
                     let entries = self
                         .in_scope
                         .iter_va()
                         .enumerate()
                         .map(|(index, v)| {
-                            i64::try_from(index + start_index)
+                            i64::try_from(index + start_idx)
                                 .map_err(|_| OpError::TableIndexOutOfBounds)
                                 .map(Value::from)
                                 .and_then(TableKey::try_from)
@@ -243,22 +271,27 @@ impl Context<'_> {
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
-                    match self.in_scope.load(dest) {
+                    match &self.anon[dst] {
                         Value::Table(t) => t.borrow_mut().entries.extend(entries),
                         _ => todo!("metatables are unsupported"),
                     };
                 }
 
                 // Register operations
-                Op::Set(Set { dest, source }) => {
-                    self.in_scope.store(
-                        dest,
-                        Value::try_from(source).unwrap_or_else(|reg| self.in_scope.load(reg)),
-                    );
+                Op::LoadConstant(LoadConstant { dst, src }) => {
+                    self.anon[dst] = src.into();
                 }
-                Op::SetFromVa(SetFromVa { dest, index }) => {
-                    self.in_scope
-                        .store(dest, self.in_scope.load_va(index).clone());
+                Op::LoadVa(LoadVa { dst, idx }) => {
+                    self.anon[dst] = self.in_scope.load_va(idx);
+                }
+                Op::LoadRegister(LoadRegister { dst, src }) => {
+                    self.anon[dst] = self.in_scope.load(src);
+                }
+                Op::DuplicateRegister(DuplicateRegister { dst, src }) => {
+                    self.anon[dst] = self.anon[src].clone();
+                }
+                Op::Store(Store { dst, src }) => {
+                    self.in_scope.store(dst, self.anon[src].clone());
                 }
 
                 // Begin calling a function
@@ -287,17 +320,12 @@ impl Context<'_> {
 
                 // Set up return values for a function
                 Op::SetRet(SetRet { src }) => {
-                    self.in_scope.add_result(
-                        Value::try_from(src).unwrap_or_else(|reg| self.in_scope.load(reg)),
-                    );
-                }
-                Op::SetRetVa0 => {
-                    self.in_scope.add_result(self.in_scope.load_va(0));
+                    self.in_scope.add_result(self.anon[src].clone());
                 }
 
                 // Allocate values
-                Op::Alloc(Alloc { dest, type_id }) => {
-                    let value = match BuiltinType::try_from(type_id) {
+                Op::Alloc(Alloc { dst, type_id }) => {
+                    self.anon[dst] = match BuiltinType::try_from(type_id) {
                         Ok(BuiltinType::Function(id)) => {
                             Value::Function(Gc::new(Function::new(&self.in_scope, id)))
                         }
@@ -309,16 +337,14 @@ impl Context<'_> {
                             })
                         }
                     };
-                    self.in_scope.store(dest, value);
                 }
 
                 Op::CheckType(CheckType {
-                    dest,
+                    dst,
                     src,
                     expected_type_id,
                 }) => {
-                    let target = self.in_scope.load(src);
-                    let matches_type = match (expected_type_id, target) {
+                    self.anon[dst] = match (expected_type_id, &self.anon[src]) {
                         (TypeId::Primitive(PrimitiveType::Nil), Value::Nil)
                         | (TypeId::Primitive(PrimitiveType::Bool), Value::Bool(_))
                         | (
@@ -330,7 +356,7 @@ impl Context<'_> {
                             Value::Number(Number::Integer(_)),
                         )
                         | (TypeId::Primitive(PrimitiveType::String), Value::String(_)) => true,
-                        (id @ TypeId::Any(_, _), target) => {
+                        (id @ TypeId::Any(_), target) => {
                             match (BuiltinType::try_from(id), target) {
                                 (Ok(BuiltinType::Table), Value::Table(_)) => true,
                                 (Ok(BuiltinType::Function(id)), Value::Function(f)) => {
@@ -340,9 +366,8 @@ impl Context<'_> {
                             }
                         }
                         _ => false,
-                    };
-
-                    self.in_scope.store(dest, matches_type.into());
+                    }
+                    .into();
                 }
 
                 // Alter the active scopes
@@ -367,17 +392,14 @@ impl Context<'_> {
                 // Stop execution by raising an error.
                 Op::Raise(Raise { err }) => return Err(err),
                 Op::RaiseIfNot(RaiseIfNot { src, err }) => {
-                    if !self.in_scope.load(src).as_bool() {
+                    if !self.anon[src].as_bool() {
                         return Err(err);
                     }
                 }
 
                 Op::CallCopyRet(_)
-                | Op::MapRet(_)
-                | Op::StoreRet(_)
-                | Op::StoreAllRet(_)
-                | Op::SetRetFromRet0
-                | Op::JumpNotRet0(_)
+                | Op::LoadRet(_)
+                | Op::SetAllPropertiesFromRet(_)
                 | Op::CopyRetFromRetAndRet => {
                     return Err(OpError::ByteCodeError {
                         err: ByteCodeError::UnexpectedCallInstruction,
@@ -392,12 +414,12 @@ impl Context<'_> {
 
     fn start_call(
         &mut self,
-        target: AnyReg<Register>,
+        target: AnonymousRegister,
         arg_range: Range<usize>,
         extra_args: Vec<Value>,
     ) -> Result<(), OpError> {
-        let func = match self.in_scope.load(target) {
-            Value::Function(ptr) => ptr,
+        let func = match &self.anon[target] {
+            Value::Function(ptr) => ptr.clone(),
             _ => todo!("Metatables are not supported"),
         };
 
@@ -458,7 +480,7 @@ impl Context<'_> {
 
         // Map all of the explicit input args to target registers
         for (target_idx, src_idx) in (0..desired_input_args).zip(arg_range.clone()) {
-            subscope.registers[target_idx].replace(self.in_scope.load_anon_offset(src_idx));
+            subscope.registers[target_idx].replace(self.anon[src_idx.into()].clone());
         }
 
         if arg_range.len() < desired_input_args {
@@ -467,7 +489,7 @@ impl Context<'_> {
             }
         } else {
             for src_idx in (arg_range.start + desired_input_args)..arg_range.end {
-                va_args.push(self.in_scope.load_anon_offset(src_idx));
+                va_args.push(self.anon[src_idx.into()].clone());
             }
         }
 
@@ -479,30 +501,18 @@ impl Context<'_> {
         let mut results = results.drain(..);
         while let Some((&isn, next)) = self.instruction_pointer.split_first() {
             match isn {
-                Op::MapRet(MapRet { dest }) => {
-                    self.in_scope
-                        .store(dest, results.next().unwrap_or(Value::Nil));
+                Op::LoadRet(LoadRet { dst }) => {
+                    self.anon[dst] = results.next().unwrap_or_default();
                 }
 
-                Op::StoreRet(StoreRet { dest, index }) => {
-                    match self.in_scope.load(dest) {
-                        Value::Table(t) => t.borrow_mut().entries.insert(
-                            TryFrom::<Value>::try_from(
-                                Value::try_from(index)
-                                    .unwrap_or_else(|reg| self.in_scope.load(reg)),
-                            )?,
-                            results.next().unwrap_or(Value::Nil),
-                        ),
-                        _ => todo!("metatables are unsupported"),
-                    };
-                }
+                Op::Store(Store { dst, src }) => self.in_scope.store(dst, self.anon[src].clone()),
 
-                Op::StoreAllRet(StoreAllRet { dest, start_index }) => {
-                    match self.in_scope.load(dest) {
+                Op::SetAllPropertiesFromRet(SetAllPropertiesFromRet { dst, start_idx }) => {
+                    match &self.anon[dst] {
                         Value::Table(t) => {
                             let mut table = t.borrow_mut();
                             for res in results.enumerate().map(|(index, v)| {
-                                i64::try_from(index + start_index)
+                                i64::try_from(index + start_idx)
                                     .map_err(|_| OpError::TableIndexOutOfBounds)
                                     .map(Value::from)
                                     .and_then(TableKey::try_from)
@@ -517,17 +527,6 @@ impl Context<'_> {
 
                     self.instruction_pointer = next;
                     return Ok(());
-                }
-
-                Op::SetRetFromRet0 => {
-                    self.in_scope
-                        .add_result(results.next().unwrap_or(Value::Nil));
-                }
-
-                Op::JumpNotRet0(JumpNotRet0 { target }) => {
-                    if !results.next().unwrap_or(Value::Nil).as_bool() {
-                        self.instruction_pointer = self.instructions.split_at(target).1;
-                    }
                 }
 
                 _ => return Ok(()),

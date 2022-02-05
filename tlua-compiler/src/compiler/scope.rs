@@ -19,6 +19,7 @@ use tlua_parser::ast::identifiers::Ident;
 use crate::{
     compiler::{
         unasm::{
+            MappedLocalRegister,
             OffsetRegister,
             UnasmFunction,
             UnasmOp,
@@ -389,7 +390,7 @@ impl<'function> BlockScope<'_, 'function> {
     pub(super) fn new_local(
         &mut self,
         ident: Ident,
-    ) -> Result<UninitRegister<OffsetRegister>, CompileError> {
+    ) -> Result<UninitRegister<MappedLocalRegister>, CompileError> {
         self.current_scope_id = self.function_scope.root.next_scope_id();
 
         let offset_register = OffsetRegister {
@@ -429,6 +430,6 @@ impl<'function> BlockScope<'_, 'function> {
             }
         }
 
-        Ok(offset_register.into())
+        Ok(MappedLocalRegister::from(offset_register).into())
     }
 }

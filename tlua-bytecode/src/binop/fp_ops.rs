@@ -1,3 +1,5 @@
+use derive_more::From;
+
 use crate::{
     binop::{
         traits::{
@@ -6,67 +8,14 @@ use crate::{
         },
         OpName,
     },
-    opcodes::{
-        AnyReg,
-        Operand,
-    },
+    AnonymousRegister,
     NumLike,
     Number,
     OpError,
 };
 
-#[derive(Clone, Copy, PartialEq)]
-pub struct FloatOp<OpTy: FloatBinop, RegisterTy> {
-    pub lhs: AnyReg<RegisterTy>,
-    pub rhs: Operand<RegisterTy>,
-    op: OpTy,
-}
-
-impl<OpTy, RegisterTy> From<FloatOp<OpTy, RegisterTy>> for (AnyReg<RegisterTy>, Operand<RegisterTy>)
-where
-    OpTy: FloatBinop,
-{
-    fn from(val: FloatOp<OpTy, RegisterTy>) -> Self {
-        (val.lhs, val.rhs)
-    }
-}
-
-impl<OpTy, RegisterTy> From<(AnyReg<RegisterTy>, Operand<RegisterTy>)> for FloatOp<OpTy, RegisterTy>
-where
-    OpTy: FloatBinop + Default,
-{
-    fn from((lhs, rhs): (AnyReg<RegisterTy>, Operand<RegisterTy>)) -> Self {
-        Self {
-            lhs,
-            rhs,
-            op: Default::default(),
-        }
-    }
-}
-
 /// Generic operation for anything that looks like a number, usable during
 /// compilation
-impl<OpTy, RegisterTy> NumericOpEval for FloatOp<OpTy, RegisterTy>
-where
-    OpTy: FloatBinop + OpName,
-{
-    fn evaluate<LHS, RHS>(lhs: LHS, rhs: RHS) -> Result<Number, OpError>
-    where
-        LHS: NumLike,
-        RHS: NumLike,
-    {
-        if let (Some(lhs), Some(rhs)) = (lhs.as_int(), rhs.as_int()) {
-            Ok(OpTy::apply_ints(lhs, rhs))
-        } else {
-            Ok(OpTy::apply_floats(
-                lhs.as_float()
-                    .ok_or(OpError::InvalidType { op: OpTy::NAME })?,
-                rhs.as_float()
-                    .ok_or(OpError::InvalidType { op: OpTy::NAME })?,
-            ))
-        }
-    }
-}
 
 // TODO(cleanup): This could probably share some macro code with the other
 // binop_impls
@@ -78,8 +27,25 @@ macro_rules! float_binop_impl {
             ($lhs_float:ident : float, $rhs_float:ident : float) => $when_floats:expr $(,)?
         }
     ) => {
-        #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-        pub struct $name;
+        #[derive(Clone, Copy, PartialEq, Eq, From)]
+        pub struct $name {
+            pub dst: AnonymousRegister,
+            pub lhs: AnonymousRegister,
+            pub rhs: AnonymousRegister,
+        }
+
+        impl ::std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(
+                    f,
+                    "{} {:?} {:?} {:?}",
+                    Self::NAME,
+                    self.dst,
+                    self.lhs,
+                    self.rhs
+                )
+            }
+        }
 
         impl OpName for $name {
             const NAME: &'static str = paste::paste! { stringify!([< $name:snake >])};
@@ -98,6 +64,25 @@ macro_rules! float_binop_impl {
                 let $rhs_float = rhs;
 
                 $when_floats
+            }
+        }
+
+        impl NumericOpEval for $name {
+            fn evaluate<LHS, RHS>(lhs: LHS, rhs: RHS) -> Result<Number, OpError>
+            where
+                LHS: NumLike,
+                RHS: NumLike,
+            {
+                if let (Some(lhs), Some(rhs)) = (lhs.as_int(), rhs.as_int()) {
+                    Ok(Self::apply_ints(lhs, rhs))
+                } else {
+                    Ok(Self::apply_floats(
+                        lhs.as_float()
+                            .ok_or(OpError::InvalidType { op: Self::NAME })?,
+                        rhs.as_float()
+                            .ok_or(OpError::InvalidType { op: Self::NAME })?,
+                    ))
+                }
             }
         }
     };
@@ -154,13 +139,3 @@ float_binop!(Exponetiation => {
     (lhs: int, rhs: int) =>  Number::Float((lhs as f64).powf(rhs as f64)),
     (lhs: float, rhs: float) => Number::Float(lhs.powf(rhs)),
 });
-
-impl<T, Reg> ::std::fmt::Debug for FloatOp<T, Reg>
-where
-    T: std::fmt::Debug + FloatBinop + OpName,
-    Reg: std::fmt::Debug,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {:?} {:?}", T::NAME, self.lhs, self.rhs)
-    }
-}

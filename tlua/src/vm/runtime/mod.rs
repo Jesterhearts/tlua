@@ -52,13 +52,10 @@ impl Runtime {
         }
 
         let current = Scope::new(chunk.main.local_registers);
-        let anon = vec![Value::Nil; chunk.main.anon_registers];
 
         let available_scope = vec![global_scope.clone()];
-        let execution_context = execution_context::Context::new(
-            ScopeSet::new(available_scope, current, anon, vec![]),
-            chunk,
-        );
+        let execution_context =
+            execution_context::Context::new(ScopeSet::new(available_scope, current, vec![]), chunk);
 
         let result = execution_context.execute()?;
 

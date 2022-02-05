@@ -5,8 +5,6 @@ use tlua_bytecode::{
 };
 pub use tlua_parser::ast::constant_string::ConstantString;
 
-use crate::compiler::unasm::UnasmOperand;
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Constant {
     Nil,
@@ -16,7 +14,7 @@ pub enum Constant {
     String(ConstantString),
 }
 
-impl From<Constant> for UnasmOperand {
+impl From<Constant> for tlua_bytecode::Constant {
     fn from(c: Constant) -> Self {
         match c {
             Constant::Nil => Self::Nil,
@@ -46,6 +44,12 @@ impl From<Number> for Constant {
             Number::Float(f) => Self::Float(f),
             Number::Integer(i) => Self::Integer(i),
         }
+    }
+}
+
+impl From<ConstantString> for Constant {
+    fn from(s: ConstantString) -> Self {
+        Self::String(s)
     }
 }
 
