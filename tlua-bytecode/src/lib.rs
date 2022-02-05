@@ -65,6 +65,8 @@ pub enum OpError {
     TableIndexNaN,
     #[error("Table index out of bounds")]
     TableIndexOutOfBounds,
+    #[error("String length out of bounds")]
+    StringLengthOutOfBounds,
     #[error("Meta method {name} not found")]
     NoSuchMetaMethod { name: &'static str },
     #[error("Missing label")]

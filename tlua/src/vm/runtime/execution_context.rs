@@ -217,7 +217,15 @@ impl Context<'_> {
 
                 // String & Array operations
                 Op::Concat(_) => todo!(),
-                Op::Length(_) => todo!(),
+                Op::Length(Length { dst, src }) => {
+                    self.anon[dst] = match &self.anon[src] {
+                        Value::String(s) => i64::try_from(s.borrow().len())
+                            .map_err(|_| OpError::StringLengthOutOfBounds)
+                            .map(Value::from)?,
+                        Value::Table(_) => todo!(),
+                        _ => return Err(OpError::InvalidType { op: "length" }),
+                    };
+                }
 
                 Op::Jump(Jump { target }) => {
                     self.instruction_pointer = self.instructions.split_at(target).1;

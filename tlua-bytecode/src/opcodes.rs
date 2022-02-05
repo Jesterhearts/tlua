@@ -215,7 +215,7 @@ impl std::fmt::Debug for Concat {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, From)]
 pub struct Length {
     pub dst: AnonymousRegister,
     pub src: AnonymousRegister,

@@ -1,4 +1,7 @@
-use tlua_bytecode::OpError;
+use tlua_bytecode::{
+    opcodes,
+    OpError,
+};
 use tlua_parser::ast::statement::fn_decl::FnDecl;
 
 use crate::{
@@ -6,6 +9,7 @@ use crate::{
         HasVaArgs,
         InitRegister,
     },
+    constant::Constant,
     CompileError,
     CompileStatement,
     CompilerContext,
@@ -26,23 +30,41 @@ impl CompileStatement for FnDecl<'_> {
                     body.body.ret.as_ref(),
                 )?;
 
+                let func = compiler.new_anon_reg().init_alloc_fn(compiler, func_id);
                 if name.path.is_empty() {
-                    let _func = compiler.new_anon_reg().init_alloc_fn(compiler, func_id);
+                    debug_assert!(name.method.is_none());
                     return Ok(None);
                 }
 
                 let mut path = name.path.iter();
-                let reg =
+
+                let head =
                     compiler.read_variable(path.next().copied().expect("Path is not empty"))?;
 
-                if path.len() == 1 {
-                    let src = compiler.new_anon_reg().init_alloc_fn(compiler, func_id);
-                    reg.init_from_anon_reg(compiler, src);
-
+                if path.len() == 0 && name.method.is_none() {
+                    head.init_from_anon_reg(compiler, func);
                     return Ok(None);
                 }
 
-                todo!()
+                let table = compiler.new_anon_reg().init_from_mapped_reg(compiler, head);
+                let index_reg = compiler.new_anon_reg().no_init_needed();
+
+                for _ in 0..(path.len() - 1) {
+                    let index = path.next().expect("Still in bounds");
+                    index_reg.init_from_const(compiler, Constant::String(index.into()));
+                    compiler.emit(opcodes::Lookup::from((table, table, index_reg)));
+                }
+
+                let last = path.next().expect("Still in bounds");
+                debug_assert_eq!(path.len(), 0);
+
+                index_reg.init_from_const(compiler, Constant::String(last.into()));
+                match name.method {
+                    Some(_) => todo!(),
+                    None => {
+                        compiler.emit(opcodes::SetProperty::from((table, index_reg, func)));
+                    }
+                }
             }
             FnDecl::Local { body, name } => {
                 // This variable will be in scope for all child scopes :(
@@ -65,9 +87,9 @@ impl CompileStatement for FnDecl<'_> {
                 // to it in scope. We had to have the register already allocated though so it
                 // could be in scope during compilation of child scopes.
                 register.init_alloc_fn(compiler, fn_id);
-
-                Ok(None)
             }
-        }
+        };
+
+        Ok(None)
     }
 }

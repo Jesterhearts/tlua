@@ -278,3 +278,52 @@ fn local_call_call_as_arg() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn global_call() -> anyhow::Result<()> {
+    let src = indoc! {"
+        function foo() return 10 end
+
+        return foo()
+    "};
+
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+
+    let result = rt.execute(&chunk);
+
+    assert_eq!(
+        result,
+        Ok(vec![10.into()]),
+        "{:#?} produced an incorrect result",
+        chunk
+    );
+
+    Ok(())
+}
+
+#[test]
+fn call_with_path() -> anyhow::Result<()> {
+    let src = indoc! {"
+        local t = {}
+        function t.a() return 10 end
+
+        return t.a()
+    "};
+
+    let chunk = compile(src)?;
+
+    let mut rt = Runtime::default();
+
+    let result = rt.execute(&chunk);
+
+    assert_eq!(
+        result,
+        Ok(vec![10.into()]),
+        "{:#?} produced an incorrect result",
+        chunk
+    );
+
+    Ok(())
+}

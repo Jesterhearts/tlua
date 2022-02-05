@@ -32,7 +32,7 @@ impl CompileExpression for BitNot<'_> {
         compiler.write_unary_op::<UnaryBitNot, _, _>(&self.0, |v| match v {
             Constant::Float(f) => f64inbounds(f).map(|i| (!i).into()),
             Constant::Integer(i) => Ok((!i).into()),
-            _ => Err(tlua_bytecode::OpError::InvalidType { op: "bitwise" }),
+            _ => Err(tlua_bytecode::OpError::InvalidType { op: "bitwise not" }),
         })
     }
 }
@@ -44,8 +44,13 @@ impl CompileExpression for Not<'_> {
 }
 
 impl CompileExpression for Length<'_> {
-    fn compile(&self, _compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        todo!()
+    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
+        compiler.write_unary_op::<opcodes::Length, _, _>(&self.0, |v| match v {
+            Constant::String(s) => i64::try_from(s.len())
+                .map(Constant::from)
+                .map_err(|_| tlua_bytecode::OpError::StringLengthOutOfBounds),
+            _ => Err(tlua_bytecode::OpError::InvalidType { op: "length" }),
+        })
     }
 }
 
@@ -104,7 +109,7 @@ mod tests {
 
             assert_eq!(
                 result,
-                NodeOutput::Err(OpError::InvalidType { op: "bitwise" })
+                NodeOutput::Err(OpError::InvalidType { op: "bitwise not" })
             );
 
             Ok(())

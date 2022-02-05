@@ -106,7 +106,7 @@ impl<'list, T> List<'list, T> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.head.is_some()
+        self.head.is_none()
     }
 
     pub fn len(&self) -> usize {
