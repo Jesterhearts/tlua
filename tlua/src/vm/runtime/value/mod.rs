@@ -38,7 +38,6 @@ pub enum Value {
     String(Rc<RefCell<LuaString>>),
     Table(#[trace] Gc<Table>),
     Function(#[trace] Gc<Function>),
-    Userdata(((),)),
 }
 
 impl From<Constant> for Value {
@@ -90,7 +89,6 @@ impl Value {
             Value::String(s) => s.borrow().hash(hasher),
             Value::Table(t) => std::ptr::hash(&*t.borrow(), hasher),
             Value::Function(f) => f.borrow().hash(hasher),
-            Value::Userdata(_) => todo!(),
         }
     }
 }
@@ -108,8 +106,7 @@ impl PartialEq for Value {
             (Self::Number(l0), Self::Number(r0)) => l0 == r0,
             (Self::String(l0), Self::String(r0)) => l0 == r0,
             (Self::Table(l0), Self::Table(r0)) => l0 == r0,
-            (Self::Userdata(_), Self::Userdata(_)) => todo!(),
-            (Self::Function(_), Self::Function(_)) => todo!(),
+            (Self::Function(l0), Self::Function(r0)) => l0.borrow().id == r0.borrow().id,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
     }

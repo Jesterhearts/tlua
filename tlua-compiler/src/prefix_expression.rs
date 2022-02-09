@@ -7,6 +7,7 @@ use tlua_bytecode::{
 use tlua_parser::ast::{
     constant_string::ConstantString,
     expressions::Expression,
+    identifiers::Ident,
     prefix_expression::{
         function_calls::FnArgs,
         *,
@@ -18,6 +19,7 @@ use crate::{
         unasm::MappedLocalRegister,
         InitRegister,
     },
+    constant::Constant,
     expressions::tables,
     CompileError,
     CompileExpression,
@@ -135,54 +137,73 @@ fn emit_call(
     atom: &FunctionAtom,
 ) -> Result<Option<OpError>, CompileError> {
     Ok(match atom {
-        FunctionAtom::Call(args) => emit_call_with_args(compiler, target, args)?,
-        FunctionAtom::MethodCall { name: _, args: _ } => todo!(),
+        FunctionAtom::Call(args) => emit_call_with_args(compiler, target, None, args)?,
+        FunctionAtom::MethodCall { name, args } => {
+            emit_call_with_args(compiler, target, Some(*name), args)?
+        }
     })
 }
 
 fn emit_call_with_args(
     compiler: &mut CompilerContext,
     target: AnonymousRegister,
+    method: Option<Ident>,
     args: &FnArgs,
 ) -> Result<Option<OpError>, CompileError> {
     Ok(match args {
-        FnArgs::Expressions(exprs) => emit_standard_call(compiler, target, exprs.iter())?,
+        FnArgs::Expressions(exprs) => emit_standard_call(compiler, target, method, exprs.iter())?,
         FnArgs::TableConstructor(ctor) => {
             tables::emit_init_sequence(compiler, target, ctor.fields.iter())?
         }
-        FnArgs::String(s) => {
-            emit_standard_call(compiler, target, std::iter::once(Expression::String(*s)))?
-        }
+        FnArgs::String(s) => emit_standard_call(
+            compiler,
+            target,
+            method,
+            std::iter::once(Expression::String(*s)),
+        )?,
     })
 }
 
 pub(crate) fn emit_standard_call(
     compiler: &mut CompilerContext,
     target: AnonymousRegister,
+    method: Option<Ident>,
     mut args: impl ExactSizeIterator<Item = impl CompileExpression>,
 ) -> Result<Option<OpError>, CompileError> {
-    let argc = args.len();
+    let argc = args.len() + method.iter().len();
     if argc == 0 {
         // No arguments, just call.
         compiler.emit(opcodes::Call::from((target, 0, 0)));
         return Ok(None);
     }
 
-    let mut arg_registers = compiler.new_anon_reg_range(argc);
+    let mut arg_registers = compiler.new_anon_reg_range(argc).peekable();
     let first_arg_idx = usize::from(
         arg_registers
-            .clone()
-            .next()
+            .peek()
+            .cloned()
             .expect("At least one arg.")
             .no_init_needed(),
     );
 
-    let regular_argc = argc - 1;
-
-    for _ in 0..regular_argc {
+    if let Some(method) = method {
         let arg_reg = arg_registers
             .next()
             .expect("Should still have arg registers");
+
+        arg_reg.init_from_anon_reg(compiler, target);
+        let index_reg = arg_registers
+            .peek()
+            .cloned()
+            .unwrap_or_else(|| compiler.new_anon_reg());
+
+        let index_reg = index_reg.init_from_const(compiler, Constant::String(method.into()));
+
+        compiler.emit(opcodes::Lookup::from((target, target, index_reg)));
+    }
+
+    for _ in 0..arg_registers.len() - 1 {
+        let arg_reg = arg_registers.next().expect("Still in bounds of args");
 
         let arg_init = args
             .next()
@@ -192,28 +213,24 @@ pub(crate) fn emit_standard_call(
         arg_reg.init_from_node_output(compiler, arg_init);
     }
 
-    let last_reg = arg_registers.last().expect("Should have at least 1 arg");
+    let last_reg = arg_registers.next().expect("Should have at least 1 arg");
 
     // Process the last argument in the list
     match args
         .next()
-        .expect("Still in bounds args")
+        .expect("Still in bounds of args")
         .compile(compiler)?
     {
         NodeOutput::ReturnValues => {
             compiler.emit(opcodes::CallCopyRet::from((
                 target,
                 first_arg_idx,
-                regular_argc,
+                argc - 1,
             )));
             return Ok(None);
         }
         NodeOutput::VAStack => {
-            compiler.emit(opcodes::CallCopyVa::from((
-                target,
-                first_arg_idx,
-                regular_argc,
-            )));
+            compiler.emit(opcodes::CallCopyVa::from((target, first_arg_idx, argc - 1)));
             return Ok(None);
         }
         arg => {

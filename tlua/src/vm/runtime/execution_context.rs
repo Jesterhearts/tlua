@@ -163,7 +163,7 @@ impl Context<'_> {
                             Number::Float(f) => Number::Float(-f),
                             Number::Integer(i) => Number::Integer(-i),
                         }),
-                        _ => todo!(),
+                        _ => return Err(OpError::InvalidType { op: "unary minus" }),
                     };
                 }
                 Op::UnaryBitNot(UnaryBitNot { dst, src }) => {
@@ -178,7 +178,11 @@ impl Context<'_> {
                             }
                             Number::Integer(i) => Number::Integer(!i),
                         }),
-                        _ => todo!(),
+                        _ => {
+                            return Err(OpError::InvalidType {
+                                op: "unary bit not",
+                            })
+                        }
                     };
                 }
 
@@ -216,13 +220,12 @@ impl Context<'_> {
                 }
 
                 // String & Array operations
-                Op::Concat(_) => todo!(),
+                Op::Concat(_) => return Err(OpError::InvalidType { op: "concat" }),
                 Op::Length(Length { dst, src }) => {
                     self.anon[dst] = match &self.anon[src] {
                         Value::String(s) => i64::try_from(s.borrow().len())
                             .map_err(|_| OpError::StringLengthOutOfBounds)
                             .map(Value::from)?,
-                        Value::Table(_) => todo!(),
                         _ => return Err(OpError::InvalidType { op: "length" }),
                     };
                 }
@@ -252,7 +255,7 @@ impl Context<'_> {
                             .get(&TableKey::try_from(self.anon[idx].clone())?)
                             .cloned()
                             .unwrap_or_default(),
-                        _ => todo!("metatables are unsupported"),
+                        _ => return Err(OpError::InvalidType { op: "index" }),
                     };
                 }
 
@@ -262,7 +265,7 @@ impl Context<'_> {
                             TableKey::try_from(self.anon[idx].clone())?,
                             self.anon[src].clone(),
                         ),
-                        _ => todo!("metatables are unsupported"),
+                        _ => return Err(OpError::InvalidType { op: "newindex" }),
                     };
                 }
 
@@ -282,7 +285,7 @@ impl Context<'_> {
 
                     match &self.anon[dst] {
                         Value::Table(t) => t.borrow_mut().entries.extend(entries),
-                        _ => todo!("metatables are unsupported"),
+                        _ => return Err(OpError::InvalidType { op: "va tableinit" }),
                     };
                 }
 
@@ -436,7 +439,7 @@ impl Context<'_> {
     ) -> Result<(), OpError> {
         let func = match &self.anon[target] {
             Value::Function(ptr) => ptr.clone(),
-            _ => todo!("Metatables are not supported"),
+            _ => return Err(OpError::InvalidType { op: "call" }),
         };
 
         let results = self.execute_call(&func.borrow(), arg_range, extra_args)?;
@@ -543,7 +546,11 @@ impl Context<'_> {
                             table.entries.insert(k, v);
                         }
                     }
-                    _ => todo!("metatables are unsupported"),
+                    _ => {
+                        return Err(OpError::InvalidType {
+                            op: "ret table init",
+                        })
+                    }
                 };
             }
 

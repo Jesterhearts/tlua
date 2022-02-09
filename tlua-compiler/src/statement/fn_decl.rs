@@ -25,6 +25,7 @@ impl CompileStatement for FnDecl<'_> {
                     } else {
                         HasVaArgs::None
                     },
+                    name.method.is_some(),
                     body.params.named_params.iter().copied(),
                     body.body.statements.iter(),
                     body.body.ret.as_ref(),
@@ -49,22 +50,29 @@ impl CompileStatement for FnDecl<'_> {
                 let table = compiler.new_anon_reg().init_from_mapped_reg(compiler, head);
                 let index_reg = compiler.new_anon_reg().no_init_needed();
 
-                for _ in 0..(path.len() - 1) {
+                for _ in 0..(path.len().saturating_sub(1)) {
                     let index = path.next().expect("Still in bounds");
                     index_reg.init_from_const(compiler, Constant::String(index.into()));
                     compiler.emit(opcodes::Lookup::from((table, table, index_reg)));
                 }
 
-                let last = path.next().expect("Still in bounds");
-                debug_assert_eq!(path.len(), 0);
-
-                index_reg.init_from_const(compiler, Constant::String(last.into()));
-                match name.method {
-                    Some(_) => todo!(),
-                    None => {
-                        compiler.emit(opcodes::SetProperty::from((table, index_reg, func)));
+                match (path.next(), name.method) {
+                    (Some(last), None) => {
+                        index_reg.init_from_const(compiler, Constant::String(last.into()));
                     }
+                    (Some(last), Some(method)) => {
+                        index_reg.init_from_const(compiler, Constant::String(last.into()));
+                        compiler.emit(opcodes::Lookup::from((table, table, index_reg)));
+
+                        index_reg.init_from_const(compiler, Constant::String(method.into()));
+                    }
+                    (None, Some(method)) => {
+                        index_reg.init_from_const(compiler, Constant::String(method.into()));
+                    }
+                    (None, None) => unreachable!("Must have a path or a method name"),
                 }
+
+                compiler.emit(opcodes::SetProperty::from((table, index_reg, func)));
             }
             FnDecl::Local { body, name } => {
                 // This variable will be in scope for all child scopes :(
@@ -78,6 +86,7 @@ impl CompileStatement for FnDecl<'_> {
                     } else {
                         HasVaArgs::None
                     },
+                    false,
                     body.params.named_params.iter().copied(),
                     body.body.statements.iter(),
                     body.body.ret.as_ref(),

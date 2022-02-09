@@ -19,6 +19,7 @@ impl CompileExpression for FnBody<'_> {
             } else {
                 HasVaArgs::None
             },
+            false,
             self.params.named_params.iter().copied(),
             self.body.statements.iter(),
             self.body.ret.as_ref(),

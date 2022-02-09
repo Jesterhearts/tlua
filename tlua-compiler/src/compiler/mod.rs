@@ -291,7 +291,7 @@ impl InitRegister for MappedLocalRegister {
     }
 }
 
-#[derive(Debug, From)]
+#[derive(Debug, Clone, From)]
 #[must_use]
 pub(crate) struct UninitRegister<RegisterTy> {
     register: RegisterTy,
@@ -486,11 +486,14 @@ impl CompilerContext<'_, '_, '_> {
     pub(crate) fn emit_fn(
         &mut self,
         has_va_args: HasVaArgs,
+        is_method: bool,
         params: impl ExactSizeIterator<Item = Ident>,
         body: impl ExactSizeIterator<Item = impl CompileStatement>,
         ret: Option<&impl CompileStatement>,
     ) -> Result<FuncId, CompileError> {
-        let mut new_function = self.scope.new_function(params.len());
+        let mut new_function = self
+            .scope
+            .new_function(params.len() + usize::from(is_method));
 
         {
             let mut new_context = CompilerContext {
@@ -498,6 +501,10 @@ impl CompilerContext<'_, '_, '_> {
                 scope: new_function.start(),
                 has_va_args,
             };
+
+            if is_method {
+                new_context.new_local("self".into())?.no_init_needed();
+            }
 
             for param in params {
                 // TODO(compiler-opt): Technically today this allocates an extra, unused
