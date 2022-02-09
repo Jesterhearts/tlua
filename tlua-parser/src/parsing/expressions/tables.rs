@@ -12,7 +12,6 @@ use nom::{
         preceded,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::expressions::{
@@ -69,7 +68,6 @@ impl<'chunk> Parse<'chunk> for Field<'chunk> {
 }
 
 impl<'chunk> Parse<'chunk> for TableConstructor<'chunk> {
-    #[instrument(level = "trace", name = "table", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         map(
             delimited(

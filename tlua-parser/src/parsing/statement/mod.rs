@@ -13,7 +13,6 @@ use nom::{
     },
 };
 use nom_supreme::ParserExt;
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -59,7 +58,6 @@ pub mod while_loop;
 use self::variables::varlist1;
 
 impl<'chunk> Parse<'chunk> for Statement<'chunk> {
-    #[instrument(level = "trace", name = "statement", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         alt((
             map(token(';'), |_| Self::Empty(Empty)).context("empty statement"),
@@ -129,7 +127,6 @@ impl<'chunk> Parse<'chunk> for Statement<'chunk> {
     }
 }
 
-#[instrument(level = "trace", name = "assign_or_call", skip(input, alloc))]
 fn parse_assignment_or_call<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,

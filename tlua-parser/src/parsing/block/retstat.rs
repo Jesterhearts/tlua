@@ -6,7 +6,6 @@ use nom::{
     },
     sequence::delimited,
 };
-use tracing::instrument;
 
 use crate::{
     ast::block::retstat::RetStatement,
@@ -21,7 +20,6 @@ use crate::{
 };
 
 impl<'chunk> Parse<'chunk> for RetStatement<'chunk> {
-    #[instrument(level = "trace", name = "ret", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         map(
             delimited(

@@ -10,7 +10,6 @@ use nom::{
         tuple,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -29,7 +28,6 @@ use crate::{
 };
 
 impl<'chunk> Parse<'chunk> for WhileLoop<'chunk> {
-    #[instrument(level = "trace", name = "while", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         delimited(
             pair(tag("while"), lua_whitespace1),

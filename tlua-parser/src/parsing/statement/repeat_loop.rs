@@ -11,7 +11,6 @@ use nom::{
         tuple,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -30,7 +29,6 @@ use crate::{
 };
 
 impl<'chunk> Parse<'chunk> for RepeatLoop<'chunk> {
-    #[instrument(level = "trace", name = "repeat", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         preceded(
             pair(tag("repeat"), lua_whitespace1),

@@ -7,9 +7,9 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-derive_more = '^0.99'
-paste = '^1.0'
-thiserror = '^1.0'
+derive_more = '0.99.17'
+paste = '1.0.6'
+thiserror = '1.0.30'
 
 [dependencies.tlua-parser]
 path = "../tlua-parser"

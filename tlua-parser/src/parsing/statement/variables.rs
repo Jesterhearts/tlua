@@ -12,7 +12,6 @@ use nom::{
         terminated,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -72,7 +71,6 @@ impl<'chunk> Parse<'chunk> for LocalVar {
 }
 
 impl<'chunk> Parse<'chunk> for LocalVarList<'chunk> {
-    #[instrument(level = "trace", name = "localvars", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         map(
             preceded(
@@ -93,7 +91,6 @@ impl<'chunk> Parse<'chunk> for LocalVarList<'chunk> {
     }
 }
 
-#[instrument(level = "trace", name = "localvars_list", skip(input, alloc))]
 pub fn local_varlist1<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,

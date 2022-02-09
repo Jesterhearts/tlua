@@ -4,19 +4,16 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-[features]
-trace_mem = []
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-derive_more = '^0.99'
-either = '^1.0'
-take_mut = '^0.2'
-thiserror = '^1.0'
+derive_more = '0.99.17'
+either = '1.6.1'
+take_mut = '0.2.2'
+thiserror = '1.0.30'
 
 [dependencies.strum]
-version = '^0.23'
+version = '0.23.0'
 features = [ "derive" ]
 
 [dependencies.tlua-bytecode]
@@ -25,10 +22,6 @@ path = "../tlua-bytecode"
 [dependencies.tlua-parser]
 path = "../tlua-parser"
 
-[dependencies.tracing]
-version = '^0.1'
-features = [ "attributes" ]
-
 [dev-dependencies]
-anyhow = '^1.0'
-pretty_assertions = '^1.0'
+anyhow = '1.0.53'
+pretty_assertions = '1.1.0'

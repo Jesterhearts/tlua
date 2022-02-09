@@ -11,7 +11,6 @@ use nom::{
         preceded,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -50,7 +49,6 @@ use self::{
 };
 
 impl<'chunk> Parse<'chunk> for Expression<'chunk> {
-    #[instrument(level = "trace", name = "expression", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         // This is a hidden alt statement essentially.
         // We start at the bottom of the precedence tree, and internally it'll
@@ -62,7 +60,6 @@ impl<'chunk> Parse<'chunk> for Expression<'chunk> {
     }
 }
 
-#[instrument(level = "trace", name = "expression_list", skip(input, alloc))]
 pub fn expression_list1<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,

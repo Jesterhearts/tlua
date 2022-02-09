@@ -4,33 +4,30 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
-[features]
-trace_mem = []
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-atoi = '^0.4'
-derive_more = '^0.99'
-hexf-parse = '^0.2'
-internment = '^0.5'
-nom = '^7.0'
-nom_locate = '^4.0'
-nom-supreme = '^0.6'
-nom-tracable = '^0.8'
-thiserror = '^1.0'
+atoi = '1.0.0'
+derive_more = '0.99.17'
+hexf-parse = '0.2.1'
+internment = '0.5.6'
+nom = '7.1.0'
+nom_locate = '4.0.0'
+nom-supreme = '0.6.0'
+nom-tracable = '0.8.0'
+thiserror = '1.0.30'
 
 [dependencies.bumpalo]
-version = '^3.0'
+version = '3.9.1'
 features = [ "collections" ]
 
 [dependencies.tracing]
-version = '^0.1'
+version = '0.1.30'
 features = [ "attributes" ]
 
 [dev-dependencies]
-anyhow = '^1.0'
-indoc = '^1.0'
-pretty_assertions = '^1.0'
-pretty_env_logger = '^0.4'
-tracing-subscriber = '^0.3'
+anyhow = '1.0.53'
+indoc = '1.0.3'
+pretty_assertions = '1.1.0'
+pretty_env_logger = '0.4.0'
+tracing-subscriber = '0.3.8'

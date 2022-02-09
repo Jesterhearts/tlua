@@ -2,7 +2,6 @@ use nom::{
     combinator::opt,
     sequence::terminated,
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -25,7 +24,6 @@ use crate::{
 pub mod retstat;
 
 impl<'chunk> Parse<'chunk> for Block<'chunk> {
-    #[instrument(level = "trace", name = "block", skip(input, alloc))]
     fn parse<'src>(mut input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         let (remain, stat) = opt(terminated(
             |input| Statement::parse(input, alloc),

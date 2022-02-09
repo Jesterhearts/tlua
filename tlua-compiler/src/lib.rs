@@ -27,7 +27,6 @@ use tlua_parser::{
         ChunkParseError,
     },
 };
-use tracing::instrument;
 
 mod block;
 mod compiler;
@@ -215,7 +214,6 @@ pub struct Chunk {
     pub main: Function,
 }
 
-#[instrument(level = "trace", name="compile", skip(src), fields(src_bytes = src.as_bytes().len()))]
 pub fn compile(src: &str) -> Result<Chunk, CompileError> {
     let alloc = ASTAllocator::default();
 

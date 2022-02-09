@@ -17,7 +17,6 @@ use nom::{
     },
 };
 use nom_supreme::ParserExt;
-use tracing::instrument;
 
 use crate::{
     ast::identifiers::Ident,
@@ -48,7 +47,6 @@ pub fn parse_identifier<'src, 'chunk>(
     )(input)
 }
 
-#[instrument(level = "trace", name = "ident_list", skip(input, alloc))]
 pub fn identifier_list1<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,

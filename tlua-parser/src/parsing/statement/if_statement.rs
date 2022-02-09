@@ -12,7 +12,6 @@ use nom::{
         tuple,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -35,7 +34,6 @@ use crate::{
 };
 
 impl<'chunk> Parse<'chunk> for If<'chunk> {
-    #[instrument(level = "trace", name = "if", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         delimited(
             pair(tag("if"), lua_whitespace1),

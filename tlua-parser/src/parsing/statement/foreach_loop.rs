@@ -9,7 +9,6 @@ use nom::{
         tuple,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -29,7 +28,6 @@ use crate::{
 };
 
 impl<'chunk> ForEachLoop<'chunk> {
-    #[instrument(level = "trace", name = "foreach", skip(input, alloc))]
     pub fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         preceded(
             pair(tag("for"), lua_whitespace1),

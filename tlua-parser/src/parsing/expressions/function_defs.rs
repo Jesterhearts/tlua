@@ -14,7 +14,6 @@ use nom::{
         terminated,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -40,7 +39,6 @@ use crate::{
 };
 
 impl<'chunk> Parse<'chunk> for FnParams<'chunk> {
-    #[instrument(level = "trace", name = "fn_params", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         delimited(
             pair(tag("("), lua_whitespace0),
@@ -83,7 +81,6 @@ impl<'chunk> Parse<'chunk> for FnParams<'chunk> {
 }
 
 impl<'chunk> Parse<'chunk> for FnBody<'chunk> {
-    #[instrument(level = "trace", name = "fn_body", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         map(
             terminated(
@@ -99,7 +96,6 @@ impl<'chunk> Parse<'chunk> for FnBody<'chunk> {
 }
 
 impl<'chunk> Parse<'chunk> for FnName<'chunk> {
-    #[instrument(level = "trace", name = "fn_name", skip(input, alloc))]
     fn parse<'src>(mut input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         let (remain, head) = parse_identifier(input, alloc)?;
         input = remain;

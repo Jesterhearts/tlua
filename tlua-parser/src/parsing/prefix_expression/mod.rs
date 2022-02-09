@@ -11,7 +11,6 @@ use nom::{
         preceded,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -41,7 +40,6 @@ use crate::{
 pub mod function_calls;
 
 impl<'chunk> Parse<'chunk> for PrefixExpression<'chunk> {
-    #[instrument(level = "trace", name = "prefix_expr", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         // Prefix expressions must start with either a Name or a parenthesized
         // expresssion - all other forms of prefix expressions require a preceding
@@ -136,7 +134,6 @@ impl<'chunk> Parse<'chunk> for PrefixExpression<'chunk> {
     }
 }
 
-#[instrument(level = "trace", name = "atom", skip(input, alloc))]
 fn parse_impl<'src, 'chunk>(
     input: Span<'src>,
     alloc: &'chunk ASTAllocator,
@@ -152,7 +149,6 @@ fn parse_impl<'src, 'chunk>(
     ))(input)
 }
 
-#[instrument(level = "trace", name = "index_op", skip(input, alloc))]
 fn parse_index_op<'src, 'chunk>(
     input: Span<'src>,
     alloc: &'chunk ASTAllocator,
@@ -167,7 +163,6 @@ fn parse_index_op<'src, 'chunk>(
     )(input)
 }
 
-#[instrument(level = "trace", name = "dot_name", skip(input, alloc))]
 fn parse_dot_name<'src, 'chunk>(
     input: Span<'src>,
     alloc: &'chunk ASTAllocator,
@@ -181,7 +176,6 @@ fn parse_dot_name<'src, 'chunk>(
     )(input)
 }
 
-#[instrument(level = "trace", name = "call", skip(input, alloc))]
 fn parse_call<'src, 'chunk>(
     input: Span<'src>,
     alloc: &'chunk ASTAllocator,
@@ -192,7 +186,6 @@ fn parse_call<'src, 'chunk>(
     )(input)
 }
 
-#[instrument(level = "trace", name = "method_call", skip(input, alloc))]
 fn parse_method_call<'src, 'chunk>(
     input: Span<'src>,
     alloc: &'chunk ASTAllocator,

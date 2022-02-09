@@ -10,7 +10,6 @@ use nom::{
         pair,
     },
 };
-use tracing::instrument;
 
 use crate::{
     ast::{
@@ -29,7 +28,6 @@ use crate::{
 };
 
 impl<'chunk> Parse<'chunk> for FnArgs<'chunk> {
-    #[instrument(level = "trace", name = "args", skip(input, alloc))]
     fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
         alt((
             map(
