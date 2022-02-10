@@ -17,13 +17,52 @@ use tlua_parser::ast::expressions::{
 };
 
 use crate::{
-    compiler::unasm::UnasmOp,
+    compiler::{
+        unasm::UnasmOp,
+        InitRegister,
+    },
     constant::Constant,
     CompileError,
     CompileExpression,
     NodeOutput,
     Scope,
 };
+
+pub(crate) fn write_binop<Op, Lhs, Rhs, ConstEval>(
+    scope: &mut Scope,
+    lhs: Lhs,
+    rhs: Rhs,
+    consteval: ConstEval,
+) -> Result<NodeOutput, CompileError>
+where
+    Op: From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)> + Into<UnasmOp>,
+    Lhs: CompileExpression,
+    Rhs: CompileExpression,
+    ConstEval: FnOnce(Constant, Constant) -> Result<Constant, OpError>,
+{
+    let lhs = lhs.compile(scope)?;
+    let rhs = rhs.compile(scope)?;
+
+    // TODO(compiler-opt): Technically, more efficient use could be made of
+    // registers here by checking if the operation is commutative and
+    // swapping constants to the right or existing anonymous registers to
+    // the left.
+    match (lhs, rhs) {
+        (NodeOutput::Constant(lhs), NodeOutput::Constant(rhs)) => match consteval(lhs, rhs) {
+            Ok(constant) => Ok(NodeOutput::Constant(constant)),
+            Err(err) => Ok(NodeOutput::Err(scope.write_raise(err))),
+        },
+        (lhs, rhs) => {
+            let lhs = scope.new_anon_reg().init_from_node_output(scope, lhs);
+            let rhs = scope.new_anon_reg().init_from_node_output(scope, rhs);
+            let dst = scope.new_anon_reg().no_init_needed();
+
+            scope.emit(Op::from((dst, lhs, rhs)));
+
+            Ok(NodeOutput::Immediate(dst))
+        }
+    }
+}
 
 fn write_numeric_binop<Op>(
     scope: &mut Scope,
@@ -35,7 +74,7 @@ where
         + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
         + Into<UnasmOp>,
 {
-    scope.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| {
+    write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| {
         Op::evaluate(lhs, rhs).map(|num| num.into())
     })
 }
@@ -50,7 +89,7 @@ where
         + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
         + Into<UnasmOp>,
 {
-    scope.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| match (lhs, rhs) {
+    write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| match (lhs, rhs) {
         (Constant::Nil, Constant::Nil) => Op::apply_nils().map(Constant::from),
         (Constant::Bool(lhs), Constant::Bool(rhs)) => Op::apply_bools(lhs, rhs).map(Constant::from),
         (Constant::Float(lhs), Constant::Float(rhs)) => {
@@ -84,7 +123,7 @@ where
         + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
         + Into<UnasmOp>,
 {
-    scope.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
+    write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
 }
 
 impl CompileExpression for operator::Plus<'_> {

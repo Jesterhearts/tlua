@@ -1,4 +1,7 @@
-use tlua_bytecode::OpError;
+use tlua_bytecode::{
+    opcodes,
+    OpError,
+};
 use tlua_parser::{
     ast::{
         block::{
@@ -11,8 +14,11 @@ use tlua_parser::{
 };
 
 use crate::{
+    compiler::InitRegister,
     CompileError,
+    CompileExpression,
     CompileStatement,
+    NodeOutput,
     Scope,
 };
 
@@ -28,7 +34,45 @@ impl CompileStatement for List<'_, Statement<'_>> {
 
 impl CompileStatement for RetStatement<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
-        scope.write_ret_stack_sequence(self.expressions.iter())
+        let mut outputs = self.expressions.iter();
+        if outputs.len() == 0 {
+            scope.emit(opcodes::Op::Ret);
+            return Ok(None);
+        }
+
+        let normal_retc = outputs.len() - 1;
+
+        for _ in 0..normal_retc {
+            let retval = outputs
+                .next()
+                .expect("Still in bounds for outputs")
+                .compile(scope)?;
+
+            let ret = scope.new_anon_reg().init_from_node_output(scope, retval);
+            scope.emit(opcodes::SetRet::from(ret));
+        }
+
+        match outputs
+            .next()
+            .expect("Still in bounds for outputs")
+            .compile(scope)?
+        {
+            NodeOutput::ReturnValues => {
+                scope.emit(opcodes::Op::CopyRetFromRetAndRet);
+            }
+            NodeOutput::VAStack => {
+                scope.emit(opcodes::Op::CopyRetFromVaAndRet);
+            }
+            retval => {
+                let ret = scope.new_anon_reg().init_from_node_output(scope, retval);
+                scope.emit(opcodes::SetRet::from(ret));
+                scope.emit(opcodes::Op::Ret);
+            }
+        }
+
+        debug_assert!(outputs.next().is_none());
+
+        Ok(None)
     }
 }
 
