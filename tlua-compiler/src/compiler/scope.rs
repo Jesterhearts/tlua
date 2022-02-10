@@ -30,10 +30,8 @@ use crate::{
         LabelId,
         UninitRegister,
     },
-    constant::Constant,
     Chunk,
     CompileError,
-    CompileExpression,
     FuncId,
     NodeOutput,
 };

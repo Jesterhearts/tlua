@@ -71,13 +71,13 @@ impl CompileExpression for BitNot<'_> {
 
 impl CompileExpression for Not<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        scope.write_unary_op::<opcodes::Not, _, _>(&self.0, |v| Ok((!v.as_bool()).into()))
+        write_unary_op::<opcodes::Not, _, _>(scope, &self.0, |v| Ok((!v.as_bool()).into()))
     }
 }
 
 impl CompileExpression for Length<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        scope.write_unary_op::<opcodes::Length, _, _>(&self.0, |v| match v {
+        write_unary_op::<opcodes::Length, _, _>(scope, &self.0, |v| match v {
             Constant::String(s) => i64::try_from(s.len())
                 .map(Constant::from)
                 .map_err(|_| tlua_bytecode::OpError::StringLengthOutOfBounds),
