@@ -36,7 +36,7 @@ use crate::{
     NodeOutput,
 };
 
-pub(super) const GLOBAL_SCOPE: u16 = 0;
+const GLOBAL_SCOPE: u16 = 0;
 
 /// Manages tracking the maping from identifier to register for a particular
 /// scope.
@@ -60,17 +60,8 @@ pub(super) struct RootScope {
 impl RootScope {
     pub(super) fn start_main(&mut self) -> FunctionScope {
         let scope_id = self.next_scope_id();
-        FunctionScope {
-            root_scope: self,
-            scope_id,
-            scope_depth: NonZeroUsize::new(usize::from(GLOBAL_SCOPE + 1)).unwrap(),
-            has_va_args: HasVaArgs::None,
-            labels: Default::default(),
-            unresolved_jumps: Default::default(),
-            next_loop_id: 0,
-            next_if_id: 0,
-            function: Default::default(),
-        }
+        let scope_depth = NonZeroUsize::new(usize::from(GLOBAL_SCOPE + 1)).unwrap();
+        FunctionScope::new(self, scope_id, scope_depth, HasVaArgs::None, 0)
     }
 
     pub(super) fn into_chunk(self, main: UnasmFunction) -> Chunk {
@@ -163,6 +154,29 @@ pub(crate) struct FunctionScope<'function> {
 }
 
 impl<'function> FunctionScope<'function> {
+    fn new(
+        root_scope: &'function mut RootScope,
+        scope_id: usize,
+        scope_depth: NonZeroUsize,
+        has_va_args: HasVaArgs,
+        argc: usize,
+    ) -> Self {
+        Self {
+            root_scope,
+            scope_id,
+            scope_depth,
+            has_va_args,
+            labels: Default::default(),
+            unresolved_jumps: Default::default(),
+            next_loop_id: 0,
+            next_if_id: 0,
+            function: UnasmFunction {
+                named_args: argc,
+                ..Default::default()
+            },
+        }
+    }
+
     pub(crate) fn start<'block>(&'block mut self) -> BlockScope<'block, 'function> {
         let scope_id = self.scope_id;
         let scope_depth = self.scope_depth;
@@ -309,13 +323,6 @@ impl<'block, 'function> BlockScope<'block, 'function> {
     }
 }
 
-/// Instruction sequence creation. This is implemented here rather than exposing
-/// a global write function since the compiler needs to make sure that e.g. the
-/// stack is reset prior to a return or raise and it is tricky to get that write
-/// in the AST-walking portion of the code.
-/// e.g. It's a lot easier to make sure the
-/// stack is cleared before every raise instruction if the only way to create is
-/// via `write_raise`.
 #[derive(Debug)]
 pub(crate) struct Scope<'context, 'block, 'function> {
     block_scope: &'context mut BlockScope<'block, 'function>,
@@ -604,21 +611,15 @@ impl<'context, 'block, 'function> Scope<'context, 'block, 'function> {
 
     pub(crate) fn new_function(&mut self, has_va_args: HasVaArgs, argc: usize) -> FunctionScope {
         let scope_id = self.block_scope.function_scope.root_scope.next_scope_id();
+        let scope_depth = NonZeroUsize::new(self.block_scope.scope_depth.get() + 1).unwrap();
 
-        FunctionScope {
-            root_scope: self.block_scope.function_scope.root_scope,
+        FunctionScope::new(
+            self.block_scope.function_scope.root_scope,
             scope_id,
-            scope_depth: NonZeroUsize::new(self.block_scope.scope_depth.get() + 1).unwrap(),
+            scope_depth,
             has_va_args,
-            labels: Default::default(),
-            unresolved_jumps: Default::default(),
-            next_loop_id: 0,
-            next_if_id: 0,
-            function: UnasmFunction {
-                named_args: argc,
-                ..Default::default()
-            },
-        }
+            argc,
+        )
     }
 
     pub(crate) fn new_block<'sub>(&'sub mut self) -> BlockScope<'sub, 'function> {
@@ -626,11 +627,5 @@ impl<'context, 'block, 'function> Scope<'context, 'block, 'function> {
         let scope_depth = NonZeroUsize::new(self.block_scope.scope_depth.get() + 1).unwrap();
 
         BlockScope::new_with_pushed_scope(self.block_scope.function_scope, scope_id, scope_depth)
-    }
-
-    /// Instruct the compiler to emit the instructions required to initialize a
-    /// table.
-    pub(crate) fn init_table(&mut self) -> AnonymousRegister {
-        self.new_anon_reg().init_alloc_table(self)
     }
 }

@@ -21,7 +21,7 @@ use crate::{
 
 impl CompileExpression for TableConstructor<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        let table = scope.init_table();
+        let table = scope.new_anon_reg().init_alloc_table(scope);
 
         emit_init_sequence(scope, table, self.fields.iter())?;
 
