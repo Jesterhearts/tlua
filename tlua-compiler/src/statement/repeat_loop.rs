@@ -11,40 +11,39 @@ use crate::{
     CompileError,
     CompileExpression,
     CompileStatement,
-    CompilerContext,
     NodeOutput,
+    Scope,
 };
 
 impl CompileStatement for RepeatLoop<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        let loop_exit_label = compiler.push_loop_label();
-        let block_start = compiler.next_instruction();
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
+        let loop_exit_label = scope.push_loop_label();
+        let block_start = scope.next_instruction();
 
-        compiler.emit_in_subscope(|compiler| {
-            emit_block(compiler, &self.body)?;
+        let mut scope = scope.new_block();
+        let mut scope = scope.enter();
 
-            let cond = self.terminator.compile(compiler)?;
-            let cond_reg = compiler.output_to_reg_reuse_anon(cond);
+        emit_block(&mut scope, &self.body)?;
 
-            let jump_op: UnasmOp = match cond {
-                NodeOutput::Constant(c) => {
-                    if c.as_bool() {
-                        // Loop immediately terminates, no need to jump
-                        UnasmOp::Nop
-                    } else {
-                        // Infinite loop, no need to evaluate op
-                        opcodes::Jump::from(block_start).into()
-                    }
+        let cond = self.terminator.compile(&mut scope)?;
+        let cond_reg = scope.output_to_reg_reuse_anon(cond);
+
+        let jump_op: UnasmOp = match cond {
+            NodeOutput::Constant(c) => {
+                if c.as_bool() {
+                    // Loop immediately terminates, no need to jump
+                    UnasmOp::Nop
+                } else {
+                    // Infinite loop, no need to evaluate op
+                    opcodes::Jump::from(block_start).into()
                 }
-                _ => opcodes::JumpNot::from((cond_reg, block_start)).into(),
-            };
-            compiler.emit(jump_op);
+            }
+            _ => opcodes::JumpNot::from((cond_reg, block_start)).into(),
+        };
+        scope.emit(jump_op);
 
-            Ok(None)
-        })?;
-
-        compiler.label_current_instruction(loop_exit_label)?;
-        compiler.pop_loop_label();
+        scope.label_current_instruction(loop_exit_label)?;
+        scope.pop_loop_label();
 
         Ok(None)
     }

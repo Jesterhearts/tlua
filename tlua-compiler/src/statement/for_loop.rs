@@ -14,120 +14,121 @@ use crate::{
     CompileError,
     CompileExpression,
     CompileStatement,
-    CompilerContext,
     NodeOutput,
+    Scope,
 };
 
 impl CompileStatement for ForLoop<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        compiler.emit_in_subscope(|compiler| {
-            let loop_exit_label = compiler.push_loop_label();
-            let typecheck0 = compiler.new_anon_reg().no_init_needed();
-            let typecheck1 = compiler.new_anon_reg().no_init_needed();
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
+        let mut scope = scope.new_block();
+        let mut scope = scope.enter();
 
-            let init = self.init.compile(compiler)?;
+        let loop_exit_label = scope.push_loop_label();
+        let typecheck0 = scope.new_anon_reg().no_init_needed();
+        let typecheck1 = scope.new_anon_reg().no_init_needed();
 
-            let init = emit_assert_isnum(
-                compiler,
-                init,
-                typecheck0,
-                typecheck1,
-                OpError::InvalidForInit,
-            );
+        let init = self.init.compile(&mut scope)?;
 
-            let limit = self.condition.compile(compiler)?;
-            let limit = emit_assert_isnum(
-                compiler,
-                limit,
-                typecheck0,
-                typecheck1,
-                OpError::InvalidForCond,
-            );
+        let init = emit_assert_isnum(
+            &mut scope,
+            init,
+            typecheck0,
+            typecheck1,
+            OpError::InvalidForInit,
+        );
 
-            let step = self
-                .increment
-                .as_ref()
-                .map(|inc| inc.compile(compiler))
-                .unwrap_or(Ok(NodeOutput::Constant(Constant::Integer(1))))?;
+        let limit = self.condition.compile(&mut scope)?;
+        let limit = emit_assert_isnum(
+            &mut scope,
+            limit,
+            typecheck0,
+            typecheck1,
+            OpError::InvalidForCond,
+        );
 
-            let step = emit_assert_isnum(
-                compiler,
-                step,
-                typecheck0,
-                typecheck1,
-                OpError::InvalidForStep,
-            );
+        let step = self
+            .increment
+            .as_ref()
+            .map(|inc| inc.compile(&mut scope))
+            .unwrap_or(Ok(NodeOutput::Constant(Constant::Integer(1))))?;
 
-            let zero = compiler.new_anon_reg().init_from_const(compiler, 0.into());
+        let step = emit_assert_isnum(
+            &mut scope,
+            step,
+            typecheck0,
+            typecheck1,
+            OpError::InvalidForStep,
+        );
 
-            // Check for a negative step, we always want to be dealing with negative steps
-            // for simplicity.
-            let ge_zero = compiler.new_anon_reg().no_init_needed();
-            compiler.emit(opcodes::GreaterEqual::from((ge_zero, step, zero)));
+        let zero = scope.new_anon_reg().init_from_const(&mut scope, 0.into());
 
-            // If the step is negative, skip the extra work to negate it.
-            let pending_skip_flip_step = compiler.emit(opcodes::Raise {
-                err: OpError::ByteCodeError {
-                    err: ByteCodeError::MissingJump,
-                    offset: compiler.next_instruction(),
-                },
-            });
+        // Check for a negative step, we always want to be dealing with negative steps
+        // for simplicity.
+        let ge_zero = scope.new_anon_reg().no_init_needed();
+        scope.emit(opcodes::GreaterEqual::from((ge_zero, step, zero)));
 
-            // Check for a zero step to raise an error.
-            let gt_zero = compiler.new_anon_reg().no_init_needed();
-            compiler.emit(opcodes::GreaterThan::from((gt_zero, step, zero)));
+        // If the step is negative, skip the extra work to negate it.
+        let pending_skip_flip_step = scope.emit(opcodes::Raise {
+            err: OpError::ByteCodeError {
+                err: ByteCodeError::MissingJump,
+                offset: scope.next_instruction(),
+            },
+        });
 
-            compiler.emit(opcodes::RaiseIfNot::from((
-                gt_zero,
-                OpError::InvalidForStep,
-            )));
+        // Check for a zero step to raise an error.
+        let gt_zero = scope.new_anon_reg().no_init_needed();
+        scope.emit(opcodes::GreaterThan::from((gt_zero, step, zero)));
 
-            // Positive step, flip it and terminating condition so they're always negative.
-            // This is okay because |i64::MIN| >= i64::MAX
-            compiler.emit(opcodes::UnaryMinus::from((init, init)));
-            compiler.emit(opcodes::UnaryMinus::from((limit, limit)));
-            compiler.emit(opcodes::UnaryMinus::from((step, step)));
+        scope.emit(opcodes::RaiseIfNot::from((
+            gt_zero,
+            OpError::InvalidForStep,
+        )));
 
-            compiler.overwrite(
-                pending_skip_flip_step,
-                opcodes::JumpNot::from((ge_zero, compiler.next_instruction())),
-            );
+        // Positive step, flip it and terminating condition so they're always negative.
+        // This is okay because |i64::MIN| >= i64::MAX
+        scope.emit(opcodes::UnaryMinus::from((init, init)));
+        scope.emit(opcodes::UnaryMinus::from((limit, limit)));
+        scope.emit(opcodes::UnaryMinus::from((step, step)));
 
-            let cond_check_start = compiler.next_instruction();
-            let cond_outcome = compiler.new_anon_reg().no_init_needed();
-            compiler.emit(opcodes::GreaterEqual::from((cond_outcome, init, limit)));
+        scope.overwrite(
+            pending_skip_flip_step,
+            opcodes::JumpNot::from((ge_zero, scope.next_instruction())),
+        );
 
-            let pending_skip_body = compiler.emit(opcodes::Raise {
-                err: OpError::ByteCodeError {
-                    err: ByteCodeError::MissingJump,
-                    offset: compiler.next_instruction(),
-                },
-            });
+        let cond_check_start = scope.next_instruction();
+        let cond_outcome = scope.new_anon_reg().no_init_needed();
+        scope.emit(opcodes::GreaterEqual::from((cond_outcome, init, limit)));
 
-            compiler
-                .new_local(self.var)?
-                .init_from_anon_reg(compiler, init);
+        let pending_skip_body = scope.emit(opcodes::Raise {
+            err: OpError::ByteCodeError {
+                err: ByteCodeError::MissingJump,
+                offset: scope.next_instruction(),
+            },
+        });
 
-            self.body.compile(compiler)?;
+        scope
+            .new_local(self.var)?
+            .init_from_anon_reg(&mut scope, init);
 
-            compiler.emit(opcodes::Add::from((init, init, step)));
-            compiler.emit(opcodes::Jump::from(cond_check_start));
+        self.body.compile(&mut scope)?;
 
-            compiler.overwrite(
-                pending_skip_body,
-                opcodes::JumpNot::from((cond_outcome, compiler.next_instruction())),
-            );
+        scope.emit(opcodes::Add::from((init, init, step)));
+        scope.emit(opcodes::Jump::from(cond_check_start));
 
-            compiler.label_current_instruction(loop_exit_label)?;
-            compiler.pop_loop_label();
+        scope.overwrite(
+            pending_skip_body,
+            opcodes::JumpNot::from((cond_outcome, scope.next_instruction())),
+        );
 
-            Ok(None)
-        })
+        scope.label_current_instruction(loop_exit_label)?;
+        scope.pop_loop_label();
+
+        Ok(None)
     }
 }
 
 fn emit_assert_isnum(
-    compiler: &mut CompilerContext,
+    scope: &mut Scope,
     target: NodeOutput,
     typecheck0: AnonymousRegister,
     typecheck1: AnonymousRegister,
@@ -136,31 +137,27 @@ fn emit_assert_isnum(
     let target = match target {
         target @ NodeOutput::Constant(Constant::Integer(_))
         | target @ NodeOutput::Constant(Constant::Float(_)) => {
-            return compiler
-                .new_anon_reg()
-                .init_from_node_output(compiler, target);
+            return scope.new_anon_reg().init_from_node_output(scope, target);
         }
         NodeOutput::Constant(_) => {
-            compiler.emit(opcodes::Raise::from(err));
-            return compiler.new_anon_reg().no_init_needed();
+            scope.emit(opcodes::Raise::from(err));
+            return scope.new_anon_reg().no_init_needed();
         }
-        target => compiler
-            .new_anon_reg()
-            .init_from_node_output(compiler, target),
+        target => scope.new_anon_reg().init_from_node_output(scope, target),
     };
 
-    compiler.emit(opcodes::CheckType::from((
+    scope.emit(opcodes::CheckType::from((
         typecheck0,
         target,
         TypeId::Primitive(PrimitiveType::Integer),
     )));
-    compiler.emit(opcodes::CheckType::from((
+    scope.emit(opcodes::CheckType::from((
         typecheck1,
         target,
         TypeId::Primitive(PrimitiveType::Float),
     )));
-    compiler.emit(opcodes::Or::from((typecheck0, typecheck0, typecheck1)));
-    compiler.emit(opcodes::RaiseIfNot::from((typecheck0, err)));
+    scope.emit(opcodes::Or::from((typecheck0, typecheck0, typecheck1)));
+    scope.emit(opcodes::RaiseIfNot::from((typecheck0, err)));
 
     target
 }

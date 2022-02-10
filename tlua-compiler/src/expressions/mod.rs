@@ -10,8 +10,8 @@ use tlua_parser::ast::{
 use crate::{
     constant::Constant,
     CompileExpression,
-    CompilerContext,
     NodeOutput,
+    Scope,
 };
 
 pub(crate) mod function_defs;
@@ -19,19 +19,19 @@ pub(crate) mod operators;
 pub(crate) mod tables;
 
 impl CompileExpression for Nil {
-    fn compile(&self, _: &mut CompilerContext) -> Result<NodeOutput, super::CompileError> {
+    fn compile(&self, _: &mut Scope) -> Result<NodeOutput, super::CompileError> {
         Ok(NodeOutput::Constant(Constant::Nil))
     }
 }
 
 impl CompileExpression for bool {
-    fn compile(&self, _: &mut CompilerContext) -> Result<NodeOutput, super::CompileError> {
+    fn compile(&self, _: &mut Scope) -> Result<NodeOutput, super::CompileError> {
         Ok(NodeOutput::Constant(Constant::Bool(*self)))
     }
 }
 
 impl CompileExpression for Number {
-    fn compile(&self, _: &mut CompilerContext) -> Result<NodeOutput, super::CompileError> {
+    fn compile(&self, _: &mut Scope) -> Result<NodeOutput, super::CompileError> {
         Ok(NodeOutput::Constant(
             tlua_bytecode::Number::from(*self).into(),
         ))
@@ -39,14 +39,14 @@ impl CompileExpression for Number {
 }
 
 impl CompileExpression for ConstantString {
-    fn compile(&self, _: &mut CompilerContext) -> Result<NodeOutput, super::CompileError> {
+    fn compile(&self, _: &mut Scope) -> Result<NodeOutput, super::CompileError> {
         Ok(NodeOutput::Constant(Constant::String(*self)))
     }
 }
 
 impl CompileExpression for VarArgs {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, super::CompileError> {
-        compiler.check_varargs()?;
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, super::CompileError> {
+        scope.check_varargs()?;
         Ok(NodeOutput::VAStack)
     }
 }

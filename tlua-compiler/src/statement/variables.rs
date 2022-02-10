@@ -6,20 +6,20 @@ use crate::{
     statement::assignment,
     CompileError,
     CompileStatement,
-    CompilerContext,
+    Scope,
 };
 
 impl CompileStatement for LocalVarList<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
         assignment::emit_assignments(
-            compiler,
-            |compiler, var| match var.attribute {
-                None => compiler.new_local(var.name),
+            scope,
+            |scope, var| match var.attribute {
+                None => scope.new_local(var.name),
                 Some(_) => todo!(),
             },
-            |compiler, reg, src| {
-                let src = compiler.output_to_reg_reuse_anon(src);
-                reg.init_from_anon_reg(compiler, src);
+            |scope, reg, src| {
+                let src = scope.output_to_reg_reuse_anon(src);
+                reg.init_from_anon_reg(scope, src);
             },
             self.vars.iter(),
             self.initializers.iter(),

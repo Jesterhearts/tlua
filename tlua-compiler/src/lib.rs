@@ -35,7 +35,7 @@ mod expressions;
 mod prefix_expression;
 mod statement;
 
-use self::compiler::CompilerContext;
+use self::compiler::Scope;
 use crate::{
     compiler::{
         unasm::MappedLocalRegister,
@@ -117,24 +117,24 @@ pub enum CompileError {
 }
 
 trait CompileExpression {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError>;
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError>;
 }
 
 impl CompileExpression for Expression<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
         match self {
-            Expression::Parenthesized(expr) => expr.compile(compiler),
-            Expression::Variable(expr) => expr.compile(compiler),
-            Expression::FunctionCall(expr) => CompileExpression::compile(expr, compiler),
-            Expression::Nil(expr) => expr.compile(compiler),
-            Expression::Bool(expr) => expr.compile(compiler),
-            Expression::Number(expr) => expr.compile(compiler),
-            Expression::String(expr) => expr.compile(compiler),
-            Expression::FnDef(expr) => expr.compile(compiler),
-            Expression::TableConstructor(expr) => expr.compile(compiler),
-            Expression::VarArgs(expr) => expr.compile(compiler),
-            Expression::BinaryOp(expr) => expr.compile(compiler),
-            Expression::UnaryOp(expr) => expr.compile(compiler),
+            Expression::Parenthesized(expr) => expr.compile(scope),
+            Expression::Variable(expr) => expr.compile(scope),
+            Expression::FunctionCall(expr) => CompileExpression::compile(expr, scope),
+            Expression::Nil(expr) => expr.compile(scope),
+            Expression::Bool(expr) => expr.compile(scope),
+            Expression::Number(expr) => expr.compile(scope),
+            Expression::String(expr) => expr.compile(scope),
+            Expression::FnDef(expr) => expr.compile(scope),
+            Expression::TableConstructor(expr) => expr.compile(scope),
+            Expression::VarArgs(expr) => expr.compile(scope),
+            Expression::BinaryOp(expr) => expr.compile(scope),
+            Expression::UnaryOp(expr) => expr.compile(scope),
         }
     }
 }
@@ -144,26 +144,26 @@ trait CompileStatement {
     // of ret statements to omit instructions.
     // This would require changing the result of this to an enum of:
     //      { Raise(OpError), Return }
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError>;
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError>;
 }
 
 impl CompileStatement for Statement<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
         match self {
-            Statement::Empty(stat) => stat.compile(compiler),
-            Statement::Assignment(stat) => stat.compile(compiler),
-            Statement::Call(stat) => CompileStatement::compile(stat, compiler),
-            Statement::Label(stat) => stat.compile(compiler),
-            Statement::Break(stat) => stat.compile(compiler),
-            Statement::Goto(stat) => stat.compile(compiler),
-            Statement::Do(stat) => stat.compile(compiler),
-            Statement::While(stat) => stat.compile(compiler),
-            Statement::Repeat(stat) => stat.compile(compiler),
-            Statement::If(stat) => stat.compile(compiler),
-            Statement::For(stat) => stat.compile(compiler),
-            Statement::ForEach(stat) => stat.compile(compiler),
-            Statement::FnDecl(stat) => stat.compile(compiler),
-            Statement::LocalVarList(stat) => stat.compile(compiler),
+            Statement::Empty(stat) => stat.compile(scope),
+            Statement::Assignment(stat) => stat.compile(scope),
+            Statement::Call(stat) => CompileStatement::compile(stat, scope),
+            Statement::Label(stat) => stat.compile(scope),
+            Statement::Break(stat) => stat.compile(scope),
+            Statement::Goto(stat) => stat.compile(scope),
+            Statement::Do(stat) => stat.compile(scope),
+            Statement::While(stat) => stat.compile(scope),
+            Statement::Repeat(stat) => stat.compile(scope),
+            Statement::If(stat) => stat.compile(scope),
+            Statement::For(stat) => stat.compile(scope),
+            Statement::ForEach(stat) => stat.compile(scope),
+            Statement::FnDecl(stat) => stat.compile(scope),
+            Statement::LocalVarList(stat) => stat.compile(scope),
         }
     }
 }
@@ -172,8 +172,8 @@ impl<T> CompileExpression for &'_ T
 where
     T: CompileExpression,
 {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        (*self).compile(compiler)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        (*self).compile(scope)
     }
 }
 
@@ -181,8 +181,8 @@ impl<T> CompileStatement for &'_ T
 where
     T: CompileStatement,
 {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        (*self).compile(compiler)
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
+        (*self).compile(scope)
     }
 }
 
@@ -219,7 +219,5 @@ pub fn compile(src: &str) -> Result<Chunk, CompileError> {
 
     let ast = parse_chunk(src, &alloc).map_err(CompileError::ParseError)?;
 
-    let compiler = Compiler::default();
-
-    compiler.compile_ast(ast)
+    Compiler::default().compile_ast(ast)
 }

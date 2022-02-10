@@ -15,22 +15,22 @@ use crate::{
     compiler::InitRegister,
     CompileError,
     CompileExpression,
-    CompilerContext,
     NodeOutput,
+    Scope,
 };
 
 impl CompileExpression for TableConstructor<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        let table = compiler.init_table();
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        let table = scope.init_table();
 
-        emit_init_sequence(compiler, table, self.fields.iter())?;
+        emit_init_sequence(scope, table, self.fields.iter())?;
 
         Ok(NodeOutput::Immediate(table))
     }
 }
 
 pub(crate) fn emit_init_sequence<'a, 'f>(
-    compiler: &mut CompilerContext,
+    scope: &mut Scope,
     table: AnonymousRegister,
     fields: impl Iterator<Item = &'a Field<'f>>,
 ) -> Result<Option<OpError>, CompileError>
@@ -42,36 +42,30 @@ where
     for field in fields {
         match field {
             Field::Named { name, expression } => {
-                let index = compiler
+                let index = scope
                     .new_anon_reg()
-                    .init_from_const(compiler, ConstantString::from(name).into());
+                    .init_from_const(scope, ConstantString::from(name).into());
 
-                let value = expression.compile(compiler)?;
+                let value = expression.compile(scope)?;
 
-                let value = compiler
-                    .new_anon_reg()
-                    .init_from_node_output(compiler, value);
+                let value = scope.new_anon_reg().init_from_node_output(scope, value);
 
-                compiler.emit(opcodes::SetProperty::from((table, index, value)));
+                scope.emit(opcodes::SetProperty::from((table, index, value)));
                 last_field_va = false;
             }
             Field::Indexed { index, expression } => {
-                let index = index.compile(compiler)?;
-                let index = compiler
-                    .new_anon_reg()
-                    .init_from_node_output(compiler, index);
+                let index = index.compile(scope)?;
+                let index = scope.new_anon_reg().init_from_node_output(scope, index);
 
-                let value = expression.compile(compiler)?;
-                let value = compiler
-                    .new_anon_reg()
-                    .init_from_node_output(compiler, value);
+                let value = expression.compile(scope)?;
+                let value = scope.new_anon_reg().init_from_node_output(scope, value);
 
-                compiler.emit(opcodes::SetProperty::from((table, index, value)));
+                scope.emit(opcodes::SetProperty::from((table, index, value)));
 
                 last_field_va = false;
             }
             Field::Arraylike { expression } => {
-                arraylike.push(expression.compile(compiler)?);
+                arraylike.push(expression.compile(scope)?);
                 last_field_va = matches!(
                     arraylike.last(),
                     Some(NodeOutput::VAStack | NodeOutput::ReturnValues)
@@ -90,12 +84,10 @@ where
     };
 
     for (index, init) in initializers.iter().enumerate() {
-        let value = compiler
-            .new_anon_reg()
-            .init_from_node_output(compiler, *init);
+        let value = scope.new_anon_reg().init_from_node_output(scope, *init);
 
-        let index = compiler.new_anon_reg().init_from_const(
-            compiler,
+        let index = scope.new_anon_reg().init_from_const(
+            scope,
             i64::try_from(index + 1)
                 .map_err(|_| CompileError::TooManyTableEntries {
                     max: i64::MAX as usize,
@@ -103,19 +95,19 @@ where
                 .into(),
         );
 
-        compiler.emit(opcodes::SetProperty::from((table, index, value)));
+        scope.emit(opcodes::SetProperty::from((table, index, value)));
     }
 
     if let Some(last) = last {
         match last {
             NodeOutput::ReturnValues => {
-                compiler.emit(opcodes::SetAllPropertiesFromRet::from((
+                scope.emit(opcodes::SetAllPropertiesFromRet::from((
                     table,
                     initializers.len() + 1,
                 )));
             }
             NodeOutput::VAStack => {
-                compiler.emit(opcodes::SetAllPropertiesFromVa::from((
+                scope.emit(opcodes::SetAllPropertiesFromVa::from((
                     table,
                     initializers.len() + 1,
                 )));

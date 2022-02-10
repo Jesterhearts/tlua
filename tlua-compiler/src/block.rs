@@ -13,13 +13,13 @@ use tlua_parser::{
 use crate::{
     CompileError,
     CompileStatement,
-    CompilerContext,
+    Scope,
 };
 
 impl CompileStatement for List<'_, Statement<'_>> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
         for stat in self.iter() {
-            stat.compile(compiler)?;
+            stat.compile(scope)?;
         }
 
         Ok(None)
@@ -27,27 +27,29 @@ impl CompileStatement for List<'_, Statement<'_>> {
 }
 
 impl CompileStatement for RetStatement<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        compiler.write_ret_stack_sequence(self.expressions.iter())
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
+        scope.write_ret_stack_sequence(self.expressions.iter())
     }
 }
 
 impl CompileStatement for Block<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        compiler.emit_in_subscope(|compiler| emit_block(compiler, self))
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
+        let mut scope = scope.new_block();
+        let mut scope = scope.enter();
+        emit_block(&mut scope, self)
     }
 }
 
 pub(crate) fn emit_block(
-    compiler: &mut CompilerContext,
+    scope: &mut Scope,
     block: &Block,
 ) -> Result<Option<OpError>, CompileError> {
     for stat in block.statements.iter() {
-        stat.compile(compiler)?;
+        stat.compile(scope)?;
     }
 
     match block.ret.as_ref() {
-        Some(ret) => ret.compile(compiler),
+        Some(ret) => ret.compile(scope),
         None => Ok(None),
     }
 }

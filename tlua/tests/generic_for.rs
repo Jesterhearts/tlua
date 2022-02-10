@@ -29,11 +29,11 @@ fn generic_for() -> anyhow::Result<()> {
 
     let mut rt = Runtime::default();
 
-    let result = rt.execute(&chunk)?;
+    let result = rt.execute(&chunk);
 
     assert_eq!(
         result,
-        vec!["c".into()],
+        Ok(vec!["c".into()]),
         "{:#?} produced an incorrect result",
         chunk
     );
@@ -66,11 +66,11 @@ fn generic_for_break() -> anyhow::Result<()> {
 
     let mut rt = Runtime::default();
 
-    let result = rt.execute(&chunk)?;
+    let result = rt.execute(&chunk);
 
     assert_eq!(
         result,
-        vec!["a".into()],
+        Ok(vec!["a".into()]),
         "{:#?} produced an incorrect result",
         chunk
     );

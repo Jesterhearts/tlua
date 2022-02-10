@@ -21,12 +21,12 @@ use crate::{
     constant::Constant,
     CompileError,
     CompileExpression,
-    CompilerContext,
     NodeOutput,
+    Scope,
 };
 
 fn write_numeric_binop<Op>(
-    compiler: &mut CompilerContext,
+    scope: &mut Scope,
     lhs: &Expression,
     rhs: &Expression,
 ) -> Result<NodeOutput, CompileError>
@@ -35,13 +35,13 @@ where
         + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
         + Into<UnasmOp>,
 {
-    compiler.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| {
+    scope.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| {
         Op::evaluate(lhs, rhs).map(|num| num.into())
     })
 }
 
 fn write_cmp_binop<Op>(
-    compiler: &mut CompilerContext,
+    scope: &mut Scope,
     lhs: &Expression,
     rhs: &Expression,
 ) -> Result<NodeOutput, CompileError>
@@ -50,7 +50,7 @@ where
         + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
         + Into<UnasmOp>,
 {
-    compiler.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| match (lhs, rhs) {
+    scope.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| match (lhs, rhs) {
         (Constant::Nil, Constant::Nil) => Op::apply_nils().map(Constant::from),
         (Constant::Bool(lhs), Constant::Bool(rhs)) => Op::apply_bools(lhs, rhs).map(Constant::from),
         (Constant::Float(lhs), Constant::Float(rhs)) => {
@@ -75,7 +75,7 @@ where
 }
 
 fn write_boolean_binop<Op>(
-    compiler: &mut CompilerContext,
+    scope: &mut Scope,
     lhs: &Expression,
     rhs: &Expression,
 ) -> Result<NodeOutput, CompileError>
@@ -84,407 +84,131 @@ where
         + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
         + Into<UnasmOp>,
 {
-    compiler.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
+    scope.write_binop::<Op, _, _, _>(lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
 }
 
 impl CompileExpression for operator::Plus<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<Add>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<Add>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Minus<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<Subtract>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<Subtract>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Times<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<Times>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<Times>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Divide<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<Divide>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<Divide>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::IDiv<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<IDiv>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<IDiv>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Modulo<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<Modulo>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<Modulo>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Exponetiation<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<Exponetiation>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<Exponetiation>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::BitAnd<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<BitAnd>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<BitAnd>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::BitOr<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<BitOr>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<BitOr>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::BitXor<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<BitXor>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<BitXor>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::ShiftLeft<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<ShiftLeft>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<ShiftLeft>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::ShiftRight<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_numeric_binop::<ShiftRight>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_numeric_binop::<ShiftRight>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Concat<'_> {
-    fn compile(&self, _compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
+    fn compile(&self, _scope: &mut Scope) -> Result<NodeOutput, CompileError> {
         todo!()
     }
 }
 
 impl CompileExpression for operator::LessThan<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<LessThan>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_cmp_binop::<LessThan>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::LessEqual<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<LessEqual>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_cmp_binop::<LessEqual>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::GreaterThan<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<GreaterThan>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_cmp_binop::<GreaterThan>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::GreaterEqual<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<GreaterEqual>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_cmp_binop::<GreaterEqual>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Equals<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<Equals>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_cmp_binop::<Equals>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::NotEqual<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_cmp_binop::<NotEqual>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_cmp_binop::<NotEqual>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::And<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_boolean_binop::<And>(compiler, self.lhs, self.rhs)
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_boolean_binop::<And>(scope, self.lhs, self.rhs)
     }
 }
 
 impl CompileExpression for operator::Or<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        write_boolean_binop::<Or>(compiler, self.lhs, self.rhs)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use pretty_assertions::assert_eq;
-    use tlua_bytecode::OpError;
-    use tlua_parser::ast::expressions::{
-        number::Number,
-        operator::*,
-        Expression,
-        Nil,
-    };
-
-    use crate::{
-        compiler::Compiler,
-        constant::Constant,
-        CompileExpression,
-        NodeOutput,
-    };
-
-    #[test]
-    fn compiles_constant_plus() -> anyhow::Result<()> {
-        let ast = Plus {
-            lhs: &Expression::Number(Number::Integer(1)),
-            rhs: &Expression::Number(Number::Integer(2)),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Integer(3)));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn compiles_constant_eq() -> anyhow::Result<()> {
-        let ast = Equals {
-            lhs: &Expression::Number(Number::Float(4.0)),
-            rhs: &Expression::Number(Number::Integer(4)),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
-            Ok(())
-        })?;
-        Ok(())
-    }
-
-    #[test]
-    fn compiles_constant_eq_false() -> anyhow::Result<()> {
-        let ast = Equals {
-            lhs: &Expression::Number(Number::Integer(1)),
-            rhs: &Expression::Number(Number::Integer(2)),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Bool(false)));
-            Ok(())
-        })?;
-        Ok(())
-    }
-
-    #[test]
-    #[ignore = "TODO(lang-5.4): Needs different handling than the rest of the cmp ops"]
-    fn compiles_constant_eq_types_dif_false() -> anyhow::Result<()> {
-        let ast = Equals {
-            lhs: &Expression::Number(Number::Integer(1)),
-            rhs: &Expression::Bool(true),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Bool(false)));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn compiles_constant_eq_strings() -> anyhow::Result<()> {
-        let ast = Equals {
-            lhs: &Expression::String("test".into()),
-            rhs: &Expression::String("test".into()),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn compiles_constant_eq_nil() -> anyhow::Result<()> {
-        let ast = Equals {
-            lhs: &Expression::Nil(Nil),
-            rhs: &Expression::Nil(Nil),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn compiles_constant_lt_nums() -> anyhow::Result<()> {
-        let ast = LessThan {
-            lhs: &Expression::Number(Number::Integer(10)),
-            rhs: &Expression::Number(Number::Float(11.0)),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn compiles_constant_lt_nums_false() -> anyhow::Result<()> {
-        let ast = LessThan {
-            lhs: &Expression::Number(Number::Integer(11)),
-            rhs: &Expression::Number(Number::Integer(10)),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Bool(false)));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn compiles_constant_lt_strings() -> anyhow::Result<()> {
-        let ast = LessThan {
-            lhs: &Expression::String("abc".into()),
-            rhs: &Expression::String("def".into()),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Bool(true)));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn compiles_constant_lt_mixed() -> anyhow::Result<()> {
-        let ast = LessThan {
-            lhs: &Expression::String("abc".into()),
-            rhs: &Expression::Nil(Nil),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(
-                result,
-                NodeOutput::Err(OpError::CmpErr {
-                    lhs: Constant::String("abc".into()).short_type_name(),
-                    rhs: Constant::Nil.short_type_name()
-                })
-            );
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn and_truthy() -> anyhow::Result<()> {
-        let ast = And {
-            lhs: &Expression::String("abc".into()),
-            rhs: &Expression::Number(Number::Integer(10)),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Integer(10)));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn and_truthy_falsy() -> anyhow::Result<()> {
-        let ast = And {
-            lhs: &Expression::String("abc".into()),
-            rhs: &Expression::Nil(Nil),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Nil));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn or_truthy_falsy() -> anyhow::Result<()> {
-        let ast = Or {
-            lhs: &Expression::String("abc".into()),
-            rhs: &Expression::Nil(Nil),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::String("abc".into())));
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    #[test]
-    fn or_falsy() -> anyhow::Result<()> {
-        let ast = Or {
-            lhs: &Expression::Bool(false),
-            rhs: &Expression::Nil(Nil),
-        };
-
-        let mut compiler = Compiler::default();
-        compiler.emit_in_main(|context| {
-            let result = ast.compile(context)?;
-
-            assert_eq!(result, NodeOutput::Constant(Constant::Nil));
-            Ok(())
-        })?;
-
-        Ok(())
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_boolean_binop::<Or>(scope, self.lhs, self.rhs)
     }
 }

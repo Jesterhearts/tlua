@@ -4,7 +4,7 @@ use tlua_parser::ast::expressions::operator::{
 };
 
 use crate::{
-    compiler::CompilerContext,
+    compiler::Scope,
     CompileError,
     CompileExpression,
     NodeOutput,
@@ -14,40 +14,40 @@ pub(crate) mod binop;
 pub(crate) mod unop;
 
 impl CompileExpression for UnaryOperator<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
         match self {
-            UnaryOperator::Minus(expr) => expr.compile(compiler),
-            UnaryOperator::Not(expr) => expr.compile(compiler),
-            UnaryOperator::Length(expr) => expr.compile(compiler),
-            UnaryOperator::BitNot(expr) => expr.compile(compiler),
+            UnaryOperator::Minus(expr) => expr.compile(scope),
+            UnaryOperator::Not(expr) => expr.compile(scope),
+            UnaryOperator::Length(expr) => expr.compile(scope),
+            UnaryOperator::BitNot(expr) => expr.compile(scope),
         }
     }
 }
 
 impl CompileExpression for BinaryOperator<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
         match self {
-            BinaryOperator::Plus(expr) => expr.compile(compiler),
-            BinaryOperator::Minus(expr) => expr.compile(compiler),
-            BinaryOperator::Times(expr) => expr.compile(compiler),
-            BinaryOperator::Divide(expr) => expr.compile(compiler),
-            BinaryOperator::IDiv(expr) => expr.compile(compiler),
-            BinaryOperator::Modulo(expr) => expr.compile(compiler),
-            BinaryOperator::Exponetiation(expr) => expr.compile(compiler),
-            BinaryOperator::BitAnd(expr) => expr.compile(compiler),
-            BinaryOperator::BitOr(expr) => expr.compile(compiler),
-            BinaryOperator::BitXor(expr) => expr.compile(compiler),
-            BinaryOperator::ShiftLeft(expr) => expr.compile(compiler),
-            BinaryOperator::ShiftRight(expr) => expr.compile(compiler),
-            BinaryOperator::Concat(expr) => expr.compile(compiler),
-            BinaryOperator::LessThan(expr) => expr.compile(compiler),
-            BinaryOperator::LessEqual(expr) => expr.compile(compiler),
-            BinaryOperator::GreaterThan(expr) => expr.compile(compiler),
-            BinaryOperator::GreaterEqual(expr) => expr.compile(compiler),
-            BinaryOperator::Equals(expr) => expr.compile(compiler),
-            BinaryOperator::NotEqual(expr) => expr.compile(compiler),
-            BinaryOperator::And(expr) => expr.compile(compiler),
-            BinaryOperator::Or(expr) => expr.compile(compiler),
+            BinaryOperator::Plus(expr) => expr.compile(scope),
+            BinaryOperator::Minus(expr) => expr.compile(scope),
+            BinaryOperator::Times(expr) => expr.compile(scope),
+            BinaryOperator::Divide(expr) => expr.compile(scope),
+            BinaryOperator::IDiv(expr) => expr.compile(scope),
+            BinaryOperator::Modulo(expr) => expr.compile(scope),
+            BinaryOperator::Exponetiation(expr) => expr.compile(scope),
+            BinaryOperator::BitAnd(expr) => expr.compile(scope),
+            BinaryOperator::BitOr(expr) => expr.compile(scope),
+            BinaryOperator::BitXor(expr) => expr.compile(scope),
+            BinaryOperator::ShiftLeft(expr) => expr.compile(scope),
+            BinaryOperator::ShiftRight(expr) => expr.compile(scope),
+            BinaryOperator::Concat(expr) => expr.compile(scope),
+            BinaryOperator::LessThan(expr) => expr.compile(scope),
+            BinaryOperator::LessEqual(expr) => expr.compile(scope),
+            BinaryOperator::GreaterThan(expr) => expr.compile(scope),
+            BinaryOperator::GreaterEqual(expr) => expr.compile(scope),
+            BinaryOperator::Equals(expr) => expr.compile(scope),
+            BinaryOperator::NotEqual(expr) => expr.compile(scope),
+            BinaryOperator::And(expr) => expr.compile(scope),
+            BinaryOperator::Or(expr) => expr.compile(scope),
         }
     }
 }

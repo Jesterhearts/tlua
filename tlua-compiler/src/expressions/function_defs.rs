@@ -1,4 +1,8 @@
-use tlua_parser::ast::expressions::function_defs::FnBody;
+use tlua_bytecode::opcodes;
+use tlua_parser::ast::{
+    expressions::function_defs::FnBody,
+    identifiers::Ident,
+};
 
 use crate::{
     compiler::{
@@ -7,13 +11,57 @@ use crate::{
     },
     CompileError,
     CompileExpression,
-    CompilerContext,
+    CompileStatement,
+    FuncId,
     NodeOutput,
+    Scope,
 };
 
+pub(crate) fn emit_fn(
+    scope: &mut Scope,
+    has_va_args: HasVaArgs,
+    is_method: bool,
+    params: impl ExactSizeIterator<Item = Ident>,
+    body: impl ExactSizeIterator<Item = impl CompileStatement>,
+    ret: Option<&impl CompileStatement>,
+) -> Result<FuncId, CompileError> {
+    let mut func = scope.new_function(has_va_args, params.len() + usize::from(is_method));
+    {
+        let mut scope = func.start();
+        let mut scope = scope.enter();
+
+        if is_method {
+            scope.new_local("self".into())?.no_init_needed();
+        }
+
+        for param in params {
+            // TODO(compiler-opt): Technically today this allocates an extra, unused
+            // register for every duplicate identifier in the parameter list. It
+            // still works fine though, because the number of registers is
+            // correct.
+            scope.new_local(param)?.no_init_needed();
+        }
+
+        for stat in body {
+            stat.compile(&mut scope)?;
+        }
+
+        match ret {
+            Some(ret) => ret.compile(&mut scope)?,
+            None => {
+                scope.emit(opcodes::Op::Ret);
+                None
+            }
+        };
+    }
+
+    Ok(func.complete())
+}
+
 impl CompileExpression for FnBody<'_> {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<NodeOutput, CompileError> {
-        let func_id = compiler.emit_fn(
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        let func_id = emit_fn(
+            scope,
             if self.params.varargs {
                 HasVaArgs::Some
             } else {
@@ -26,7 +74,7 @@ impl CompileExpression for FnBody<'_> {
         )?;
 
         Ok(NodeOutput::Immediate(
-            compiler.new_anon_reg().init_alloc_fn(compiler, func_id),
+            scope.new_anon_reg().init_alloc_fn(scope, func_id),
         ))
     }
 }

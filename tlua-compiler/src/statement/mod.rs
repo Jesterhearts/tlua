@@ -13,7 +13,7 @@ use crate::{
     compiler::LabelId,
     CompileError,
     CompileStatement,
-    CompilerContext,
+    Scope,
 };
 
 pub(crate) mod assignment;
@@ -26,20 +26,20 @@ pub(crate) mod variables;
 pub(crate) mod while_loop;
 
 impl CompileStatement for Empty {
-    fn compile(&self, _: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
+    fn compile(&self, _: &mut Scope) -> Result<Option<OpError>, CompileError> {
         Ok(None)
     }
 }
 
 impl CompileStatement for Break {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        match compiler.current_loop_label() {
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
+        match scope.current_loop_label() {
             Some(label) => {
-                compiler.emit_jump_label(label);
+                scope.emit_jump_label(label);
                 Ok(None)
             }
             None => {
-                compiler.emit(opcodes::Raise::from(OpError::BreakNotInLoop));
+                scope.emit(opcodes::Raise::from(OpError::BreakNotInLoop));
                 Ok(Some(OpError::BreakNotInLoop))
             }
         }
@@ -47,16 +47,16 @@ impl CompileStatement for Break {
 }
 
 impl CompileStatement for Label {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        compiler
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
+        scope
             .label_current_instruction(LabelId::Named(self.0))
             .map(|()| None)
     }
 }
 
 impl CompileStatement for Goto {
-    fn compile(&self, compiler: &mut CompilerContext) -> Result<Option<OpError>, CompileError> {
-        compiler.emit_jump_label(LabelId::Named(self.0));
+    fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
+        scope.emit_jump_label(LabelId::Named(self.0));
         Ok(None)
     }
 }
