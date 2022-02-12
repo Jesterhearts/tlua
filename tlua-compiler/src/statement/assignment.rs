@@ -28,14 +28,15 @@ impl CompileStatement for Assignment<'_> {
             |scope, dest, init| match dest {
                 Either::Left(var) => {
                     let init = init.to_register(scope);
-                    let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(init));
-                    var.init_from_anon_reg(&mut scope, init);
+                    let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(init));
+                    var.init_from_immediate(&mut scope, init);
                 }
                 Either::Right(TableIndex { table, index }) => {
                     let init = init.to_register(scope);
-                    let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(table));
-                    let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(index));
-                    let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(init));
+                    let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(table));
+                    let mut scope =
+                        guard_on_success(&mut scope, |scope| scope.pop_immediate(index));
+                    let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(init));
 
                     scope.emit(opcodes::SetProperty::from((table, index, init)));
                 }
@@ -75,7 +76,7 @@ pub(crate) fn emit_assignments<VarExpr, VarDest>(
                 match init {
                     NodeOutput::ReturnValues => {
                         let consumed_values = vars.len() + 1;
-                        let mut regs = scope.reserve_anon_reg_range(consumed_values).iter();
+                        let mut regs = scope.reserve_immediate_range(consumed_values).iter();
 
                         let first = regs.next().expect("At least one var.").no_init_needed();
                         scope.emit(opcodes::ConsumeRetRange::from((
@@ -91,7 +92,7 @@ pub(crate) fn emit_assignments<VarExpr, VarDest>(
                     }
                     NodeOutput::VAStack => {
                         let consumed_values = vars.len() + 1;
-                        let mut regs = scope.reserve_anon_reg_range(consumed_values).iter();
+                        let mut regs = scope.reserve_immediate_range(consumed_values).iter();
 
                         let first = regs.next().expect("At least one var.").no_init_needed();
                         scope.emit(opcodes::LoadVa::from((

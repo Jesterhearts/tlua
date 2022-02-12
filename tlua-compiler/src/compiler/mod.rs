@@ -4,7 +4,7 @@ use derive_more::From;
 use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
-    AnonymousRegister,
+    ImmediateRegister,
 };
 use tlua_parser::ast::{
     block::Block,
@@ -79,10 +79,10 @@ pub(crate) struct UninitRegisterRange {
 }
 
 impl UninitRegisterRange {
-    pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = UninitRegister<AnonymousRegister>> {
+    pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = UninitRegister<ImmediateRegister>> {
         self.range
             .clone()
-            .map(AnonymousRegister::from)
+            .map(ImmediateRegister::from)
             .map(UninitRegister::from)
     }
 }
@@ -107,7 +107,7 @@ pub(crate) trait InitRegister<RegisterTy = Self>: Sized {
     fn init_alloc_table(self, scope: &mut Scope) -> RegisterTy;
 
     /// Indicate that the register should be initialized from another register.
-    fn init_from_anon_reg(self, scope: &mut Scope, other: AnonymousRegister) -> RegisterTy;
+    fn init_from_immediate(self, scope: &mut Scope, other: ImmediateRegister) -> RegisterTy;
 
     /// Indicate that the register should be initialized from another register.
     fn init_from_mapped_reg(self, scope: &mut Scope, other: MappedLocalRegister) -> RegisterTy;
@@ -116,8 +116,8 @@ pub(crate) trait InitRegister<RegisterTy = Self>: Sized {
     fn init_from_table_entry(
         self,
         scope: &mut Scope,
-        table: AnonymousRegister,
-        index: AnonymousRegister,
+        table: ImmediateRegister,
+        index: ImmediateRegister,
     ) -> RegisterTy;
 
     /// Indicate that the register should be initialized from a variadic
@@ -125,7 +125,7 @@ pub(crate) trait InitRegister<RegisterTy = Self>: Sized {
     fn init_from_va(self, scope: &mut Scope, index: usize) -> RegisterTy;
 }
 
-impl InitRegister for AnonymousRegister {
+impl InitRegister for ImmediateRegister {
     fn no_init_needed(self) -> Self {
         self
     }
@@ -159,7 +159,7 @@ impl InitRegister for AnonymousRegister {
         reg
     }
 
-    fn init_from_anon_reg(self, scope: &mut Scope, other: AnonymousRegister) -> Self {
+    fn init_from_immediate(self, scope: &mut Scope, other: ImmediateRegister) -> Self {
         let reg = self.no_init_needed();
         if other != reg {
             scope.emit(opcodes::DuplicateRegister::from((reg, other)));
@@ -176,8 +176,8 @@ impl InitRegister for AnonymousRegister {
     fn init_from_table_entry(
         self,
         scope: &mut Scope,
-        table: AnonymousRegister,
-        index: AnonymousRegister,
+        table: ImmediateRegister,
+        index: ImmediateRegister,
     ) -> Self {
         let reg = self.no_init_needed();
         scope.emit(opcodes::Lookup::from((reg, table, index)));
@@ -197,30 +197,30 @@ impl InitRegister for MappedLocalRegister {
     }
 
     fn init_from_ret(self, scope: &mut Scope) -> Self {
-        let anon = scope.push_anon_reg().init_from_ret(scope);
-        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
-        self.init_from_anon_reg(&mut scope, anon)
+        let imm = scope.push_immediate().init_from_ret(scope);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(imm));
+        self.init_from_immediate(&mut scope, imm)
     }
 
     fn init_from_const(self, scope: &mut Scope, value: Constant) -> Self {
-        let anon = scope.push_anon_reg().init_from_const(scope, value);
-        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
-        self.init_from_anon_reg(&mut scope, anon)
+        let imm = scope.push_immediate().init_from_const(scope, value);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(imm));
+        self.init_from_immediate(&mut scope, imm)
     }
 
     fn init_alloc_fn(self, scope: &mut Scope, value: FuncId) -> Self {
-        let anon = scope.push_anon_reg().init_alloc_fn(scope, value);
-        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
-        self.init_from_anon_reg(&mut scope, anon)
+        let imm = scope.push_immediate().init_alloc_fn(scope, value);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(imm));
+        self.init_from_immediate(&mut scope, imm)
     }
 
     fn init_alloc_table(self, scope: &mut Scope) -> Self {
-        let anon = scope.push_anon_reg().init_alloc_table(scope);
-        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
-        self.init_from_anon_reg(&mut scope, anon)
+        let imm = scope.push_immediate().init_alloc_table(scope);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(imm));
+        self.init_from_immediate(&mut scope, imm)
     }
 
-    fn init_from_anon_reg(self, scope: &mut Scope, other: AnonymousRegister) -> Self {
+    fn init_from_immediate(self, scope: &mut Scope, other: ImmediateRegister) -> Self {
         let reg = self.no_init_needed();
         scope.emit(opcodes::Store::from((reg, other)));
         reg
@@ -228,9 +228,9 @@ impl InitRegister for MappedLocalRegister {
 
     fn init_from_mapped_reg(self, scope: &mut Scope, other: MappedLocalRegister) -> Self {
         if other != self {
-            let anon = scope.push_anon_reg().init_from_mapped_reg(scope, other);
-            let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
-            self.init_from_anon_reg(&mut scope, anon)
+            let imm = scope.push_immediate().init_from_mapped_reg(scope, other);
+            let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(imm));
+            self.init_from_immediate(&mut scope, imm)
         } else {
             self
         }
@@ -239,20 +239,20 @@ impl InitRegister for MappedLocalRegister {
     fn init_from_table_entry(
         self,
         scope: &mut Scope,
-        table: AnonymousRegister,
-        index: AnonymousRegister,
+        table: ImmediateRegister,
+        index: ImmediateRegister,
     ) -> Self {
-        let anon = scope
-            .push_anon_reg()
+        let imm = scope
+            .push_immediate()
             .init_from_table_entry(scope, table, index);
-        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
-        self.init_from_anon_reg(&mut scope, anon)
+        let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(imm));
+        self.init_from_immediate(&mut scope, imm)
     }
 
     fn init_from_va(self, scope: &mut Scope, index: usize) -> Self {
-        let anon = scope.push_anon_reg().init_from_va(scope, index);
-        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
-        self.init_from_anon_reg(&mut scope, anon)
+        let imm = scope.push_immediate().init_from_va(scope, index);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(imm));
+        self.init_from_immediate(&mut scope, imm)
     }
 }
 
@@ -280,8 +280,8 @@ where
         self.register.init_alloc_table(scope)
     }
 
-    fn init_from_anon_reg(self, scope: &mut Scope, other: AnonymousRegister) -> RegisterTy {
-        self.register.init_from_anon_reg(scope, other)
+    fn init_from_immediate(self, scope: &mut Scope, other: ImmediateRegister) -> RegisterTy {
+        self.register.init_from_immediate(scope, other)
     }
 
     fn init_from_mapped_reg(self, scope: &mut Scope, other: MappedLocalRegister) -> RegisterTy {
@@ -291,8 +291,8 @@ where
     fn init_from_table_entry(
         self,
         scope: &mut Scope,
-        table: AnonymousRegister,
-        index: AnonymousRegister,
+        table: ImmediateRegister,
+        index: ImmediateRegister,
     ) -> RegisterTy {
         self.register.init_from_table_entry(scope, table, index)
     }

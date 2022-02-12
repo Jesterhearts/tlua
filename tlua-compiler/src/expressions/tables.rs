@@ -1,7 +1,7 @@
 use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
-    AnonymousRegister,
+    ImmediateRegister,
     OpError,
 };
 use tlua_parser::ast::{
@@ -22,7 +22,7 @@ use crate::{
 
 impl CompileExpression for TableConstructor<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        let table = scope.push_anon_reg().init_alloc_table(scope);
+        let table = scope.push_immediate().init_alloc_table(scope);
 
         emit_init_sequence(scope, table, self.fields.iter())?;
 
@@ -32,7 +32,7 @@ impl CompileExpression for TableConstructor<'_> {
 
 pub(crate) fn emit_init_sequence<'a, 'f>(
     scope: &mut Scope,
-    table: AnonymousRegister,
+    table: ImmediateRegister,
     fields: impl Iterator<Item = &'a Field<'f>>,
 ) -> Result<Option<OpError>, CompileError>
 where
@@ -41,8 +41,8 @@ where
     let mut arraylike = vec![];
     let mut last_field_va = false;
 
-    let index = scope.push_anon_reg().no_init_needed();
-    let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(index));
+    let index = scope.push_immediate().no_init_needed();
+    let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(index));
 
     for field in fields {
         match field {
@@ -52,7 +52,7 @@ where
                 let value = expression.compile(&mut scope)?;
                 let value = value.to_register(&mut scope);
 
-                let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(value));
+                let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(value));
 
                 scope.emit(opcodes::SetProperty::from((table, index, value)));
 
@@ -65,13 +65,13 @@ where
                 let index_init = index_expr.compile(&mut scope)?;
                 let index_init = index_init.to_register(&mut scope);
                 let mut scope =
-                    guard_on_success(&mut scope, |scope| scope.pop_anon_reg(index_init));
+                    guard_on_success(&mut scope, |scope| scope.pop_immediate(index_init));
 
-                index.init_from_anon_reg(&mut scope, index_init);
+                index.init_from_immediate(&mut scope, index_init);
 
                 let value = expression.compile(&mut scope)?;
                 let value = value.to_register(&mut scope);
-                let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(value));
+                let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(value));
 
                 scope.emit(opcodes::SetProperty::from((table, index, value)));
 
@@ -98,7 +98,7 @@ where
 
     for (array_index, init) in initializers.iter().enumerate() {
         let value = init.to_register(&mut scope);
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(value));
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(value));
 
         index.init_from_const(
             &mut scope,

@@ -34,8 +34,8 @@ impl CompileStatement for FnDecl<'_> {
                     body.body.ret.as_ref(),
                 )?;
 
-                let func = scope.push_anon_reg().init_alloc_fn(scope, func_id);
-                let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(func));
+                let func = scope.push_immediate().init_alloc_fn(scope, func_id);
+                let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(func));
 
                 if name.path.is_empty() {
                     debug_assert!(name.method.is_none());
@@ -47,15 +47,18 @@ impl CompileStatement for FnDecl<'_> {
                 let head = scope.read_variable(path.next().copied().expect("Path is not empty"))?;
 
                 if path.len() == 0 && name.method.is_none() {
-                    head.init_from_anon_reg(&mut scope, func);
+                    head.init_from_immediate(&mut scope, func);
                     return Ok(None);
                 }
 
-                let table = scope.push_anon_reg().init_from_mapped_reg(&mut scope, head);
-                let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(table));
+                let table = scope
+                    .push_immediate()
+                    .init_from_mapped_reg(&mut scope, head);
+                let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(table));
 
-                let index_reg = scope.push_anon_reg().no_init_needed();
-                let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(index_reg));
+                let index_reg = scope.push_immediate().no_init_needed();
+                let mut scope =
+                    guard_on_success(&mut scope, |scope| scope.pop_immediate(index_reg));
 
                 for _ in 0..(path.len().saturating_sub(1)) {
                     let index = path.next().expect("Still in bounds");

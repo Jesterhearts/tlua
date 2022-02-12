@@ -9,7 +9,7 @@ use tlua_bytecode::{
         },
         *,
     },
-    AnonymousRegister,
+    ImmediateRegister,
     OpError,
 };
 use tlua_parser::ast::expressions::{
@@ -18,10 +18,7 @@ use tlua_parser::ast::expressions::{
 };
 
 use crate::{
-    compiler::{
-        unasm::UnasmOp,
-        InitRegister,
-    },
+    compiler::unasm::UnasmOp,
     constant::Constant,
     CompileError,
     CompileExpression,
@@ -36,7 +33,7 @@ pub(crate) fn write_binop<Op, Lhs, Rhs, ConstEval>(
     consteval: ConstEval,
 ) -> Result<NodeOutput, CompileError>
 where
-    Op: From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)> + Into<UnasmOp>,
+    Op: From<(ImmediateRegister, ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
     Lhs: CompileExpression,
     Rhs: CompileExpression,
     ConstEval: FnOnce(Constant, Constant) -> Result<Constant, OpError>,
@@ -46,7 +43,7 @@ where
 
     // TODO(compiler-opt): Technically, more efficient use could be made of
     // registers here by checking if the operation is commutative and
-    // swapping constants to the right or existing anonymous registers to
+    // swapping constants to the right or existing immediate registers to
     // the left.
     match (lhs, rhs) {
         (NodeOutput::Constant(lhs), NodeOutput::Constant(rhs)) => match consteval(lhs, rhs) {
@@ -55,16 +52,12 @@ where
         },
         (lhs, rhs) => {
             let lhs = lhs.to_register(scope);
-            let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(lhs));
+            let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(lhs));
 
             let rhs = rhs.to_register(&mut scope);
-            let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(rhs));
+            scope.emit(Op::from((rhs, lhs, rhs)));
 
-            let dst = scope.push_anon_reg().no_init_needed();
-
-            scope.emit(Op::from((dst, lhs, rhs)));
-
-            Ok(NodeOutput::Immediate(dst))
+            Ok(NodeOutput::Immediate(rhs))
         }
     }
 }
@@ -76,7 +69,7 @@ fn write_numeric_binop<Op>(
 ) -> Result<NodeOutput, CompileError>
 where
     Op: NumericOpEval
-        + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
+        + From<(ImmediateRegister, ImmediateRegister, ImmediateRegister)>
         + Into<UnasmOp>,
 {
     write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| {
@@ -91,7 +84,7 @@ fn write_cmp_binop<Op>(
 ) -> Result<NodeOutput, CompileError>
 where
     Op: ComparisonOpEval
-        + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
+        + From<(ImmediateRegister, ImmediateRegister, ImmediateRegister)>
         + Into<UnasmOp>,
 {
     write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| match (lhs, rhs) {
@@ -125,7 +118,7 @@ fn write_boolean_binop<Op>(
 ) -> Result<NodeOutput, CompileError>
 where
     Op: BooleanOpEval
-        + From<(AnonymousRegister, AnonymousRegister, AnonymousRegister)>
+        + From<(ImmediateRegister, ImmediateRegister, ImmediateRegister)>
         + Into<UnasmOp>,
 {
     write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))

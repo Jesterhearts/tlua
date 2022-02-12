@@ -5,7 +5,7 @@ use crate::{
         traits::BooleanOpEval,
         OpName,
     },
-    AnonymousRegister,
+    ImmediateRegister,
     Truthy,
 };
 
@@ -37,9 +37,9 @@ macro_rules! bool_binop_impl {
     ($name:ident => ($lhs:ident : bool, $rhs:ident : bool) => $op:expr $(,)?) => {
         #[derive(Clone, Copy, PartialEq, Eq, From)]
         pub struct $name {
-            pub dst: AnonymousRegister,
-            pub lhs: AnonymousRegister,
-            pub rhs: AnonymousRegister,
+            pub dst: ImmediateRegister,
+            pub lhs: ImmediateRegister,
+            pub rhs: ImmediateRegister,
         }
 
         impl ::std::fmt::Debug for $name {

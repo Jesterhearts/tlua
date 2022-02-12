@@ -13,8 +13,8 @@ use std::{
 use indexmap::IndexSet;
 use tlua_bytecode::{
     opcodes,
-    AnonymousRegister,
     ByteCodeError,
+    ImmediateRegister,
     OpError,
 };
 use tlua_parser::ast::identifiers::Ident;
@@ -148,11 +148,11 @@ pub(crate) struct FunctionScope<'function> {
     /// ```
     unresolved_jumps: HashMap<LabelId, BTreeMap<usize, Vec<usize>>>,
 
-    free_registers: IndexSet<AnonymousRegister>,
+    free_registers: IndexSet<ImmediateRegister>,
 
     next_loop_id: usize,
     next_if_id: usize,
-    next_anon_reg: usize,
+    next_immediate: usize,
 
     function: UnasmFunction,
 }
@@ -175,7 +175,7 @@ impl<'function> FunctionScope<'function> {
             free_registers: Default::default(),
             next_loop_id: 0,
             next_if_id: 0,
-            next_anon_reg: 0,
+            next_immediate: 0,
             function: UnasmFunction {
                 named_args: argc,
                 ..Default::default()
@@ -224,29 +224,29 @@ impl<'function> FunctionScope<'function> {
             .map(|id| LabelId::Loop { id })
     }
 
-    fn push_anon_reg(&mut self) -> AnonymousRegister {
+    fn push_immediate(&mut self) -> ImmediateRegister {
         self.free_registers
             .shift_remove_index(self.free_registers.len().saturating_sub(1))
             .unwrap_or_else(|| {
-                let reg = self.next_anon_reg;
-                self.next_anon_reg += 1;
+                let reg = self.next_immediate;
+                self.next_immediate += 1;
 
-                self.function.anon_registers = self.function.anon_registers.max(self.next_anon_reg);
+                self.function.immediates = self.function.immediates.max(self.next_immediate);
                 reg.into()
             })
     }
 
-    fn pop_anon_reg(&mut self, reg: AnonymousRegister) {
-        assert!(reg <= self.next_anon_reg.into());
+    fn pop_immediate(&mut self, reg: ImmediateRegister) {
+        assert!(reg <= self.next_immediate.into());
 
-        if reg == (self.next_anon_reg - 1).into() {
-            self.next_anon_reg -= 1;
+        if reg == (self.next_immediate - 1).into() {
+            self.next_immediate -= 1;
         } else {
             self.free_registers.insert(reg);
         }
     }
 
-    fn push_anon_reg_range(&mut self, count: usize) -> Range<usize> {
+    fn push_immediate_range(&mut self, count: usize) -> Range<usize> {
         self.free_registers.sort();
 
         let is_contiguous = self
@@ -256,31 +256,31 @@ impl<'function> FunctionScope<'function> {
             .all(|(&first, &second)| usize::from(first) + 1 == usize::from(second));
 
         if is_contiguous {
-            self.next_anon_reg = self
+            self.next_immediate = self
                 .free_registers
                 .first()
                 .copied()
                 .map(usize::from)
-                .unwrap_or(self.next_anon_reg);
+                .unwrap_or(self.next_immediate);
             self.free_registers.clear();
         }
 
-        let start = self.next_anon_reg;
-        self.next_anon_reg += count;
+        let start = self.next_immediate;
+        self.next_immediate += count;
 
-        self.function.anon_registers = self.function.anon_registers.max(self.next_anon_reg);
+        self.function.immediates = self.function.immediates.max(self.next_immediate);
 
-        start..self.next_anon_reg
+        start..self.next_immediate
     }
 
-    fn pop_anon_reg_range(&mut self, range: Range<usize>) {
-        assert!(range.end <= self.next_anon_reg);
+    fn pop_immediate_range(&mut self, range: Range<usize>) {
+        assert!(range.end <= self.next_immediate);
 
-        if range.end == self.next_anon_reg {
-            self.next_anon_reg -= range.len();
+        if range.end == self.next_immediate {
+            self.next_immediate -= range.len();
         } else {
             self.free_registers
-                .extend(range.map(AnonymousRegister::from))
+                .extend(range.map(ImmediateRegister::from))
         }
     }
 }
@@ -598,25 +598,25 @@ impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
         }
     }
 
-    pub(crate) fn push_anon_reg(&mut self) -> UninitRegister<AnonymousRegister> {
-        self.block_scope.function_scope.push_anon_reg().into()
+    pub(crate) fn push_immediate(&mut self) -> UninitRegister<ImmediateRegister> {
+        self.block_scope.function_scope.push_immediate().into()
     }
 
-    pub(crate) fn pop_anon_reg(&mut self, reg: AnonymousRegister) {
-        self.block_scope.function_scope.pop_anon_reg(reg);
+    pub(crate) fn pop_immediate(&mut self, reg: ImmediateRegister) {
+        self.block_scope.function_scope.pop_immediate(reg);
     }
 
-    /// Allocate a sequence of anonymous registers.
-    pub(crate) fn reserve_anon_reg_range(&mut self, count: usize) -> UninitRegisterRange {
+    /// Allocate a sequence of immediate registers.
+    pub(crate) fn reserve_immediate_range(&mut self, count: usize) -> UninitRegisterRange {
         UninitRegisterRange {
-            range: self.block_scope.function_scope.push_anon_reg_range(count),
+            range: self.block_scope.function_scope.push_immediate_range(count),
         }
     }
 
-    pub(crate) fn pop_anon_reg_range(&mut self, range: UninitRegisterRange) {
+    pub(crate) fn pop_immediate_range(&mut self, range: UninitRegisterRange) {
         self.block_scope
             .function_scope
-            .pop_anon_reg_range(range.range);
+            .pop_immediate_range(range.range);
     }
 
     /// Lookup the appropriate register for a specific identifier.

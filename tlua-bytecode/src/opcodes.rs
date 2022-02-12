@@ -7,7 +7,7 @@ use tlua_parser::ast::constant_string::ConstantString;
 pub use crate::binop::*;
 use crate::{
     register::{
-        AnonymousRegister,
+        ImmediateRegister,
         MappedRegister,
         Register,
     },
@@ -149,7 +149,7 @@ pub enum Op<RegisterTy> {
     /// Discard the current scope and restore the most recently pushed scope.
     PopScope,
     /// Load the target function as the current call target and copy a range of
-    /// anonymous register as that function's arguments.
+    /// immediate register as that function's arguments.
     Call(Call),
     /// Performs the same operations as `Call` but maps the results of the most
     /// recent call into the target's arguments.
@@ -168,8 +168,8 @@ pub enum Op<RegisterTy> {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct UnaryMinus {
-    pub dst: AnonymousRegister,
-    pub src: AnonymousRegister,
+    pub dst: ImmediateRegister,
+    pub src: ImmediateRegister,
 }
 
 impl std::fmt::Debug for UnaryMinus {
@@ -180,8 +180,8 @@ impl std::fmt::Debug for UnaryMinus {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct UnaryBitNot {
-    pub dst: AnonymousRegister,
-    pub src: AnonymousRegister,
+    pub dst: ImmediateRegister,
+    pub src: ImmediateRegister,
 }
 
 impl std::fmt::Debug for UnaryBitNot {
@@ -192,8 +192,8 @@ impl std::fmt::Debug for UnaryBitNot {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct Not {
-    pub dst: AnonymousRegister,
-    pub src: AnonymousRegister,
+    pub dst: ImmediateRegister,
+    pub src: ImmediateRegister,
 }
 
 impl std::fmt::Debug for Not {
@@ -204,9 +204,9 @@ impl std::fmt::Debug for Not {
 
 #[derive(Clone, Copy, PartialEq, From, Into)]
 pub struct Concat {
-    dst: AnonymousRegister,
-    lhs: AnonymousRegister,
-    rhs: AnonymousRegister,
+    dst: ImmediateRegister,
+    lhs: ImmediateRegister,
+    rhs: ImmediateRegister,
 }
 
 impl std::fmt::Debug for Concat {
@@ -217,8 +217,8 @@ impl std::fmt::Debug for Concat {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct Length {
-    pub dst: AnonymousRegister,
-    pub src: AnonymousRegister,
+    pub dst: ImmediateRegister,
+    pub src: ImmediateRegister,
 }
 
 impl std::fmt::Debug for Length {
@@ -240,7 +240,7 @@ impl std::fmt::Debug for Jump {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct JumpNot {
-    pub cond: AnonymousRegister,
+    pub cond: ImmediateRegister,
     pub target: usize,
 }
 
@@ -252,7 +252,7 @@ impl std::fmt::Debug for JumpNot {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct JumpNil {
-    pub cond: AnonymousRegister,
+    pub cond: ImmediateRegister,
     pub target: usize,
 }
 
@@ -264,7 +264,7 @@ impl std::fmt::Debug for JumpNil {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct Call {
-    pub target: AnonymousRegister,
+    pub target: ImmediateRegister,
     pub mapped_args_start: usize,
     pub mapped_args_count: usize,
 }
@@ -275,15 +275,15 @@ impl std::fmt::Debug for Call {
             f,
             "call {:?} ({:?}..{:?})",
             self.target,
-            AnonymousRegister::from(self.mapped_args_start),
-            AnonymousRegister::from(self.mapped_args_start + self.mapped_args_count)
+            ImmediateRegister::from(self.mapped_args_start),
+            ImmediateRegister::from(self.mapped_args_start + self.mapped_args_count)
         )
     }
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct CallCopyRet {
-    pub target: AnonymousRegister,
+    pub target: ImmediateRegister,
     pub mapped_args_start: usize,
     pub mapped_args_count: usize,
 }
@@ -294,15 +294,15 @@ impl std::fmt::Debug for CallCopyRet {
             f,
             "call {:?} ({:?}..{:?}, results...)",
             self.target,
-            AnonymousRegister::from(self.mapped_args_start),
-            AnonymousRegister::from(self.mapped_args_start + self.mapped_args_count)
+            ImmediateRegister::from(self.mapped_args_start),
+            ImmediateRegister::from(self.mapped_args_start + self.mapped_args_count)
         )
     }
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct CallCopyVa {
-    pub target: AnonymousRegister,
+    pub target: ImmediateRegister,
     pub mapped_args_start: usize,
     pub mapped_args_count: usize,
 }
@@ -313,15 +313,15 @@ impl std::fmt::Debug for CallCopyVa {
             f,
             "call {:?} ({:?}..{:?}, results...)",
             self.target,
-            AnonymousRegister::from(self.mapped_args_start),
-            AnonymousRegister::from(self.mapped_args_start + self.mapped_args_count)
+            ImmediateRegister::from(self.mapped_args_start),
+            ImmediateRegister::from(self.mapped_args_start + self.mapped_args_count)
         )
     }
 }
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct SetRet {
-    pub src: AnonymousRegister,
+    pub src: ImmediateRegister,
 }
 
 impl std::fmt::Debug for SetRet {
@@ -343,7 +343,7 @@ impl std::fmt::Debug for Raise {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct RaiseIfNot {
-    pub src: AnonymousRegister,
+    pub src: ImmediateRegister,
     pub err: OpError,
 }
 
@@ -355,7 +355,7 @@ impl std::fmt::Debug for RaiseIfNot {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct Alloc {
-    pub dst: AnonymousRegister,
+    pub dst: ImmediateRegister,
     pub type_id: TypeId,
 }
 
@@ -367,8 +367,8 @@ impl std::fmt::Debug for Alloc {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct CheckType {
-    pub dst: AnonymousRegister,
-    pub src: AnonymousRegister,
+    pub dst: ImmediateRegister,
+    pub src: ImmediateRegister,
     pub expected_type_id: TypeId,
 }
 
@@ -384,9 +384,9 @@ impl std::fmt::Debug for CheckType {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct SetProperty {
-    pub dst: AnonymousRegister,
-    pub idx: AnonymousRegister,
-    pub src: AnonymousRegister,
+    pub dst: ImmediateRegister,
+    pub idx: ImmediateRegister,
+    pub src: ImmediateRegister,
 }
 
 impl std::fmt::Debug for SetProperty {
@@ -397,7 +397,7 @@ impl std::fmt::Debug for SetProperty {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct SetAllPropertiesFromVa {
-    pub dst: AnonymousRegister,
+    pub dst: ImmediateRegister,
     pub start_idx: usize,
 }
 
@@ -409,9 +409,9 @@ impl std::fmt::Debug for SetAllPropertiesFromVa {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct Lookup {
-    pub dst: AnonymousRegister,
-    pub src: AnonymousRegister,
-    pub idx: AnonymousRegister,
+    pub dst: ImmediateRegister,
+    pub src: ImmediateRegister,
+    pub idx: ImmediateRegister,
 }
 
 impl std::fmt::Debug for Lookup {
@@ -422,7 +422,7 @@ impl std::fmt::Debug for Lookup {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct LoadConstant {
-    pub dst: AnonymousRegister,
+    pub dst: ImmediateRegister,
     pub src: Constant,
 }
 
@@ -434,7 +434,7 @@ impl std::fmt::Debug for LoadConstant {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct LoadRegister<RegTy> {
-    pub dst: AnonymousRegister,
+    pub dst: ImmediateRegister,
     pub src: MappedRegister<RegTy>,
 }
 
@@ -449,8 +449,8 @@ where
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct DuplicateRegister {
-    pub dst: AnonymousRegister,
-    pub src: AnonymousRegister,
+    pub dst: ImmediateRegister,
+    pub src: ImmediateRegister,
 }
 
 impl std::fmt::Debug for DuplicateRegister {
@@ -471,8 +471,8 @@ impl std::fmt::Debug for LoadVa {
         write!(
             f,
             "{:?}..{:?} = va[{}..]",
-            AnonymousRegister::from(self.dst_start),
-            AnonymousRegister::from(self.dst_start + self.va_start),
+            ImmediateRegister::from(self.dst_start),
+            ImmediateRegister::from(self.dst_start + self.va_start),
             self.count
         )
     }
@@ -481,7 +481,7 @@ impl std::fmt::Debug for LoadVa {
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct Store<RegTy> {
     pub dst: MappedRegister<RegTy>,
-    pub src: AnonymousRegister,
+    pub src: ImmediateRegister,
 }
 
 impl<Reg> std::fmt::Debug for Store<Reg>
@@ -515,8 +515,8 @@ impl std::fmt::Debug for ConsumeRetRange {
         write!(
             f,
             "{:?}..{:?} = results[..{}]",
-            AnonymousRegister::from(self.dst_start),
-            AnonymousRegister::from(self.dst_start + self.count),
+            ImmediateRegister::from(self.dst_start),
+            ImmediateRegister::from(self.dst_start + self.count),
             self.count,
         )
     }
@@ -524,7 +524,7 @@ impl std::fmt::Debug for ConsumeRetRange {
 
 #[derive(Clone, Copy, PartialEq, From)]
 pub struct SetAllPropertiesFromRet {
-    pub dst: AnonymousRegister,
+    pub dst: ImmediateRegister,
     pub start_idx: usize,
 }
 

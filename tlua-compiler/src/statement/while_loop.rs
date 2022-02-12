@@ -22,7 +22,7 @@ impl CompileStatement for WhileLoop<'_> {
         let cond_start = scope.next_instruction();
         let init = self.cond.compile(scope)?;
         let cond = init.to_register(scope);
-        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(cond));
+        let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(cond));
 
         let pending_skip_body = scope.reserve_jump_isn();
 

@@ -49,7 +49,7 @@ impl CompileStatement for RetStatement<'_> {
                 .compile(scope)?;
 
             let ret = retval.to_register(scope);
-            let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_anon_reg(ret));
+            let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_immediate(ret));
             scope.emit(opcodes::SetRet::from(ret));
         }
         match outputs
@@ -65,7 +65,7 @@ impl CompileStatement for RetStatement<'_> {
             }
             retval => {
                 let ret = retval.to_register(scope);
-                let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(ret));
+                let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(ret));
                 scope.emit(opcodes::SetRet::from(ret));
                 scope.emit(opcodes::Op::Ret);
             }

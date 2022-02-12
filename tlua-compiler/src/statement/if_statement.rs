@@ -51,7 +51,7 @@ fn compile_if_block(
 ) -> Result<(), CompileError> {
     let cond_value = cond.compile(scope)?;
     let cond_reg = cond_value.to_register(scope);
-    let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(cond_reg));
+    let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(cond_reg));
 
     // Reserve an intruction for jumping to the next condition if the operand is
     // false.

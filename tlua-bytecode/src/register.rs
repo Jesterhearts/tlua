@@ -5,9 +5,9 @@ use derive_more::{
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
-pub struct AnonymousRegister(usize);
+pub struct ImmediateRegister(usize);
 
-impl std::fmt::Debug for AnonymousRegister {
+impl std::fmt::Debug for ImmediateRegister {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!("imm{}", self.0))
     }

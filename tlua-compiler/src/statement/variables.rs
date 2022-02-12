@@ -20,8 +20,8 @@ impl CompileStatement for LocalVarList<'_> {
             },
             |scope, reg, src| {
                 let src = src.to_register(scope);
-                let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(src));
-                reg.init_from_anon_reg(&mut scope, src);
+                let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(src));
+                reg.init_from_immediate(&mut scope, src);
             },
             self.vars.iter(),
             self.initializers.iter(),

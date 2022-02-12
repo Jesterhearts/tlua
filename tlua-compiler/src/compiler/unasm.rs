@@ -120,7 +120,7 @@ impl AssembleOp for UnasmOp {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct UnasmFunction {
     pub(crate) named_args: usize,
-    pub(crate) anon_registers: usize,
+    pub(crate) immediates: usize,
     pub(crate) local_registers: usize,
     pub(crate) instructions: Vec<UnasmOp>,
 }
@@ -131,12 +131,12 @@ impl UnasmFunction {
             instructions,
             named_args,
             local_registers,
-            anon_registers,
+            immediates,
         } = self;
 
         Function {
             local_registers,
-            anon_registers,
+            immediates,
             named_args,
             instructions: Instructions::from(
                 instructions

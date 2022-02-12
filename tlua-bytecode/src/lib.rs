@@ -13,7 +13,7 @@ mod register;
 pub use number::Number;
 pub use opcodes::Constant;
 pub use register::{
-    AnonymousRegister,
+    ImmediateRegister,
     MappedRegister,
     Register,
 };

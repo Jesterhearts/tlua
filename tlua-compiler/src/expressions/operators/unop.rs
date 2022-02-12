@@ -1,4 +1,3 @@
-use scopeguard::guard_on_success;
 use tlua_bytecode::{
     binop::f64inbounds,
     opcodes::{
@@ -6,17 +5,14 @@ use tlua_bytecode::{
         UnaryBitNot,
         UnaryMinus,
     },
-    AnonymousRegister,
+    ImmediateRegister,
     OpError,
     Truthy,
 };
 use tlua_parser::ast::expressions::operator::*;
 
 use crate::{
-    compiler::{
-        unasm::UnasmOp,
-        InitRegister,
-    },
+    compiler::unasm::UnasmOp,
     constant::Constant,
     CompileError,
     CompileExpression,
@@ -30,7 +26,7 @@ pub(crate) fn write_unary_op<Op, Operand, ConstEval>(
     consteval: ConstEval,
 ) -> Result<NodeOutput, CompileError>
 where
-    Op: From<(AnonymousRegister, AnonymousRegister)> + Into<UnasmOp>,
+    Op: From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
     Operand: CompileExpression,
     ConstEval: FnOnce(Constant) -> Result<Constant, OpError>,
 {
@@ -41,13 +37,9 @@ where
         },
         src => {
             let src = src.to_register(scope);
-            let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(src));
+            scope.emit(Op::from((src, src)));
 
-            let dst = scope.push_anon_reg().no_init_needed();
-
-            scope.emit(Op::from((dst, src)));
-
-            Ok(NodeOutput::Immediate(dst))
+            Ok(NodeOutput::Immediate(src))
         }
     }
 }

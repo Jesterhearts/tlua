@@ -29,9 +29,9 @@ impl CompileStatement for ForEachLoop<'_> {
         // calls and returns can slice-assign arguments/return values.
         // to_be_closed is never written to by the loop, so we don't really care where
         // it lives.
-        let var_inits = scope.reserve_anon_reg_range(LOOP_ARGS + vars.len());
+        let var_inits = scope.reserve_immediate_range(LOOP_ARGS + vars.len());
         let mut var_init_regsiters = var_inits.iter();
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg_range(var_inits));
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate_range(var_inits));
 
         let to_be_closed = var_init_regsiters
             .next()
@@ -60,8 +60,8 @@ impl CompileStatement for ForEachLoop<'_> {
             |_scope, var| Ok(var),
             |scope, var, init| {
                 let init = init.to_register(scope);
-                let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(init));
-                var.init_from_anon_reg(&mut scope, init);
+                let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(init));
+                var.init_from_immediate(&mut scope, init);
             },
             control_vars_list.into_iter(),
             self.expressions.iter(),
@@ -79,12 +79,12 @@ impl CompileStatement for ForEachLoop<'_> {
         let named_control = vars.next().expect("At least one named variable");
         scope
             .new_local(named_control)?
-            .init_from_anon_reg(&mut scope, control);
+            .init_from_immediate(&mut scope, control);
 
         for (var, reg) in vars.zip(var_init_regsiters) {
             scope
                 .new_local(var)?
-                .init_from_anon_reg(&mut scope, reg.no_init_needed());
+                .init_from_immediate(&mut scope, reg.no_init_needed());
         }
 
         let pending_skip_body = scope.reserve_jump_isn();

@@ -12,7 +12,7 @@ use scopeguard::guard_on_success;
 use thiserror::Error;
 use tlua_bytecode::{
     opcodes::Instruction,
-    AnonymousRegister,
+    ImmediateRegister,
     OpError,
     TypeId,
 };
@@ -49,11 +49,11 @@ use crate::{
 #[derive(Debug)]
 enum NodeOutput {
     Constant(Constant),
-    Immediate(AnonymousRegister),
+    Immediate(ImmediateRegister),
     MappedRegister(MappedLocalRegister),
     TableEntry {
-        table: AnonymousRegister,
-        index: AnonymousRegister,
+        table: ImmediateRegister,
+        index: ImmediateRegister,
     },
     ReturnValues,
     VAStack,
@@ -61,18 +61,18 @@ enum NodeOutput {
 }
 
 impl NodeOutput {
-    pub(crate) fn to_register(&self, scope: &mut Scope) -> AnonymousRegister {
+    pub(crate) fn to_register(&self, scope: &mut Scope) -> ImmediateRegister {
         match self {
-            NodeOutput::Constant(c) => scope.push_anon_reg().init_from_const(scope, *c),
+            NodeOutput::Constant(c) => scope.push_immediate().init_from_const(scope, *c),
             NodeOutput::Immediate(i) => *i,
-            NodeOutput::MappedRegister(m) => scope.push_anon_reg().init_from_mapped_reg(scope, *m),
+            NodeOutput::MappedRegister(m) => scope.push_immediate().init_from_mapped_reg(scope, *m),
             NodeOutput::TableEntry { table, index } => {
-                let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(*index));
+                let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(*index));
                 table.init_from_table_entry(&mut scope, *table, *index)
             }
-            NodeOutput::ReturnValues => scope.push_anon_reg().init_from_ret(scope),
-            NodeOutput::VAStack => scope.push_anon_reg().init_from_va(scope, 0),
-            NodeOutput::Err(_) => scope.push_anon_reg().no_init_needed(),
+            NodeOutput::ReturnValues => scope.push_immediate().init_from_ret(scope),
+            NodeOutput::VAStack => scope.push_immediate().init_from_va(scope, 0),
+            NodeOutput::Err(_) => scope.push_immediate().no_init_needed(),
         }
     }
 }
@@ -216,7 +216,7 @@ impl std::fmt::Debug for Instructions {
 pub struct Function {
     pub named_args: usize,
     pub local_registers: usize,
-    pub anon_registers: usize,
+    pub immediates: usize,
     pub instructions: Instructions,
 }
 

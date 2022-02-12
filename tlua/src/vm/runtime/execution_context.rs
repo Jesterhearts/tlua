@@ -15,8 +15,8 @@ use tlua_bytecode::{
         Op,
         *,
     },
-    AnonymousRegister,
     ByteCodeError,
+    ImmediateRegister,
     OpError,
     PrimitiveType,
     Truthy,
@@ -53,16 +53,16 @@ use crate::vm::{
 #[derive(Debug, Deref, DerefMut, From)]
 pub(crate) struct Immediates(Vec<Value>);
 
-impl Index<AnonymousRegister> for Immediates {
+impl Index<ImmediateRegister> for Immediates {
     type Output = Value;
 
-    fn index(&self, index: AnonymousRegister) -> &Self::Output {
+    fn index(&self, index: ImmediateRegister) -> &Self::Output {
         &self.0[usize::from(index)]
     }
 }
 
-impl IndexMut<AnonymousRegister> for Immediates {
-    fn index_mut(&mut self, index: AnonymousRegister) -> &mut Self::Output {
+impl IndexMut<ImmediateRegister> for Immediates {
+    fn index_mut(&mut self, index: ImmediateRegister) -> &mut Self::Output {
         &mut self.0[usize::from(index)]
     }
 }
@@ -70,7 +70,7 @@ impl IndexMut<AnonymousRegister> for Immediates {
 #[derive(Debug)]
 pub struct Context<'call> {
     in_scope: ScopeSet,
-    anon: Immediates,
+    imm: Immediates,
 
     chunk: &'call Chunk,
     instructions: &'call [Instruction],
@@ -81,7 +81,7 @@ impl<'call> Context<'call> {
     pub fn new(scopes: ScopeSet, chunk: &'call Chunk) -> Self {
         Self {
             in_scope: scopes,
-            anon: vec![Value::Nil; chunk.main.anon_registers].into(),
+            imm: vec![Value::Nil; chunk.main.immediates].into(),
             chunk,
             instructions: chunk.main.instructions.as_slice(),
             instruction_pointer: chunk.main.instructions.as_slice(),
@@ -103,7 +103,7 @@ impl Context<'_> {
 
         Context {
             in_scope: ScopeSet::new(func.referenced_scopes.clone(), new_scope, va_args),
-            anon: vec![Value::Nil; func_def.anon_registers].into(),
+            imm: vec![Value::Nil; func_def.immediates].into(),
 
             chunk: self.chunk,
             instructions: func_def.instructions.as_slice(),
@@ -120,45 +120,45 @@ impl Context<'_> {
 
                 // Numeric operations
                 Op::Add(Add { dst, lhs, rhs }) => {
-                    self.anon[dst] = fp_op::<Add>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = fp_op::<Add>(lhs, rhs, &self.imm)?;
                 }
                 Op::Subtract(Subtract { dst, lhs, rhs }) => {
-                    self.anon[dst] = fp_op::<Subtract>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = fp_op::<Subtract>(lhs, rhs, &self.imm)?;
                 }
                 Op::Times(Times { dst, lhs, rhs }) => {
-                    self.anon[dst] = fp_op::<Times>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = fp_op::<Times>(lhs, rhs, &self.imm)?;
                 }
                 Op::Modulo(Modulo { dst, lhs, rhs }) => {
-                    self.anon[dst] = fp_op::<Modulo>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = fp_op::<Modulo>(lhs, rhs, &self.imm)?;
                 }
                 Op::Divide(Divide { dst, lhs, rhs }) => {
-                    self.anon[dst] = fp_op::<Divide>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = fp_op::<Divide>(lhs, rhs, &self.imm)?;
                 }
                 Op::Exponetiation(Exponetiation { dst, lhs, rhs }) => {
-                    self.anon[dst] = fp_op::<Exponetiation>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = fp_op::<Exponetiation>(lhs, rhs, &self.imm)?;
                 }
                 Op::IDiv(IDiv { dst, lhs, rhs }) => {
-                    self.anon[dst] = fp_op::<IDiv>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = fp_op::<IDiv>(lhs, rhs, &self.imm)?;
                 }
                 Op::BitAnd(BitAnd { dst, lhs, rhs }) => {
-                    self.anon[dst] = int_op::<BitAnd>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = int_op::<BitAnd>(lhs, rhs, &self.imm)?;
                 }
                 Op::BitOr(BitOr { dst, lhs, rhs }) => {
-                    self.anon[dst] = int_op::<BitOr>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = int_op::<BitOr>(lhs, rhs, &self.imm)?;
                 }
                 Op::BitXor(BitXor { dst, lhs, rhs }) => {
-                    self.anon[dst] = int_op::<BitXor>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = int_op::<BitXor>(lhs, rhs, &self.imm)?;
                 }
                 Op::ShiftLeft(ShiftLeft { dst, lhs, rhs }) => {
-                    self.anon[dst] = int_op::<ShiftLeft>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = int_op::<ShiftLeft>(lhs, rhs, &self.imm)?;
                 }
                 Op::ShiftRight(ShiftRight { dst, lhs, rhs }) => {
-                    self.anon[dst] = int_op::<ShiftRight>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = int_op::<ShiftRight>(lhs, rhs, &self.imm)?;
                 }
 
                 // Unary math operations
                 Op::UnaryMinus(UnaryMinus { dst, src }) => {
-                    self.anon[dst] = match self.anon[src].clone() {
+                    self.imm[dst] = match self.imm[src].clone() {
                         Value::Number(operand) => Value::Number(match operand {
                             Number::Float(f) => Number::Float(-f),
                             Number::Integer(i) => Number::Integer(-i),
@@ -167,7 +167,7 @@ impl Context<'_> {
                     };
                 }
                 Op::UnaryBitNot(UnaryBitNot { dst, src }) => {
-                    self.anon[dst] = match self.anon[src].clone() {
+                    self.imm[dst] = match self.imm[src].clone() {
                         Value::Number(operand) => Value::Number(match operand {
                             Number::Float(f) => {
                                 if f.fract() == 0.0 {
@@ -188,41 +188,41 @@ impl Context<'_> {
 
                 // Comparison operations
                 Op::LessThan(LessThan { dst, lhs, rhs }) => {
-                    self.anon[dst] = cmp_op::<LessThan>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = cmp_op::<LessThan>(lhs, rhs, &self.imm)?;
                 }
                 Op::LessEqual(LessEqual { dst, lhs, rhs }) => {
-                    self.anon[dst] = cmp_op::<LessEqual>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = cmp_op::<LessEqual>(lhs, rhs, &self.imm)?;
                 }
                 Op::GreaterThan(GreaterThan { dst, lhs, rhs }) => {
-                    self.anon[dst] = cmp_op::<GreaterThan>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = cmp_op::<GreaterThan>(lhs, rhs, &self.imm)?;
                 }
                 Op::GreaterEqual(GreaterEqual { dst, lhs, rhs }) => {
-                    self.anon[dst] = cmp_op::<GreaterEqual>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = cmp_op::<GreaterEqual>(lhs, rhs, &self.imm)?;
                 }
                 Op::Equals(Equals { dst, lhs, rhs }) => {
-                    self.anon[dst] = cmp_op::<Equals>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = cmp_op::<Equals>(lhs, rhs, &self.imm)?;
                 }
                 Op::NotEqual(NotEqual { dst, lhs, rhs }) => {
-                    self.anon[dst] = cmp_op::<NotEqual>(lhs, rhs, &self.anon)?;
+                    self.imm[dst] = cmp_op::<NotEqual>(lhs, rhs, &self.imm)?;
                 }
 
                 // Boolean operations
                 Op::And(And { dst, lhs, rhs }) => {
-                    self.anon[dst] = bool_op::<And>(lhs, rhs, &self.anon);
+                    self.imm[dst] = bool_op::<And>(lhs, rhs, &self.imm);
                 }
                 Op::Or(Or { dst, lhs, rhs }) => {
-                    self.anon[dst] = bool_op::<Or>(lhs, rhs, &self.anon);
+                    self.imm[dst] = bool_op::<Or>(lhs, rhs, &self.imm);
                 }
 
                 // Unary boolean operations
                 Op::Not(Not { dst, src }) => {
-                    self.anon[dst] = Value::Bool(!self.anon[src].as_bool());
+                    self.imm[dst] = Value::Bool(!self.imm[src].as_bool());
                 }
 
                 // String & Array operations
                 Op::Concat(_) => return Err(OpError::InvalidType { op: "concat" }),
                 Op::Length(Length { dst, src }) => {
-                    self.anon[dst] = match &self.anon[src] {
+                    self.imm[dst] = match &self.imm[src] {
                         Value::String(s) => i64::try_from(s.borrow().len())
                             .map_err(|_| OpError::StringLengthOutOfBounds)
                             .map(Value::from)?,
@@ -235,24 +235,24 @@ impl Context<'_> {
                 }
 
                 Op::JumpNot(JumpNot { cond, target }) => {
-                    if !self.anon[cond].as_bool() {
+                    if !self.imm[cond].as_bool() {
                         self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
                 Op::JumpNil(JumpNil { cond, target }) => {
-                    if self.anon[cond] == Value::Nil {
+                    if self.imm[cond] == Value::Nil {
                         self.instruction_pointer = self.instructions.split_at(target).1;
                     }
                 }
 
                 // Table operations
                 Op::Lookup(Lookup { dst, src, idx }) => {
-                    self.anon[dst] = match &self.anon[src] {
+                    self.imm[dst] = match &self.imm[src] {
                         Value::Table(t) => t
                             .borrow()
                             .entries
-                            .get(&TableKey::try_from(self.anon[idx].clone())?)
+                            .get(&TableKey::try_from(self.imm[idx].clone())?)
                             .cloned()
                             .unwrap_or_default(),
                         _ => return Err(OpError::InvalidType { op: "index" }),
@@ -260,10 +260,10 @@ impl Context<'_> {
                 }
 
                 Op::SetProperty(SetProperty { dst, idx, src }) => {
-                    match &self.anon[dst] {
+                    match &self.imm[dst] {
                         Value::Table(t) => t.borrow_mut().entries.insert(
-                            TableKey::try_from(self.anon[idx].clone())?,
-                            self.anon[src].clone(),
+                            TableKey::try_from(self.imm[idx].clone())?,
+                            self.imm[src].clone(),
                         ),
                         _ => return Err(OpError::InvalidType { op: "newindex" }),
                     };
@@ -283,7 +283,7 @@ impl Context<'_> {
                         })
                         .collect::<Result<Vec<_>, _>>()?;
 
-                    match &self.anon[dst] {
+                    match &self.imm[dst] {
                         Value::Table(t) => t.borrow_mut().entries.extend(entries),
                         _ => return Err(OpError::InvalidType { op: "va tableinit" }),
                     };
@@ -291,7 +291,7 @@ impl Context<'_> {
 
                 // Register operations
                 Op::LoadConstant(LoadConstant { dst, src }) => {
-                    self.anon[dst] = src.into();
+                    self.imm[dst] = src.into();
                 }
                 Op::LoadVa(LoadVa {
                     dst_start,
@@ -299,18 +299,18 @@ impl Context<'_> {
                     count,
                 }) => {
                     let mut va = self.in_scope.iter_va().skip(va_start);
-                    for dst in self.anon.iter_mut().skip(dst_start).take(count) {
+                    for dst in self.imm.iter_mut().skip(dst_start).take(count) {
                         *dst = va.next().cloned().unwrap_or_default();
                     }
                 }
                 Op::LoadRegister(LoadRegister { dst, src }) => {
-                    self.anon[dst] = self.in_scope.load(src);
+                    self.imm[dst] = self.in_scope.load(src);
                 }
                 Op::DuplicateRegister(DuplicateRegister { dst, src }) => {
-                    self.anon[dst] = self.anon[src].clone();
+                    self.imm[dst] = self.imm[src].clone();
                 }
                 Op::Store(Store { dst, src }) => {
-                    self.in_scope.store(dst, self.anon[src].clone());
+                    self.in_scope.store(dst, self.imm[src].clone());
                 }
 
                 // Begin calling a function
@@ -339,12 +339,12 @@ impl Context<'_> {
 
                 // Set up return values for a function
                 Op::SetRet(SetRet { src }) => {
-                    self.in_scope.add_result(self.anon[src].clone());
+                    self.in_scope.add_result(self.imm[src].clone());
                 }
 
                 // Allocate values
                 Op::Alloc(Alloc { dst, type_id }) => {
-                    self.anon[dst] = match BuiltinType::try_from(type_id) {
+                    self.imm[dst] = match BuiltinType::try_from(type_id) {
                         Ok(BuiltinType::Function(id)) => {
                             Value::Function(Gc::new(Function::new(&self.in_scope, id)))
                         }
@@ -363,7 +363,7 @@ impl Context<'_> {
                     src,
                     expected_type_id,
                 }) => {
-                    self.anon[dst] = match (expected_type_id, &self.anon[src]) {
+                    self.imm[dst] = match (expected_type_id, &self.imm[src]) {
                         (TypeId::Primitive(PrimitiveType::Nil), Value::Nil)
                         | (TypeId::Primitive(PrimitiveType::Bool), Value::Bool(_))
                         | (
@@ -411,7 +411,7 @@ impl Context<'_> {
                 // Stop execution by raising an error.
                 Op::Raise(Raise { err }) => return Err(err),
                 Op::RaiseIfNot(RaiseIfNot { src, err }) => {
-                    if !self.anon[src].as_bool() {
+                    if !self.imm[src].as_bool() {
                         return Err(err);
                     }
                 }
@@ -433,11 +433,11 @@ impl Context<'_> {
 
     fn start_call(
         &mut self,
-        target: AnonymousRegister,
+        target: ImmediateRegister,
         arg_range: Range<usize>,
         extra_args: Vec<Value>,
     ) -> Result<(), OpError> {
-        let func = match &self.anon[target] {
+        let func = match &self.imm[target] {
             Value::Function(ptr) => ptr.clone(),
             _ => return Err(OpError::InvalidType { op: "call" }),
         };
@@ -499,7 +499,7 @@ impl Context<'_> {
 
         // Map all of the explicit input args to target registers
         for (target_idx, src_idx) in (0..desired_input_args).zip(arg_range.clone()) {
-            subscope.registers[target_idx].replace(self.anon[src_idx.into()].clone());
+            subscope.registers[target_idx].replace(self.imm[src_idx.into()].clone());
         }
 
         if arg_range.len() < desired_input_args {
@@ -508,7 +508,7 @@ impl Context<'_> {
             }
         } else {
             for src_idx in (arg_range.start + desired_input_args)..arg_range.end {
-                va_args.push(self.anon[src_idx.into()].clone());
+                va_args.push(self.imm[src_idx.into()].clone());
             }
         }
 
@@ -526,13 +526,13 @@ impl Context<'_> {
         match isn {
             Op::ConsumeRetRange(ConsumeRetRange { dst_start, count }) => {
                 let mut results = results.into_iter();
-                for dst in self.anon.iter_mut().skip(dst_start).take(count) {
+                for dst in self.imm.iter_mut().skip(dst_start).take(count) {
                     *dst = results.next().unwrap_or_default();
                 }
             }
 
             Op::SetAllPropertiesFromRet(SetAllPropertiesFromRet { dst, start_idx }) => {
-                match &self.anon[dst] {
+                match &self.imm[dst] {
                     Value::Table(t) => {
                         let mut table = t.borrow_mut();
                         for res in results.into_iter().enumerate().map(|(index, v)| {

@@ -2,7 +2,7 @@ use either::Either;
 use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
-    AnonymousRegister,
+    ImmediateRegister,
     OpError,
 };
 use tlua_parser::ast::{
@@ -30,8 +30,8 @@ use crate::{
 };
 
 pub(crate) struct TableIndex {
-    pub(crate) table: AnonymousRegister,
-    pub(crate) index: AnonymousRegister,
+    pub(crate) table: ImmediateRegister,
+    pub(crate) index: ImmediateRegister,
 }
 
 impl CompileExpression for VarAtom<'_> {
@@ -80,7 +80,7 @@ impl CompileStatement for FnCallPrefixExpression<'_> {
         match CompileExpression::compile(&self, scope)? {
             NodeOutput::Err(err) => Ok(Some(err)),
             NodeOutput::Immediate(imm) => {
-                scope.pop_anon_reg(imm);
+                scope.pop_immediate(imm);
                 Ok(None)
             }
             _ => Ok(None),
@@ -88,20 +88,20 @@ impl CompileStatement for FnCallPrefixExpression<'_> {
     }
 }
 
-fn emit_load_head(scope: &mut Scope, head: &HeadAtom) -> Result<AnonymousRegister, CompileError> {
+fn emit_load_head(scope: &mut Scope, head: &HeadAtom) -> Result<ImmediateRegister, CompileError> {
     match head {
         HeadAtom::Name(ident) => {
             let reg = scope.read_variable(*ident)?;
-            Ok(scope.push_anon_reg().init_from_mapped_reg(scope, reg))
+            Ok(scope.push_immediate().init_from_mapped_reg(scope, reg))
         }
         HeadAtom::Parenthesized(expr) => match expr.compile(scope)? {
             NodeOutput::Constant(c) => {
                 scope.write_raise(OpError::NotATable {
                     ty: c.short_type_name(),
                 });
-                Ok(scope.push_anon_reg().no_init_needed())
+                Ok(scope.push_immediate().no_init_needed())
             }
-            NodeOutput::Err(_) => Ok(scope.push_anon_reg().no_init_needed()),
+            NodeOutput::Err(_) => Ok(scope.push_immediate().no_init_needed()),
             src => Ok(src.to_register(scope)),
         },
     }
@@ -111,7 +111,7 @@ fn emit_table_path_traversal<'a, 'p>(
     scope: &mut Scope,
     head: &HeadAtom,
     middle: impl Iterator<Item = &'a PrefixAtom<'p>>,
-) -> Result<AnonymousRegister, CompileError>
+) -> Result<ImmediateRegister, CompileError>
 where
     'p: 'a,
 {
@@ -122,7 +122,7 @@ where
             PrefixAtom::Var(v) => {
                 let index = v.compile(scope)?;
                 let index = index.to_register(scope);
-                let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_anon_reg(index));
+                let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_immediate(index));
 
                 scope.emit(opcodes::Lookup::from((table_reg, table_reg, index)));
             }
@@ -137,7 +137,7 @@ where
 
 fn emit_call(
     scope: &mut Scope,
-    target: AnonymousRegister,
+    target: ImmediateRegister,
     atom: &FunctionAtom,
 ) -> Result<Option<OpError>, CompileError> {
     Ok(match atom {
@@ -150,7 +150,7 @@ fn emit_call(
 
 fn emit_call_with_args(
     scope: &mut Scope,
-    target: AnonymousRegister,
+    target: ImmediateRegister,
     method: Option<Ident>,
     args: &FnArgs,
 ) -> Result<Option<OpError>, CompileError> {
@@ -170,7 +170,7 @@ fn emit_call_with_args(
 
 pub(crate) fn emit_standard_call(
     scope: &mut Scope,
-    target: AnonymousRegister,
+    target: ImmediateRegister,
     method: Option<Ident>,
     mut args: impl ExactSizeIterator<Item = impl CompileExpression>,
 ) -> Result<Option<OpError>, CompileError> {
@@ -181,9 +181,9 @@ pub(crate) fn emit_standard_call(
         return Ok(None);
     }
 
-    let arg_range = scope.reserve_anon_reg_range(argc);
+    let arg_range = scope.reserve_immediate_range(argc);
     let mut arg_registers = arg_range.iter().peekable();
-    let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg_range(arg_range));
+    let mut scope = guard_on_success(scope, |scope| scope.pop_immediate_range(arg_range));
 
     let first_arg_idx = usize::from(
         arg_registers
@@ -198,12 +198,12 @@ pub(crate) fn emit_standard_call(
             .next()
             .expect("Should still have arg registers");
 
-        arg_reg.init_from_anon_reg(&mut scope, target);
+        arg_reg.init_from_immediate(&mut scope, target);
         let index_reg = scope
-            .push_anon_reg()
+            .push_immediate()
             .init_from_const(&mut scope, Constant::String(method.into()));
         let mut scope = guard_on_success(&mut scope, |scope| {
-            scope.pop_anon_reg(index_reg);
+            scope.pop_immediate(index_reg);
         });
 
         scope.emit(opcodes::Lookup::from((target, target, index_reg)));
@@ -218,9 +218,9 @@ pub(crate) fn emit_standard_call(
             .compile(&mut scope)?;
 
         let arg_init = arg_init.to_register(&mut scope);
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(arg_init));
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(arg_init));
 
-        arg_reg.init_from_anon_reg(&mut scope, arg_init);
+        arg_reg.init_from_immediate(&mut scope, arg_init);
     }
 
     let last_reg = arg_registers.next().expect("Should have at least 1 arg");
@@ -245,9 +245,9 @@ pub(crate) fn emit_standard_call(
         }
         arg => {
             let arg_init = arg.to_register(&mut scope);
-            let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(arg_init));
+            let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(arg_init));
 
-            last_reg.init_from_anon_reg(&mut scope, arg_init);
+            last_reg.init_from_immediate(&mut scope, arg_init);
         }
     }
 
@@ -265,7 +265,7 @@ pub(crate) fn map_var(
             let table = emit_table_path_traversal(scope, head, middle.iter())?;
             let index = match last {
                 VarAtom::Name(ident) => scope
-                    .push_anon_reg()
+                    .push_immediate()
                     .init_from_const(scope, ConstantString::from(ident).into()),
                 VarAtom::IndexOp(index) => index.compile(scope)?.to_register(scope),
             };

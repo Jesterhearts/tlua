@@ -8,7 +8,7 @@ use crate::{
         },
         OpName,
     },
-    AnonymousRegister,
+    ImmediateRegister,
     NumLike,
     Number,
     OpError,
@@ -29,9 +29,9 @@ macro_rules! float_binop_impl {
     ) => {
         #[derive(Clone, Copy, PartialEq, Eq, From)]
         pub struct $name {
-            pub dst: AnonymousRegister,
-            pub lhs: AnonymousRegister,
-            pub rhs: AnonymousRegister,
+            pub dst: ImmediateRegister,
+            pub lhs: ImmediateRegister,
+            pub rhs: ImmediateRegister,
         }
 
         impl ::std::fmt::Debug for $name {

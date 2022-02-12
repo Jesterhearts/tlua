@@ -9,7 +9,7 @@ use tlua_bytecode::{
         NumericOpEval,
         OpName,
     },
-    AnonymousRegister,
+    ImmediateRegister,
     OpError,
 };
 
@@ -19,16 +19,16 @@ use crate::vm::runtime::{
 };
 
 pub(crate) fn bool_op<Op: BooleanOpEval>(
-    lhs: AnonymousRegister,
-    rhs: AnonymousRegister,
+    lhs: ImmediateRegister,
+    rhs: ImmediateRegister,
     registers: &Immediates,
 ) -> Value {
     Op::evaluate::<&Value, _, _>(&registers[lhs], &registers[rhs]).clone()
 }
 
 pub(crate) fn cmp_op<Op: ComparisonOpEval>(
-    lhs: AnonymousRegister,
-    rhs: AnonymousRegister,
+    lhs: ImmediateRegister,
+    rhs: ImmediateRegister,
     registers: &Immediates,
 ) -> Result<Value, OpError> {
     Ok(Value::Bool(match (&registers[lhs], &registers[rhs]) {
@@ -43,8 +43,8 @@ pub(crate) fn cmp_op<Op: ComparisonOpEval>(
 }
 
 pub(crate) fn fp_op<Op: NumericOpEval + FloatBinop + OpName>(
-    lhs: AnonymousRegister,
-    rhs: AnonymousRegister,
+    lhs: ImmediateRegister,
+    rhs: ImmediateRegister,
     registers: &Immediates,
 ) -> Result<Value, OpError> {
     match registers[lhs] {
@@ -54,8 +54,8 @@ pub(crate) fn fp_op<Op: NumericOpEval + FloatBinop + OpName>(
 }
 
 pub(crate) fn int_op<Op: NumericOpEval + IntBinop + OpName>(
-    lhs: AnonymousRegister,
-    rhs: AnonymousRegister,
+    lhs: ImmediateRegister,
+    rhs: ImmediateRegister,
     registers: &Immediates,
 ) -> Result<Value, OpError> {
     match registers[lhs] {

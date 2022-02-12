@@ -1,7 +1,7 @@
 use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
-    AnonymousRegister,
+    ImmediateRegister,
     OpError,
     PrimitiveType,
     TypeId,
@@ -24,11 +24,11 @@ impl CompileStatement for ForLoop<'_> {
         let mut scope = scope.enter();
 
         let loop_exit_label = scope.push_loop_label();
-        let typecheck0 = scope.push_anon_reg().no_init_needed();
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(typecheck0));
+        let typecheck0 = scope.push_immediate().no_init_needed();
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(typecheck0));
 
-        let typecheck1 = scope.push_anon_reg().no_init_needed();
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(typecheck1));
+        let typecheck1 = scope.push_immediate().no_init_needed();
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(typecheck1));
 
         let init = self.init.compile(&mut scope)?;
 
@@ -39,7 +39,7 @@ impl CompileStatement for ForLoop<'_> {
             typecheck1,
             OpError::InvalidForInit,
         );
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(init));
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(init));
 
         let limit = self.condition.compile(&mut scope)?;
         let limit = emit_assert_isnum(
@@ -49,7 +49,7 @@ impl CompileStatement for ForLoop<'_> {
             typecheck1,
             OpError::InvalidForCond,
         );
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(limit));
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(limit));
 
         let step = self
             .increment
@@ -64,15 +64,15 @@ impl CompileStatement for ForLoop<'_> {
             typecheck1,
             OpError::InvalidForStep,
         );
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(step));
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(step));
 
-        let zero = scope.push_anon_reg().init_from_const(&mut scope, 0.into());
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(zero));
+        let zero = scope.push_immediate().init_from_const(&mut scope, 0.into());
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(zero));
 
         // Check for a negative step, we always want to be dealing with negative steps
         // for simplicity.
-        let ge_zero = scope.push_anon_reg().no_init_needed();
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(ge_zero));
+        let ge_zero = scope.push_immediate().no_init_needed();
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(ge_zero));
 
         scope.emit(opcodes::GreaterEqual::from((ge_zero, step, zero)));
 
@@ -81,8 +81,8 @@ impl CompileStatement for ForLoop<'_> {
 
         {
             // Check for a zero step to raise an error.
-            let gt_zero = scope.push_anon_reg().no_init_needed();
-            let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(gt_zero));
+            let gt_zero = scope.push_immediate().no_init_needed();
+            let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(gt_zero));
 
             scope.emit(opcodes::GreaterThan::from((gt_zero, step, zero)));
 
@@ -107,8 +107,8 @@ impl CompileStatement for ForLoop<'_> {
         }
 
         let cond_check_start = scope.next_instruction();
-        let cond_outcome = scope.push_anon_reg().no_init_needed();
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(cond_outcome));
+        let cond_outcome = scope.push_immediate().no_init_needed();
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(cond_outcome));
 
         scope.emit(opcodes::GreaterEqual::from((cond_outcome, init, limit)));
 
@@ -116,7 +116,7 @@ impl CompileStatement for ForLoop<'_> {
 
         scope
             .new_local(self.var)?
-            .init_from_anon_reg(&mut scope, init);
+            .init_from_immediate(&mut scope, init);
 
         self.body.compile(&mut scope)?;
 
@@ -141,10 +141,10 @@ impl CompileStatement for ForLoop<'_> {
 fn emit_assert_isnum(
     scope: &mut Scope,
     target: NodeOutput,
-    typecheck0: AnonymousRegister,
-    typecheck1: AnonymousRegister,
+    typecheck0: ImmediateRegister,
+    typecheck1: ImmediateRegister,
     err: OpError,
-) -> AnonymousRegister {
+) -> ImmediateRegister {
     let target = match target {
         target @ NodeOutput::Constant(Constant::Integer(_))
         | target @ NodeOutput::Constant(Constant::Float(_)) => {
@@ -152,7 +152,7 @@ fn emit_assert_isnum(
         }
         NodeOutput::Constant(_) => {
             scope.emit(opcodes::Raise::from(err));
-            return scope.push_anon_reg().no_init_needed();
+            return scope.push_immediate().no_init_needed();
         }
         target => target.to_register(scope),
     };
