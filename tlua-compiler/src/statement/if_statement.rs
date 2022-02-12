@@ -1,6 +1,6 @@
+use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
-    ByteCodeError,
     OpError,
     Truthy,
 };
@@ -50,18 +50,14 @@ fn compile_if_block(
     body: &Block,
 ) -> Result<(), CompileError> {
     let cond_value = cond.compile(scope)?;
-    let cond_reg = scope.output_to_reg_reuse_anon(cond_value);
+    let cond_reg = cond_value.to_register(scope);
+    let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(cond_reg));
 
     // Reserve an intruction for jumping to the next condition if the operand is
     // false.
-    let pending_skip_body = scope.emit(opcodes::Raise {
-        err: OpError::ByteCodeError {
-            err: ByteCodeError::MissingJump,
-            offset: scope.next_instruction(),
-        },
-    });
+    let pending_skip_body = scope.reserve_jump_isn();
 
-    body.compile(scope)?;
+    body.compile(&mut scope)?;
 
     scope.emit_jump_label(exit_label);
 

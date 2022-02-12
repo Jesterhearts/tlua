@@ -1,3 +1,4 @@
+use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
     OpError,
@@ -14,7 +15,6 @@ use tlua_parser::{
 };
 
 use crate::{
-    compiler::InitRegister,
     CompileError,
     CompileExpression,
     CompileStatement,
@@ -48,10 +48,10 @@ impl CompileStatement for RetStatement<'_> {
                 .expect("Still in bounds for outputs")
                 .compile(scope)?;
 
-            let ret = scope.new_anon_reg().init_from_node_output(scope, retval);
+            let ret = retval.to_register(scope);
+            let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_anon_reg(ret));
             scope.emit(opcodes::SetRet::from(ret));
         }
-
         match outputs
             .next()
             .expect("Still in bounds for outputs")
@@ -64,7 +64,8 @@ impl CompileStatement for RetStatement<'_> {
                 scope.emit(opcodes::Op::CopyRetFromVaAndRet);
             }
             retval => {
-                let ret = scope.new_anon_reg().init_from_node_output(scope, retval);
+                let ret = retval.to_register(scope);
+                let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(ret));
                 scope.emit(opcodes::SetRet::from(ret));
                 scope.emit(opcodes::Op::Ret);
             }

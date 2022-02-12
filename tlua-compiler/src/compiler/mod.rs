@@ -1,4 +1,7 @@
+use std::ops::Range;
+
 use derive_more::From;
+use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
     AnonymousRegister,
@@ -15,7 +18,6 @@ use crate::{
     Chunk,
     CompileError,
     FuncId,
-    NodeOutput,
 };
 
 mod scope;
@@ -64,25 +66,31 @@ impl Compiler {
     }
 }
 
+#[derive(Debug, Clone, From)]
+#[must_use]
+pub(crate) struct UninitRegister<RegisterTy> {
+    register: RegisterTy,
+}
+
+#[derive(Debug, Clone, From)]
+#[must_use]
+pub(crate) struct UninitRegisterRange {
+    range: Range<usize>,
+}
+
+impl UninitRegisterRange {
+    pub(crate) fn iter(&self) -> impl ExactSizeIterator<Item = UninitRegister<AnonymousRegister>> {
+        self.range
+            .clone()
+            .map(AnonymousRegister::from)
+            .map(UninitRegister::from)
+    }
+}
+
 pub(crate) trait InitRegister<RegisterTy = Self>: Sized {
     /// Indicate that the register should always init to nil, and needs no
     /// special handling.
     fn no_init_needed(self) -> RegisterTy;
-
-    /// Initialize the register from node output.
-    fn init_from_node_output(self, scope: &mut Scope, value: NodeOutput) -> RegisterTy {
-        match value {
-            NodeOutput::Constant(value) => self.init_from_const(scope, value),
-            NodeOutput::Immediate(source) => self.init_from_anon_reg(scope, source),
-            NodeOutput::MappedRegister(source) => self.init_from_mapped_reg(scope, source),
-            NodeOutput::TableEntry { table, index } => {
-                self.init_from_table_entry(scope, table, index)
-            }
-            NodeOutput::ReturnValues => self.init_from_ret(scope),
-            NodeOutput::VAStack => self.init_from_va(scope, 0),
-            NodeOutput::Err(_) => self.no_init_needed(),
-        }
-    }
 
     /// Indicate that the register should be initialized from a return value.
     fn init_from_ret(self, scope: &mut Scope) -> RegisterTy;
@@ -189,23 +197,27 @@ impl InitRegister for MappedLocalRegister {
     }
 
     fn init_from_ret(self, scope: &mut Scope) -> Self {
-        let anon = scope.new_anon_reg().init_from_ret(scope);
-        self.init_from_anon_reg(scope, anon)
+        let anon = scope.push_anon_reg().init_from_ret(scope);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
+        self.init_from_anon_reg(&mut scope, anon)
     }
 
     fn init_from_const(self, scope: &mut Scope, value: Constant) -> Self {
-        let anon = scope.new_anon_reg().init_from_const(scope, value);
-        self.init_from_anon_reg(scope, anon)
+        let anon = scope.push_anon_reg().init_from_const(scope, value);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
+        self.init_from_anon_reg(&mut scope, anon)
     }
 
     fn init_alloc_fn(self, scope: &mut Scope, value: FuncId) -> Self {
-        let anon = scope.new_anon_reg().init_alloc_fn(scope, value);
-        self.init_from_anon_reg(scope, anon)
+        let anon = scope.push_anon_reg().init_alloc_fn(scope, value);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
+        self.init_from_anon_reg(&mut scope, anon)
     }
 
     fn init_alloc_table(self, scope: &mut Scope) -> Self {
-        let anon = scope.new_anon_reg().init_alloc_table(scope);
-        self.init_from_anon_reg(scope, anon)
+        let anon = scope.push_anon_reg().init_alloc_table(scope);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
+        self.init_from_anon_reg(&mut scope, anon)
     }
 
     fn init_from_anon_reg(self, scope: &mut Scope, other: AnonymousRegister) -> Self {
@@ -215,8 +227,13 @@ impl InitRegister for MappedLocalRegister {
     }
 
     fn init_from_mapped_reg(self, scope: &mut Scope, other: MappedLocalRegister) -> Self {
-        let anon = scope.new_anon_reg().init_from_mapped_reg(scope, other);
-        self.init_from_anon_reg(scope, anon)
+        if other != self {
+            let anon = scope.push_anon_reg().init_from_mapped_reg(scope, other);
+            let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
+            self.init_from_anon_reg(&mut scope, anon)
+        } else {
+            self
+        }
     }
 
     fn init_from_table_entry(
@@ -226,21 +243,17 @@ impl InitRegister for MappedLocalRegister {
         index: AnonymousRegister,
     ) -> Self {
         let anon = scope
-            .new_anon_reg()
+            .push_anon_reg()
             .init_from_table_entry(scope, table, index);
-        self.init_from_anon_reg(scope, anon)
+        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
+        self.init_from_anon_reg(&mut scope, anon)
     }
 
     fn init_from_va(self, scope: &mut Scope, index: usize) -> Self {
-        let anon = scope.new_anon_reg().init_from_va(scope, index);
-        self.init_from_anon_reg(scope, anon)
+        let anon = scope.push_anon_reg().init_from_va(scope, index);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(anon));
+        self.init_from_anon_reg(&mut scope, anon)
     }
-}
-
-#[derive(Debug, Clone, From)]
-#[must_use]
-pub(crate) struct UninitRegister<RegisterTy> {
-    register: RegisterTy,
 }
 
 impl<RegisterTy> InitRegister<RegisterTy> for UninitRegister<RegisterTy>

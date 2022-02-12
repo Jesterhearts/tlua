@@ -1,6 +1,6 @@
+use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
-    ByteCodeError,
     OpError,
 };
 use tlua_parser::ast::statement::foreach_loop::ForEachLoop;
@@ -29,24 +29,26 @@ impl CompileStatement for ForEachLoop<'_> {
         // calls and returns can slice-assign arguments/return values.
         // to_be_closed is never written to by the loop, so we don't really care where
         // it lives.
-        let mut var_inits = scope.new_anon_reg_range(LOOP_ARGS + vars.len());
+        let var_inits = scope.reserve_anon_reg_range(LOOP_ARGS + vars.len());
+        let mut var_init_regsiters = var_inits.iter();
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg_range(var_inits));
 
-        let to_be_closed = var_inits
+        let to_be_closed = var_init_regsiters
             .next()
             .expect("At least one control var")
             .no_init_needed();
 
-        let iter_func = var_inits
+        let iter_func = var_init_regsiters
             .next()
             .expect("At least one control var")
             .no_init_needed();
 
-        let state = var_inits
+        let state = var_init_regsiters
             .next()
             .expect("At least one control var")
             .no_init_needed();
 
-        let control = var_inits
+        let control = var_init_regsiters
             .next()
             .expect("At least one control var")
             .no_init_needed();
@@ -57,7 +59,9 @@ impl CompileStatement for ForEachLoop<'_> {
             &mut scope,
             |_scope, var| Ok(var),
             |scope, var, init| {
-                var.init_from_node_output(scope, init);
+                let init = init.to_register(scope);
+                let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(init));
+                var.init_from_anon_reg(&mut scope, init);
             },
             control_vars_list.into_iter(),
             self.expressions.iter(),
@@ -77,26 +81,22 @@ impl CompileStatement for ForEachLoop<'_> {
             .new_local(named_control)?
             .init_from_anon_reg(&mut scope, control);
 
-        for (var, reg) in vars.zip(var_inits) {
+        for (var, reg) in vars.zip(var_init_regsiters) {
             scope
                 .new_local(var)?
                 .init_from_anon_reg(&mut scope, reg.no_init_needed());
         }
 
-        let pending_skip_body = scope.emit(opcodes::Raise {
-            err: OpError::ByteCodeError {
-                err: ByteCodeError::MissingJump,
-                offset: scope.next_instruction(),
-            },
-        });
+        let pending_skip_body = scope.reserve_jump_isn();
 
         emit_block(&mut scope, &self.body)?;
 
         scope.emit(opcodes::Jump::from(loop_start));
 
+        let next_isn = scope.next_instruction();
         scope.overwrite(
             pending_skip_body,
-            opcodes::JumpNil::from((control, scope.next_instruction())),
+            opcodes::JumpNil::from((control, next_isn)),
         );
         scope.label_current_instruction(loop_exit_label)?;
         scope.pop_loop_label();

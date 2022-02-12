@@ -1,3 +1,4 @@
+use scopeguard::guard_on_success;
 use tlua_bytecode::{
     binop::f64inbounds,
     opcodes::{
@@ -39,8 +40,10 @@ where
             Err(err) => Ok(NodeOutput::Err(scope.write_raise(err))),
         },
         src => {
-            let src = scope.new_anon_reg().init_from_node_output(scope, src);
-            let dst = scope.new_anon_reg().no_init_needed();
+            let src = src.to_register(scope);
+            let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(src));
+
+            let dst = scope.push_anon_reg().no_init_needed();
 
             scope.emit(Op::from((dst, src)));
 

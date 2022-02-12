@@ -1,4 +1,5 @@
 use either::Either;
+use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
     OpError,
@@ -26,10 +27,16 @@ impl CompileStatement for Assignment<'_> {
             prefix_expression::map_var,
             |scope, dest, init| match dest {
                 Either::Left(var) => {
-                    var.init_from_node_output(scope, init);
+                    let init = init.to_register(scope);
+                    let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(init));
+                    var.init_from_anon_reg(&mut scope, init);
                 }
                 Either::Right(TableIndex { table, index }) => {
-                    let init = scope.output_to_reg_reuse_anon(init);
+                    let init = init.to_register(scope);
+                    let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(table));
+                    let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(index));
+                    let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(init));
+
                     scope.emit(opcodes::SetProperty::from((table, index, init)));
                 }
             },
@@ -68,7 +75,8 @@ pub(crate) fn emit_assignments<VarExpr, VarDest>(
                 match init {
                     NodeOutput::ReturnValues => {
                         let consumed_values = vars.len() + 1;
-                        let mut regs = scope.new_anon_reg_range(consumed_values);
+                        let mut regs = scope.reserve_anon_reg_range(consumed_values).iter();
+
                         let first = regs.next().expect("At least one var.").no_init_needed();
                         scope.emit(opcodes::ConsumeRetRange::from((
                             usize::from(first),
@@ -83,7 +91,8 @@ pub(crate) fn emit_assignments<VarExpr, VarDest>(
                     }
                     NodeOutput::VAStack => {
                         let consumed_values = vars.len() + 1;
-                        let mut regs = scope.new_anon_reg_range(consumed_values);
+                        let mut regs = scope.reserve_anon_reg_range(consumed_values).iter();
+
                         let first = regs.next().expect("At least one var.").no_init_needed();
                         scope.emit(opcodes::LoadVa::from((
                             usize::from(first),

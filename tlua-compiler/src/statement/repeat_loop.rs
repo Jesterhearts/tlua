@@ -1,3 +1,4 @@
+use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
     OpError,
@@ -26,7 +27,8 @@ impl CompileStatement for RepeatLoop<'_> {
         emit_block(&mut scope, &self.body)?;
 
         let cond = self.terminator.compile(&mut scope)?;
-        let cond_reg = scope.output_to_reg_reuse_anon(cond);
+        let cond_reg = cond.to_register(&mut scope);
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(cond_reg));
 
         let jump_op: UnasmOp = match cond {
             NodeOutput::Constant(c) => {

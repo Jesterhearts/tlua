@@ -9,6 +9,8 @@ publish = false
 [dependencies]
 derive_more = '0.99.17'
 either = '1.6.1'
+indexmap = '1.8.0'
+scopeguard = '1.1.0'
 take_mut = '0.2.2'
 thiserror = '1.0.30'
 

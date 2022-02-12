@@ -8,6 +8,7 @@ use derive_more::{
     From,
     Into,
 };
+use scopeguard::guard_on_success;
 use thiserror::Error;
 use tlua_bytecode::{
     opcodes::Instruction,
@@ -40,11 +41,12 @@ use crate::{
     compiler::{
         unasm::MappedLocalRegister,
         Compiler,
+        InitRegister,
     },
     constant::Constant,
 };
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug)]
 enum NodeOutput {
     Constant(Constant),
     Immediate(AnonymousRegister),
@@ -58,9 +60,20 @@ enum NodeOutput {
     Err(OpError),
 }
 
-impl Default for NodeOutput {
-    fn default() -> Self {
-        NodeOutput::Constant(Constant::Nil)
+impl NodeOutput {
+    pub(crate) fn to_register(&self, scope: &mut Scope) -> AnonymousRegister {
+        match self {
+            NodeOutput::Constant(c) => scope.push_anon_reg().init_from_const(scope, *c),
+            NodeOutput::Immediate(i) => *i,
+            NodeOutput::MappedRegister(m) => scope.push_anon_reg().init_from_mapped_reg(scope, *m),
+            NodeOutput::TableEntry { table, index } => {
+                let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(*index));
+                table.init_from_table_entry(&mut scope, *table, *index)
+            }
+            NodeOutput::ReturnValues => scope.push_anon_reg().init_from_ret(scope),
+            NodeOutput::VAStack => scope.push_anon_reg().init_from_va(scope, 0),
+            NodeOutput::Err(_) => scope.push_anon_reg().no_init_needed(),
+        }
     }
 }
 

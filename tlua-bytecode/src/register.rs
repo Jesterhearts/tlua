@@ -4,7 +4,7 @@ use derive_more::{
     Into,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, From, Into)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From, Into)]
 pub struct AnonymousRegister(usize);
 
 impl std::fmt::Debug for AnonymousRegister {

@@ -74,7 +74,7 @@ impl CompileExpression for FnBody<'_> {
         )?;
 
         Ok(NodeOutput::Immediate(
-            scope.new_anon_reg().init_alloc_fn(scope, func_id),
+            scope.push_anon_reg().init_alloc_fn(scope, func_id),
         ))
     }
 }

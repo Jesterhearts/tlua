@@ -7,8 +7,10 @@ use std::{
         HashSet,
     },
     num::NonZeroUsize,
+    ops::Range,
 };
 
+use indexmap::IndexSet;
 use tlua_bytecode::{
     opcodes,
     AnonymousRegister,
@@ -26,14 +28,13 @@ use crate::{
             UnasmOp,
         },
         HasVaArgs,
-        InitRegister,
         LabelId,
         UninitRegister,
+        UninitRegisterRange,
     },
     Chunk,
     CompileError,
     FuncId,
-    NodeOutput,
 };
 
 const GLOBAL_SCOPE: u16 = 0;
@@ -147,8 +148,11 @@ pub(crate) struct FunctionScope<'function> {
     /// ```
     unresolved_jumps: HashMap<LabelId, BTreeMap<usize, Vec<usize>>>,
 
+    free_registers: IndexSet<AnonymousRegister>,
+
     next_loop_id: usize,
     next_if_id: usize,
+    next_anon_reg: usize,
 
     function: UnasmFunction,
 }
@@ -168,8 +172,10 @@ impl<'function> FunctionScope<'function> {
             has_va_args,
             labels: Default::default(),
             unresolved_jumps: Default::default(),
+            free_registers: Default::default(),
             next_loop_id: 0,
             next_if_id: 0,
+            next_anon_reg: 0,
             function: UnasmFunction {
                 named_args: argc,
                 ..Default::default()
@@ -216,6 +222,66 @@ impl<'function> FunctionScope<'function> {
         self.next_loop_id
             .checked_sub(1)
             .map(|id| LabelId::Loop { id })
+    }
+
+    fn push_anon_reg(&mut self) -> AnonymousRegister {
+        self.free_registers
+            .shift_remove_index(self.free_registers.len().saturating_sub(1))
+            .unwrap_or_else(|| {
+                let reg = self.next_anon_reg;
+                self.next_anon_reg += 1;
+
+                self.function.anon_registers = self.function.anon_registers.max(self.next_anon_reg);
+                reg.into()
+            })
+    }
+
+    fn pop_anon_reg(&mut self, reg: AnonymousRegister) {
+        assert!(reg <= self.next_anon_reg.into());
+
+        if reg == (self.next_anon_reg - 1).into() {
+            self.next_anon_reg -= 1;
+        } else {
+            self.free_registers.insert(reg);
+        }
+    }
+
+    fn push_anon_reg_range(&mut self, count: usize) -> Range<usize> {
+        self.free_registers.sort();
+
+        let is_contiguous = self
+            .free_registers
+            .iter()
+            .zip(self.free_registers.iter().skip(1))
+            .all(|(&first, &second)| usize::from(first) + 1 == usize::from(second));
+
+        if is_contiguous {
+            self.next_anon_reg = self
+                .free_registers
+                .first()
+                .copied()
+                .map(usize::from)
+                .unwrap_or(self.next_anon_reg);
+            self.free_registers.clear();
+        }
+
+        let start = self.next_anon_reg;
+        self.next_anon_reg += count;
+
+        self.function.anon_registers = self.function.anon_registers.max(self.next_anon_reg);
+
+        start..self.next_anon_reg
+    }
+
+    fn pop_anon_reg_range(&mut self, range: Range<usize>) {
+        assert!(range.end <= self.next_anon_reg);
+
+        if range.end == self.next_anon_reg {
+            self.next_anon_reg -= range.len();
+        } else {
+            self.free_registers
+                .extend(range.map(AnonymousRegister::from))
+        }
     }
 }
 
@@ -324,11 +390,11 @@ impl<'block, 'function> BlockScope<'block, 'function> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Scope<'context, 'block, 'function> {
-    block_scope: &'context mut BlockScope<'block, 'function>,
+pub(crate) struct Scope<'scope, 'block, 'function> {
+    block_scope: &'scope mut BlockScope<'block, 'function>,
 }
 
-impl<'context, 'block, 'function> Scope<'context, 'block, 'function> {
+impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
     /// Check if varargs are available in scope
     pub(crate) fn check_varargs(&self) -> Result<(), CompileError> {
         match self.block_scope.function_scope.has_va_args {
@@ -459,6 +525,14 @@ impl<'context, 'block, 'function> Scope<'context, 'block, 'function> {
         self.block_scope.emit(opcode)
     }
 
+    pub(crate) fn reserve_jump_isn(&mut self) -> usize {
+        self.block_scope
+            .emit(opcodes::Raise::from(OpError::ByteCodeError {
+                err: ByteCodeError::MissingJump,
+                offset: self.next_instruction(),
+            }))
+    }
+
     /// Overwrite the instruction at location.
     pub(crate) fn overwrite(&mut self, location: usize, opcode: impl Into<UnasmOp>) {
         self.block_scope.overwrite(location, opcode)
@@ -524,36 +598,25 @@ impl<'context, 'block, 'function> Scope<'context, 'block, 'function> {
         }
     }
 
-    /// Allocate a new anonymous register.
-    pub(crate) fn new_anon_reg(&mut self) -> UninitRegister<AnonymousRegister> {
-        let reg = self.block_scope.function_scope.function.anon_registers;
-        self.block_scope.function_scope.function.anon_registers += 1;
+    pub(crate) fn push_anon_reg(&mut self) -> UninitRegister<AnonymousRegister> {
+        self.block_scope.function_scope.push_anon_reg().into()
+    }
 
-        UninitRegister {
-            register: reg.into(),
-        }
+    pub(crate) fn pop_anon_reg(&mut self, reg: AnonymousRegister) {
+        self.block_scope.function_scope.pop_anon_reg(reg);
     }
 
     /// Allocate a sequence of anonymous registers.
-    pub(crate) fn new_anon_reg_range(
-        &mut self,
-        size: usize,
-    ) -> impl ExactSizeIterator<Item = UninitRegister<AnonymousRegister>> + Clone {
-        let start = { self.block_scope.function_scope.function.anon_registers };
-        let range = start..(start + size);
-        for _ in range.clone() {
-            let _ = self.new_anon_reg().no_init_needed();
+    pub(crate) fn reserve_anon_reg_range(&mut self, count: usize) -> UninitRegisterRange {
+        UninitRegisterRange {
+            range: self.block_scope.function_scope.push_anon_reg_range(count),
         }
-
-        range.map(|idx| UninitRegister::from(AnonymousRegister::from(idx)))
     }
 
-    /// Allocate a new anonymous register.
-    pub(crate) fn output_to_reg_reuse_anon(&mut self, output: NodeOutput) -> AnonymousRegister {
-        match output {
-            NodeOutput::Immediate(imm) => imm,
-            other => self.new_anon_reg().init_from_node_output(self, other),
-        }
+    pub(crate) fn pop_anon_reg_range(&mut self, range: UninitRegisterRange) {
+        self.block_scope
+            .function_scope
+            .pop_anon_reg_range(range.range);
     }
 
     /// Lookup the appropriate register for a specific identifier.

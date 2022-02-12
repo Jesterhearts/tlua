@@ -1,4 +1,5 @@
 use either::Either;
+use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
     AnonymousRegister,
@@ -78,6 +79,10 @@ impl CompileStatement for FnCallPrefixExpression<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<Option<OpError>, CompileError> {
         match CompileExpression::compile(&self, scope)? {
             NodeOutput::Err(err) => Ok(Some(err)),
+            NodeOutput::Immediate(imm) => {
+                scope.pop_anon_reg(imm);
+                Ok(None)
+            }
             _ => Ok(None),
         }
     }
@@ -87,17 +92,17 @@ fn emit_load_head(scope: &mut Scope, head: &HeadAtom) -> Result<AnonymousRegiste
     match head {
         HeadAtom::Name(ident) => {
             let reg = scope.read_variable(*ident)?;
-            Ok(scope.new_anon_reg().init_from_mapped_reg(scope, reg))
+            Ok(scope.push_anon_reg().init_from_mapped_reg(scope, reg))
         }
         HeadAtom::Parenthesized(expr) => match expr.compile(scope)? {
             NodeOutput::Constant(c) => {
                 scope.write_raise(OpError::NotATable {
                     ty: c.short_type_name(),
                 });
-                Ok(scope.new_anon_reg().no_init_needed())
+                Ok(scope.push_anon_reg().no_init_needed())
             }
-            NodeOutput::Err(_) => Ok(scope.new_anon_reg().no_init_needed()),
-            src => Ok(scope.output_to_reg_reuse_anon(src)),
+            NodeOutput::Err(_) => Ok(scope.push_anon_reg().no_init_needed()),
+            src => Ok(src.to_register(scope)),
         },
     }
 }
@@ -116,7 +121,9 @@ where
         match next {
             PrefixAtom::Var(v) => {
                 let index = v.compile(scope)?;
-                let index = scope.output_to_reg_reuse_anon(index);
+                let index = index.to_register(scope);
+                let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_anon_reg(index));
+
                 scope.emit(opcodes::Lookup::from((table_reg, table_reg, index)));
             }
             PrefixAtom::Function(atom) => {
@@ -174,7 +181,10 @@ pub(crate) fn emit_standard_call(
         return Ok(None);
     }
 
-    let mut arg_registers = scope.new_anon_reg_range(argc).peekable();
+    let arg_range = scope.reserve_anon_reg_range(argc);
+    let mut arg_registers = arg_range.iter().peekable();
+    let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg_range(arg_range));
+
     let first_arg_idx = usize::from(
         arg_registers
             .peek()
@@ -188,13 +198,13 @@ pub(crate) fn emit_standard_call(
             .next()
             .expect("Should still have arg registers");
 
-        arg_reg.init_from_anon_reg(scope, target);
-        let index_reg = arg_registers
-            .peek()
-            .cloned()
-            .unwrap_or_else(|| scope.new_anon_reg());
-
-        let index_reg = index_reg.init_from_const(scope, Constant::String(method.into()));
+        arg_reg.init_from_anon_reg(&mut scope, target);
+        let index_reg = scope
+            .push_anon_reg()
+            .init_from_const(&mut scope, Constant::String(method.into()));
+        let mut scope = guard_on_success(&mut scope, |scope| {
+            scope.pop_anon_reg(index_reg);
+        });
 
         scope.emit(opcodes::Lookup::from((target, target, index_reg)));
     }
@@ -205,9 +215,12 @@ pub(crate) fn emit_standard_call(
         let arg_init = args
             .next()
             .expect("Still in bounds for args")
-            .compile(scope)?;
+            .compile(&mut scope)?;
 
-        arg_reg.init_from_node_output(scope, arg_init);
+        let arg_init = arg_init.to_register(&mut scope);
+        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(arg_init));
+
+        arg_reg.init_from_anon_reg(&mut scope, arg_init);
     }
 
     let last_reg = arg_registers.next().expect("Should have at least 1 arg");
@@ -216,7 +229,7 @@ pub(crate) fn emit_standard_call(
     match args
         .next()
         .expect("Still in bounds of args")
-        .compile(scope)?
+        .compile(&mut scope)?
     {
         NodeOutput::ReturnValues => {
             scope.emit(opcodes::CallCopyRet::from((
@@ -231,7 +244,10 @@ pub(crate) fn emit_standard_call(
             return Ok(None);
         }
         arg => {
-            last_reg.init_from_node_output(scope, arg);
+            let arg_init = arg.to_register(&mut scope);
+            let mut scope = guard_on_success(&mut scope, |scope| scope.pop_anon_reg(arg_init));
+
+            last_reg.init_from_anon_reg(&mut scope, arg_init);
         }
     }
 
@@ -249,13 +265,11 @@ pub(crate) fn map_var(
             let table = emit_table_path_traversal(scope, head, middle.iter())?;
             let index = match last {
                 VarAtom::Name(ident) => scope
-                    .new_anon_reg()
+                    .push_anon_reg()
                     .init_from_const(scope, ConstantString::from(ident).into()),
-                VarAtom::IndexOp(index) => {
-                    let index = index.compile(scope)?;
-                    scope.output_to_reg_reuse_anon(index)
-                }
+                VarAtom::IndexOp(index) => index.compile(scope)?.to_register(scope),
             };
+
             Ok(Either::Right(TableIndex { table, index }))
         }
     }

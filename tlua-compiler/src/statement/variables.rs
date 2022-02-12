@@ -1,3 +1,4 @@
+use scopeguard::guard_on_success;
 use tlua_bytecode::OpError;
 use tlua_parser::ast::statement::variables::LocalVarList;
 
@@ -18,8 +19,9 @@ impl CompileStatement for LocalVarList<'_> {
                 Some(_) => todo!(),
             },
             |scope, reg, src| {
-                let src = scope.output_to_reg_reuse_anon(src);
-                reg.init_from_anon_reg(scope, src);
+                let src = src.to_register(scope);
+                let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(src));
+                reg.init_from_anon_reg(&mut scope, src);
             },
             self.vars.iter(),
             self.initializers.iter(),

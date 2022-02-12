@@ -1,6 +1,6 @@
+use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
-    ByteCodeError,
     OpError,
     Truthy,
 };
@@ -21,16 +21,12 @@ impl CompileStatement for WhileLoop<'_> {
 
         let cond_start = scope.next_instruction();
         let init = self.cond.compile(scope)?;
-        let cond = scope.output_to_reg_reuse_anon(init);
+        let cond = init.to_register(scope);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_anon_reg(cond));
 
-        let pending_skip_body = scope.emit(opcodes::Raise {
-            err: OpError::ByteCodeError {
-                err: ByteCodeError::MissingJump,
-                offset: scope.next_instruction(),
-            },
-        });
+        let pending_skip_body = scope.reserve_jump_isn();
 
-        self.body.compile(scope)?;
+        self.body.compile(&mut scope)?;
         scope.emit(opcodes::Jump::from(cond_start));
 
         let jump_op: UnasmOp = match init {

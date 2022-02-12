@@ -18,8 +18,6 @@ fn method_call() -> anyhow::Result<()> {
     "#};
     let chunk = compile(src)?;
 
-    eprintln!("{:#?}", chunk);
-
     let mut rt = Runtime::default();
 
     let result = rt.execute(&chunk);
