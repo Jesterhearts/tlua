@@ -9,6 +9,7 @@ pub mod binop;
 mod number;
 pub mod opcodes;
 mod register;
+mod string;
 
 pub use number::Number;
 pub use opcodes::Constant;
@@ -17,6 +18,7 @@ pub use register::{
     MappedRegister,
     Register,
 };
+pub use string::LuaString;
 use tlua_parser::ast::constant_string::ConstantString;
 
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
@@ -78,7 +80,7 @@ pub enum OpError {
 }
 
 pub trait StringLike {
-    fn as_bytes(&self) -> &[u8];
+    fn as_lua_string_bytes(&self) -> &[u8];
 }
 
 pub trait NumLike {
@@ -91,7 +93,7 @@ pub trait Truthy {
 }
 
 impl StringLike for ConstantString {
-    fn as_bytes(&self) -> &[u8] {
+    fn as_lua_string_bytes(&self) -> &[u8] {
         self.data().as_slice()
     }
 }

@@ -12,6 +12,7 @@ use derive_more::From;
 pub use tlua_bytecode::Number;
 use tlua_bytecode::{
     Constant,
+    LuaString,
     NumLike,
     Truthy,
 };
@@ -21,12 +22,10 @@ use tracing_rc::{
 };
 
 pub mod function;
-pub mod string;
 pub mod table;
 
 pub use self::{
     function::Function,
-    string::LuaString,
     table::Table,
 };
 
@@ -109,6 +108,12 @@ impl PartialEq for Value {
             (Self::Function(l0), Self::Function(r0)) => l0.borrow().id == r0.borrow().id,
             _ => core::mem::discriminant(self) == core::mem::discriminant(other),
         }
+    }
+}
+
+impl From<LuaString> for Value {
+    fn from(s: LuaString) -> Self {
+        Self::String(Rc::new(RefCell::new(s)))
     }
 }
 

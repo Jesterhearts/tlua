@@ -1,4 +1,5 @@
 use tlua_bytecode::{
+    LuaString,
     NumLike,
     Number,
     Truthy,
@@ -50,6 +51,12 @@ impl From<Number> for Constant {
 impl From<ConstantString> for Constant {
     fn from(s: ConstantString) -> Self {
         Self::String(s)
+    }
+}
+
+impl From<LuaString> for Constant {
+    fn from(s: LuaString) -> Self {
+        Self::String(s.into())
     }
 }
 

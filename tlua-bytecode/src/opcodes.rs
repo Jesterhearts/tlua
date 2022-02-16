@@ -1,7 +1,4 @@
-use derive_more::{
-    From,
-    Into,
-};
+use derive_more::From;
 use tlua_parser::ast::constant_string::ConstantString;
 
 pub use crate::binop::*;
@@ -199,19 +196,6 @@ pub struct Not {
 impl std::fmt::Debug for Not {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?} = !{:?}", self.dst, self.src)
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, From, Into)]
-pub struct Concat {
-    dst: ImmediateRegister,
-    lhs: ImmediateRegister,
-    rhs: ImmediateRegister,
-}
-
-impl std::fmt::Debug for Concat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "concat {:?} {:?} {:?}", self.dst, self.lhs, self.rhs)
     }
 }
 

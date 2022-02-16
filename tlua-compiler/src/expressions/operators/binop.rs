@@ -9,7 +9,12 @@ use tlua_bytecode::{
         },
         *,
     },
+    opcodes::traits::{
+        ConcatBinop,
+        OpName,
+    },
     ImmediateRegister,
+    LuaString,
     OpError,
 };
 use tlua_parser::ast::expressions::{
@@ -197,8 +202,35 @@ impl CompileExpression for operator::ShiftRight<'_> {
 }
 
 impl CompileExpression for operator::Concat<'_> {
-    fn compile(&self, _scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        todo!()
+    fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
+        write_binop::<Concat, _, _, _>(scope, self.lhs, self.rhs, |lhs, rhs| match (lhs, rhs) {
+            (Constant::Float(lhs), Constant::Float(rhs)) => {
+                Ok(Concat::evaluate(LuaString::from(lhs), LuaString::from(rhs)))
+            }
+            (Constant::Float(lhs), Constant::Integer(rhs)) => {
+                Ok(Concat::evaluate(LuaString::from(lhs), LuaString::from(rhs)))
+            }
+            (Constant::Float(lhs), Constant::String(rhs)) => {
+                Ok(Concat::evaluate(LuaString::from(lhs), rhs))
+            }
+            (Constant::Integer(lhs), Constant::Float(rhs)) => {
+                Ok(Concat::evaluate(LuaString::from(lhs), LuaString::from(rhs)))
+            }
+            (Constant::Integer(lhs), Constant::Integer(rhs)) => {
+                Ok(Concat::evaluate(LuaString::from(lhs), LuaString::from(rhs)))
+            }
+            (Constant::Integer(lhs), Constant::String(rhs)) => {
+                Ok(Concat::evaluate(LuaString::from(lhs), rhs))
+            }
+            (Constant::String(lhs), Constant::Float(rhs)) => {
+                Ok(Concat::evaluate(lhs, LuaString::from(rhs)))
+            }
+            (Constant::String(lhs), Constant::Integer(rhs)) => {
+                Ok(Concat::evaluate(lhs, LuaString::from(rhs)))
+            }
+            (Constant::String(lhs), Constant::String(rhs)) => Ok(Concat::evaluate(lhs, rhs)),
+            _ => Err(OpError::InvalidType { op: Concat::NAME }),
+        })
     }
 }
 

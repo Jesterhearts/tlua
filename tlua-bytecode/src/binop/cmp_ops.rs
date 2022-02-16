@@ -106,7 +106,7 @@ macro_rules! comparison_binop {
 // TODO: metatables
 comparison_binop!(LessThan => {
     (lhs: num, rhs: num) => lhs < rhs,
-    (lhs: string, rhs: string) => lhs.as_bytes() < rhs.as_bytes(),
+    (lhs: string, rhs: string) => lhs.as_lua_string_bytes() < rhs.as_lua_string_bytes(),
     (_lhs: bool, _rhs: bool) => Err(OpError::DuoCmpErr{type_name: "bool"}),
     (nil, nil) => Err(OpError::DuoCmpErr{type_name: "nil"}),
     (lhs: table, rhs: table) => Err(OpError::DuoCmpErr{type_name: "table"}),
@@ -115,7 +115,7 @@ comparison_binop!(LessThan => {
 
 comparison_binop!(LessEqual => {
     (lhs: num, rhs: num) => lhs <= rhs,
-    (lhs: string, rhs: string) => lhs.as_bytes() <= rhs.as_bytes(),
+    (lhs: string, rhs: string) => lhs.as_lua_string_bytes() <= rhs.as_lua_string_bytes(),
     (_lhs: bool, _rhs: bool) => Err(OpError::DuoCmpErr{type_name: "bool"}),
     (nil, nil) => Err(OpError::DuoCmpErr{type_name: "nil"}),
     (lhs: table, rhs: table) => Err(OpError::DuoCmpErr{type_name: "table"}),
@@ -124,7 +124,7 @@ comparison_binop!(LessEqual => {
 
 comparison_binop!(GreaterThan => {
     (lhs: num, rhs: num) => lhs > rhs,
-    (lhs: string, rhs: string) => lhs.as_bytes() > rhs.as_bytes(),
+    (lhs: string, rhs: string) => lhs.as_lua_string_bytes() > rhs.as_lua_string_bytes(),
     (_lhs: bool, _rhs: bool) => Err(OpError::DuoCmpErr{type_name: "bool"}),
     (nil, nil) => Err(OpError::DuoCmpErr{type_name: "nil"}),
     (lhs: table, rhs: table) => Err(OpError::DuoCmpErr{type_name: "table"}),
@@ -133,7 +133,7 @@ comparison_binop!(GreaterThan => {
 
 comparison_binop!(GreaterEqual => {
     (lhs: num, rhs: num) => lhs >= rhs,
-    (lhs: string, rhs: string) => lhs.as_bytes() >= rhs.as_bytes(),
+    (lhs: string, rhs: string) => lhs.as_lua_string_bytes() >= rhs.as_lua_string_bytes(),
     (_lhs: bool, _rhs: bool) => Err(OpError::DuoCmpErr{type_name: "bool"}),
     (nil, nil) => Err(OpError::DuoCmpErr{type_name: "nil"}),
     (lhs: table, rhs: table) => Err(OpError::DuoCmpErr{type_name: "table"}),
@@ -142,7 +142,7 @@ comparison_binop!(GreaterEqual => {
 
 comparison_binop!(Equals => {
     (lhs: num, rhs: num) => lhs == rhs,
-    (lhs: string, rhs: string) => lhs.as_bytes() == rhs.as_bytes(),
+    (lhs: string, rhs: string) => lhs.as_lua_string_bytes() == rhs.as_lua_string_bytes(),
     (lhs: bool, rhs: bool) => Ok(lhs == rhs),
     (nil, nil) => Ok(true),
     (lhs: table, rhs: table) => Ok(lhs == rhs),
@@ -151,7 +151,7 @@ comparison_binop!(Equals => {
 
 comparison_binop!(NotEqual => {
     (lhs: num, rhs: num) => lhs != rhs,
-    (lhs: string, rhs: string) => lhs.as_bytes() != rhs.as_bytes(),
+    (lhs: string, rhs: string) => lhs.as_lua_string_bytes() != rhs.as_lua_string_bytes(),
     (lhs: bool, rhs: bool) => Ok(lhs != rhs),
     (nil, nil) => Ok(true),
     (lhs: table, rhs: table) => Ok(lhs != rhs),

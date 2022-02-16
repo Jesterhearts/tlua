@@ -32,6 +32,7 @@ use crate::vm::{
     binop::{
         bool_op,
         cmp_op,
+        concat_op,
         fp_op,
         int_op,
     },
@@ -220,7 +221,9 @@ impl Context<'_> {
                 }
 
                 // String & Array operations
-                Op::Concat(_) => return Err(OpError::InvalidType { op: "concat" }),
+                Op::Concat(Concat { dst, lhs, rhs }) => {
+                    self.imm[dst] = concat_op(lhs, rhs, &self.imm)?;
+                }
                 Op::Length(Length { dst, src }) => {
                     self.imm[dst] = match &self.imm[src] {
                         Value::String(s) => i64::try_from(s.borrow().len())

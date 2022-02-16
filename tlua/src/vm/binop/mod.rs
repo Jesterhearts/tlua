@@ -1,15 +1,20 @@
 pub mod traits;
 
 use tlua_bytecode::{
-    opcodes::traits::{
-        BooleanOpEval,
-        ComparisonOpEval,
-        FloatBinop,
-        IntBinop,
-        NumericOpEval,
-        OpName,
+    opcodes::{
+        traits::{
+            BooleanOpEval,
+            ComparisonOpEval,
+            ConcatBinop,
+            FloatBinop,
+            IntBinop,
+            NumericOpEval,
+            OpName,
+        },
+        Concat,
     },
     ImmediateRegister,
+    LuaString,
     OpError,
 };
 
@@ -61,5 +66,27 @@ pub(crate) fn int_op<Op: NumericOpEval + IntBinop + OpName>(
     match registers[lhs] {
         Value::Number(lhs) => Ok(Value::Number(Op::evaluate(&lhs, &registers[rhs])?)),
         _ => Err(OpError::InvalidType { op: Op::NAME }),
+    }
+}
+
+pub(crate) fn concat_op(
+    lhs: ImmediateRegister,
+    rhs: ImmediateRegister,
+    registers: &Immediates,
+) -> Result<Value, OpError> {
+    match (&registers[lhs], &registers[rhs]) {
+        (Value::Number(lhs), Value::Number(rhs)) => {
+            Ok(Concat::evaluate(LuaString::from(lhs), LuaString::from(rhs)))
+        }
+        (Value::Number(lhs), Value::String(rhs)) => {
+            Ok(Concat::evaluate(LuaString::from(lhs), &*rhs.borrow()))
+        }
+        (Value::String(lhs), Value::Number(rhs)) => {
+            Ok(Concat::evaluate(&*lhs.borrow(), LuaString::from(rhs)))
+        }
+        (Value::String(lhs), Value::String(rhs)) => {
+            Ok(Concat::evaluate(&*lhs.borrow(), &*rhs.borrow()))
+        }
+        _ => Err(OpError::InvalidType { op: Concat::NAME }),
     }
 }

@@ -1,4 +1,5 @@
 use crate::{
+    LuaString,
     NumLike,
     Number,
     OpError,
@@ -12,15 +13,15 @@ pub trait OpName {
 
 /// Traits for evaluating anything that looks like an f64 or i64
 pub trait NumericOpEval {
-    fn evaluate<LHS, RHS>(lhs: LHS, rhs: RHS) -> Result<Number, OpError>
+    fn evaluate<Lhs, Rhs>(lhs: Lhs, rhs: Rhs) -> Result<Number, OpError>
     where
-        LHS: NumLike,
-        RHS: NumLike;
+        Lhs: NumLike,
+        Rhs: NumLike;
 }
 
 /// Traits for evaluating anything truthy
 pub trait BooleanOpEval {
-    fn evaluate<RES, LHS: Truthy + Into<RES>, RHS: Truthy + Into<RES>>(lhs: LHS, rhs: RHS) -> RES;
+    fn evaluate<Res, Lhs: Truthy + Into<Res>, Rhs: Truthy + Into<Res>>(lhs: Lhs, rhs: Rhs) -> Res;
 }
 
 pub trait FloatBinop {
@@ -35,12 +36,16 @@ pub trait IntBinop {
 pub trait ComparisonOpEval {
     fn apply_numbers(lhs: Number, rhs: Number) -> bool;
 
-    fn apply_strings<LHS, RHS>(lhs: &LHS, rhs: &RHS) -> bool
+    fn apply_strings<Lhs, Rhs>(lhs: &Lhs, rhs: &Rhs) -> bool
     where
-        LHS: StringLike,
-        RHS: StringLike;
+        Lhs: StringLike,
+        Rhs: StringLike;
 
     fn apply_bools(lhs: bool, rhs: bool) -> Result<bool, OpError>;
 
     fn apply_nils() -> Result<bool, OpError>;
+}
+
+pub trait ConcatBinop {
+    fn evaluate<Res: From<LuaString>, Lhs: StringLike, Rhs: StringLike>(lhs: Lhs, rhs: Rhs) -> Res;
 }
