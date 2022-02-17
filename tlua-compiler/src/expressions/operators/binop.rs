@@ -38,7 +38,7 @@ pub(crate) fn write_binop<Op, Lhs, Rhs, ConstEval>(
     consteval: ConstEval,
 ) -> Result<NodeOutput, CompileError>
 where
-    Op: From<(ImmediateRegister, ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
+    Op: From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
     Lhs: CompileExpression,
     Rhs: CompileExpression,
     ConstEval: FnOnce(Constant, Constant) -> Result<Constant, OpError>,
@@ -56,13 +56,13 @@ where
             Err(err) => Ok(NodeOutput::Err(scope.write_raise(err))),
         },
         (lhs, rhs) => {
-            let lhs = lhs.to_register(scope);
-            let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(lhs));
+            let lhs = lhs.into_register(scope);
 
-            let rhs = rhs.to_register(&mut scope);
-            scope.emit(Op::from((rhs, lhs, rhs)));
+            let rhs = rhs.into_register(scope);
+            let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(rhs));
+            scope.emit(Op::from((lhs, rhs)));
 
-            Ok(NodeOutput::Immediate(rhs))
+            Ok(NodeOutput::Immediate(lhs))
         }
     }
 }
@@ -73,9 +73,7 @@ fn write_numeric_binop<Op>(
     rhs: &Expression,
 ) -> Result<NodeOutput, CompileError>
 where
-    Op: NumericOpEval
-        + From<(ImmediateRegister, ImmediateRegister, ImmediateRegister)>
-        + Into<UnasmOp>,
+    Op: NumericOpEval + From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
 {
     write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| {
         Op::evaluate(lhs, rhs).map(|num| num.into())
@@ -88,9 +86,7 @@ fn write_cmp_binop<Op>(
     rhs: &Expression,
 ) -> Result<NodeOutput, CompileError>
 where
-    Op: ComparisonOpEval
-        + From<(ImmediateRegister, ImmediateRegister, ImmediateRegister)>
-        + Into<UnasmOp>,
+    Op: ComparisonOpEval + From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
 {
     write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| match (lhs, rhs) {
         (Constant::Nil, Constant::Nil) => Op::apply_nils().map(Constant::from),
@@ -122,9 +118,7 @@ fn write_boolean_binop<Op>(
     rhs: &Expression,
 ) -> Result<NodeOutput, CompileError>
 where
-    Op: BooleanOpEval
-        + From<(ImmediateRegister, ImmediateRegister, ImmediateRegister)>
-        + Into<UnasmOp>,
+    Op: BooleanOpEval + From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
 {
     write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
 }

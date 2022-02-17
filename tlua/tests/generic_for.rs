@@ -12,8 +12,7 @@ fn generic_for() -> anyhow::Result<()> {
         local t = { "a", "b", "c" }
 
         local function next(state, control)
-            control = control or 0
-            control = control + 1
+            control = (control or 0) + 1
             if state[control] then
                 return control, state[control]
             end

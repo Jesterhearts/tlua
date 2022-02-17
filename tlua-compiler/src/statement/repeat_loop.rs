@@ -27,8 +27,6 @@ impl CompileStatement for RepeatLoop<'_> {
         emit_block(&mut scope, &self.body)?;
 
         let cond = self.terminator.compile(&mut scope)?;
-        let cond_reg = cond.to_register(&mut scope);
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(cond_reg));
 
         let jump_op: UnasmOp = match cond {
             NodeOutput::Constant(c) => {
@@ -40,7 +38,11 @@ impl CompileStatement for RepeatLoop<'_> {
                     opcodes::Jump::from(block_start).into()
                 }
             }
-            _ => opcodes::JumpNot::from((cond_reg, block_start)).into(),
+            cond => {
+                let cond_reg = cond.into_register(&mut scope);
+                let _scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(cond_reg));
+                opcodes::JumpNot::from((cond_reg, block_start)).into()
+            }
         };
         scope.emit(jump_op);
 

@@ -61,19 +61,38 @@ enum NodeOutput {
 }
 
 impl NodeOutput {
-    pub(crate) fn to_register(&self, scope: &mut Scope) -> ImmediateRegister {
+    pub(crate) fn into_register(self, scope: &mut Scope) -> ImmediateRegister {
         match self {
-            NodeOutput::Constant(c) => scope.push_immediate().init_from_const(scope, *c),
-            NodeOutput::Immediate(i) => *i,
-            NodeOutput::MappedRegister(m) => scope.push_immediate().init_from_mapped_reg(scope, *m),
+            NodeOutput::Constant(c) => scope.push_immediate().init_from_const(scope, c),
+            NodeOutput::Immediate(i) => i,
+            NodeOutput::MappedRegister(other) => {
+                scope.push_immediate().init_from_mapped_reg(scope, other)
+            }
             NodeOutput::TableEntry { table, index } => {
-                let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(*index));
-                table.init_from_table_entry(&mut scope, *table, *index)
+                let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(index));
+                table.init_from_table_entry(&mut scope, table, index)
             }
             NodeOutput::ReturnValues => scope.push_immediate().init_from_ret(scope),
             NodeOutput::VAStack => scope.push_immediate().init_from_va(scope, 0),
             NodeOutput::Err(_) => scope.push_immediate().no_init_needed(),
         }
+    }
+
+    pub(crate) fn into_existing_register(self, scope: &mut Scope, dest: ImmediateRegister) {
+        match self {
+            NodeOutput::Constant(value) => dest.init_from_const(scope, value),
+            NodeOutput::Immediate(other) => {
+                let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(other));
+                dest.init_from_immediate(&mut scope, other)
+            }
+            NodeOutput::MappedRegister(other) => dest.init_from_mapped_reg(scope, other),
+            NodeOutput::TableEntry { table, index } => {
+                dest.init_from_table_entry(scope, table, index)
+            }
+            NodeOutput::ReturnValues => dest.init_from_ret(scope),
+            NodeOutput::VAStack => dest.init_from_va(scope, 0),
+            NodeOutput::Err(_) => dest,
+        };
     }
 }
 

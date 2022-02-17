@@ -120,41 +120,41 @@ impl Context<'_> {
                 Op::Nop => (),
 
                 // Numeric operations
-                Op::Add(Add { dst, lhs, rhs }) => {
-                    self.imm[dst] = fp_op::<Add>(lhs, rhs, &self.imm)?;
+                Op::Add(Add { lhs, rhs }) => {
+                    self.imm[lhs] = fp_op::<Add>(lhs, rhs, &self.imm)?;
                 }
-                Op::Subtract(Subtract { dst, lhs, rhs }) => {
-                    self.imm[dst] = fp_op::<Subtract>(lhs, rhs, &self.imm)?;
+                Op::Subtract(Subtract { lhs, rhs }) => {
+                    self.imm[lhs] = fp_op::<Subtract>(lhs, rhs, &self.imm)?;
                 }
-                Op::Times(Times { dst, lhs, rhs }) => {
-                    self.imm[dst] = fp_op::<Times>(lhs, rhs, &self.imm)?;
+                Op::Times(Times { lhs, rhs }) => {
+                    self.imm[lhs] = fp_op::<Times>(lhs, rhs, &self.imm)?;
                 }
-                Op::Modulo(Modulo { dst, lhs, rhs }) => {
-                    self.imm[dst] = fp_op::<Modulo>(lhs, rhs, &self.imm)?;
+                Op::Modulo(Modulo { lhs, rhs }) => {
+                    self.imm[lhs] = fp_op::<Modulo>(lhs, rhs, &self.imm)?;
                 }
-                Op::Divide(Divide { dst, lhs, rhs }) => {
-                    self.imm[dst] = fp_op::<Divide>(lhs, rhs, &self.imm)?;
+                Op::Divide(Divide { lhs, rhs }) => {
+                    self.imm[lhs] = fp_op::<Divide>(lhs, rhs, &self.imm)?;
                 }
-                Op::Exponetiation(Exponetiation { dst, lhs, rhs }) => {
-                    self.imm[dst] = fp_op::<Exponetiation>(lhs, rhs, &self.imm)?;
+                Op::Exponetiation(Exponetiation { lhs, rhs }) => {
+                    self.imm[lhs] = fp_op::<Exponetiation>(lhs, rhs, &self.imm)?;
                 }
-                Op::IDiv(IDiv { dst, lhs, rhs }) => {
-                    self.imm[dst] = fp_op::<IDiv>(lhs, rhs, &self.imm)?;
+                Op::IDiv(IDiv { lhs, rhs }) => {
+                    self.imm[lhs] = fp_op::<IDiv>(lhs, rhs, &self.imm)?;
                 }
-                Op::BitAnd(BitAnd { dst, lhs, rhs }) => {
-                    self.imm[dst] = int_op::<BitAnd>(lhs, rhs, &self.imm)?;
+                Op::BitAnd(BitAnd { lhs, rhs }) => {
+                    self.imm[lhs] = int_op::<BitAnd>(lhs, rhs, &self.imm)?;
                 }
-                Op::BitOr(BitOr { dst, lhs, rhs }) => {
-                    self.imm[dst] = int_op::<BitOr>(lhs, rhs, &self.imm)?;
+                Op::BitOr(BitOr { lhs, rhs }) => {
+                    self.imm[lhs] = int_op::<BitOr>(lhs, rhs, &self.imm)?;
                 }
-                Op::BitXor(BitXor { dst, lhs, rhs }) => {
-                    self.imm[dst] = int_op::<BitXor>(lhs, rhs, &self.imm)?;
+                Op::BitXor(BitXor { lhs, rhs }) => {
+                    self.imm[lhs] = int_op::<BitXor>(lhs, rhs, &self.imm)?;
                 }
-                Op::ShiftLeft(ShiftLeft { dst, lhs, rhs }) => {
-                    self.imm[dst] = int_op::<ShiftLeft>(lhs, rhs, &self.imm)?;
+                Op::ShiftLeft(ShiftLeft { lhs, rhs }) => {
+                    self.imm[lhs] = int_op::<ShiftLeft>(lhs, rhs, &self.imm)?;
                 }
-                Op::ShiftRight(ShiftRight { dst, lhs, rhs }) => {
-                    self.imm[dst] = int_op::<ShiftRight>(lhs, rhs, &self.imm)?;
+                Op::ShiftRight(ShiftRight { lhs, rhs }) => {
+                    self.imm[lhs] = int_op::<ShiftRight>(lhs, rhs, &self.imm)?;
                 }
 
                 // Unary math operations
@@ -188,31 +188,31 @@ impl Context<'_> {
                 }
 
                 // Comparison operations
-                Op::LessThan(LessThan { dst, lhs, rhs }) => {
-                    self.imm[dst] = cmp_op::<LessThan>(lhs, rhs, &self.imm)?;
+                Op::LessThan(LessThan { lhs, rhs }) => {
+                    self.imm[lhs] = cmp_op::<LessThan>(lhs, rhs, &self.imm)?;
                 }
-                Op::LessEqual(LessEqual { dst, lhs, rhs }) => {
-                    self.imm[dst] = cmp_op::<LessEqual>(lhs, rhs, &self.imm)?;
+                Op::LessEqual(LessEqual { lhs, rhs }) => {
+                    self.imm[lhs] = cmp_op::<LessEqual>(lhs, rhs, &self.imm)?;
                 }
-                Op::GreaterThan(GreaterThan { dst, lhs, rhs }) => {
-                    self.imm[dst] = cmp_op::<GreaterThan>(lhs, rhs, &self.imm)?;
+                Op::GreaterThan(GreaterThan { lhs, rhs }) => {
+                    self.imm[lhs] = cmp_op::<GreaterThan>(lhs, rhs, &self.imm)?;
                 }
-                Op::GreaterEqual(GreaterEqual { dst, lhs, rhs }) => {
-                    self.imm[dst] = cmp_op::<GreaterEqual>(lhs, rhs, &self.imm)?;
+                Op::GreaterEqual(GreaterEqual { lhs, rhs }) => {
+                    self.imm[lhs] = cmp_op::<GreaterEqual>(lhs, rhs, &self.imm)?;
                 }
-                Op::Equals(Equals { dst, lhs, rhs }) => {
-                    self.imm[dst] = cmp_op::<Equals>(lhs, rhs, &self.imm)?;
+                Op::Equals(Equals { lhs, rhs }) => {
+                    self.imm[lhs] = cmp_op::<Equals>(lhs, rhs, &self.imm)?;
                 }
-                Op::NotEqual(NotEqual { dst, lhs, rhs }) => {
-                    self.imm[dst] = cmp_op::<NotEqual>(lhs, rhs, &self.imm)?;
+                Op::NotEqual(NotEqual { lhs, rhs }) => {
+                    self.imm[lhs] = cmp_op::<NotEqual>(lhs, rhs, &self.imm)?;
                 }
 
                 // Boolean operations
-                Op::And(And { dst, lhs, rhs }) => {
-                    self.imm[dst] = bool_op::<And>(lhs, rhs, &self.imm);
+                Op::And(And { lhs, rhs }) => {
+                    self.imm[lhs] = bool_op::<And>(lhs, rhs, &self.imm);
                 }
-                Op::Or(Or { dst, lhs, rhs }) => {
-                    self.imm[dst] = bool_op::<Or>(lhs, rhs, &self.imm);
+                Op::Or(Or { lhs, rhs }) => {
+                    self.imm[lhs] = bool_op::<Or>(lhs, rhs, &self.imm);
                 }
 
                 // Unary boolean operations
@@ -221,8 +221,8 @@ impl Context<'_> {
                 }
 
                 // String & Array operations
-                Op::Concat(Concat { dst, lhs, rhs }) => {
-                    self.imm[dst] = concat_op(lhs, rhs, &self.imm)?;
+                Op::Concat(Concat { lhs, rhs }) => {
+                    self.imm[lhs] = concat_op(lhs, rhs, &self.imm)?;
                 }
                 Op::Length(Length { dst, src }) => {
                     self.imm[dst] = match &self.imm[src] {

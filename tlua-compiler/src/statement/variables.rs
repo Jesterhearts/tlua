@@ -19,7 +19,7 @@ impl CompileStatement for LocalVarList<'_> {
                 Some(_) => todo!(),
             },
             |scope, reg, src| {
-                let src = src.to_register(scope);
+                let src = src.into_register(scope);
                 let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(src));
                 reg.init_from_immediate(&mut scope, src);
             },

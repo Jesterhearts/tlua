@@ -2,6 +2,7 @@ use derive_more::From;
 
 use crate::{
     binop::{
+        debug_binop,
         traits::{
             FloatBinop,
             NumericOpEval,
@@ -29,23 +30,11 @@ macro_rules! float_binop_impl {
     ) => {
         #[derive(Clone, Copy, PartialEq, Eq, From)]
         pub struct $name {
-            pub dst: ImmediateRegister,
             pub lhs: ImmediateRegister,
             pub rhs: ImmediateRegister,
         }
 
-        impl ::std::fmt::Debug for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(
-                    f,
-                    "{} {:?} {:?} {:?}",
-                    Self::NAME,
-                    self.dst,
-                    self.lhs,
-                    self.rhs
-                )
-            }
-        }
+        debug_binop! {$name}
 
         impl OpName for $name {
             const NAME: &'static str = paste::paste! { stringify!([< $name:snake >])};

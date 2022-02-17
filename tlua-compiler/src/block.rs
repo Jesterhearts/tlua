@@ -48,7 +48,7 @@ impl CompileStatement for RetStatement<'_> {
                 .expect("Still in bounds for outputs")
                 .compile(scope)?;
 
-            let ret = retval.to_register(scope);
+            let ret = retval.into_register(scope);
             let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_immediate(ret));
             scope.emit(opcodes::SetRet::from(ret));
         }
@@ -64,7 +64,7 @@ impl CompileStatement for RetStatement<'_> {
                 scope.emit(opcodes::Op::CopyRetFromVaAndRet);
             }
             retval => {
-                let ret = retval.to_register(scope);
+                let ret = retval.into_register(scope);
                 let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(ret));
                 scope.emit(opcodes::SetRet::from(ret));
                 scope.emit(opcodes::Op::Ret);

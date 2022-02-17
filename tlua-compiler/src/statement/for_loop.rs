@@ -9,7 +9,10 @@ use tlua_bytecode::{
 use tlua_parser::ast::statement::for_loop::ForLoop;
 
 use crate::{
-    compiler::InitRegister,
+    compiler::{
+        InitRegister,
+        JumpTemplate,
+    },
     constant::Constant,
     CompileError,
     CompileExpression,
@@ -69,22 +72,24 @@ impl CompileStatement for ForLoop<'_> {
         let zero = scope.push_immediate().init_from_const(&mut scope, 0.into());
         let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(zero));
 
-        // Check for a negative step, we always want to be dealing with negative steps
-        // for simplicity.
-        let ge_zero = scope.push_immediate().no_init_needed();
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(ge_zero));
+        let pending_skip_flip_step = {
+            // Check for a negative step, we always want to be dealing with negative steps
+            // for simplicity.
+            let ge_zero = scope.push_immediate().init_from_immediate(&mut scope, step);
+            let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(ge_zero));
 
-        scope.emit(opcodes::GreaterEqual::from((ge_zero, step, zero)));
+            scope.emit(opcodes::GreaterEqual::from((ge_zero, zero)));
 
-        // If the step is negative, skip the extra work to negate it.
-        let pending_skip_flip_step = scope.reserve_jump_isn();
+            // If the step is negative, skip the extra work to negate it.
+            JumpTemplate::<opcodes::JumpNot>::conditional(scope.reserve_jump_isn(), ge_zero)
+        };
 
         {
             // Check for a zero step to raise an error.
-            let gt_zero = scope.push_immediate().no_init_needed();
+            let gt_zero = scope.push_immediate().init_from_immediate(&mut scope, step);
             let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(gt_zero));
 
-            scope.emit(opcodes::GreaterThan::from((gt_zero, step, zero)));
+            scope.emit(opcodes::GreaterThan::from((gt_zero, zero)));
 
             scope.emit(opcodes::RaiseIfNot::from((
                 gt_zero,
@@ -98,38 +103,29 @@ impl CompileStatement for ForLoop<'_> {
         scope.emit(opcodes::UnaryMinus::from((limit, limit)));
         scope.emit(opcodes::UnaryMinus::from((step, step)));
 
-        {
-            let next_isn = scope.next_instruction();
-            scope.overwrite(
-                pending_skip_flip_step,
-                opcodes::JumpNot::from((ge_zero, next_isn)),
-            );
-        }
+        pending_skip_flip_step.apply(scope.next_instruction(), &mut scope);
 
         let cond_check_start = scope.next_instruction();
-        let cond_outcome = scope.push_immediate().no_init_needed();
-        let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(cond_outcome));
 
-        scope.emit(opcodes::GreaterEqual::from((cond_outcome, init, limit)));
+        let pending_skip_body = {
+            let cond_outcome = scope.push_immediate().init_from_immediate(&mut scope, init);
+            let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(cond_outcome));
 
-        let pending_skip_body = scope.reserve_jump_isn();
+            scope.emit(opcodes::GreaterEqual::from((cond_outcome, limit)));
+
+            JumpTemplate::<opcodes::JumpNot>::conditional(scope.reserve_jump_isn(), cond_outcome)
+        };
 
         scope
             .new_local(self.var)?
             .init_from_immediate(&mut scope, init);
+        scope.emit(opcodes::Add::from((init, step)));
 
         self.body.compile(&mut scope)?;
 
-        scope.emit(opcodes::Add::from((init, init, step)));
         scope.emit(opcodes::Jump::from(cond_check_start));
 
-        {
-            let next_isn = scope.next_instruction();
-            scope.overwrite(
-                pending_skip_body,
-                opcodes::JumpNot::from((cond_outcome, next_isn)),
-            );
-        }
+        pending_skip_body.apply(scope.next_instruction(), &mut scope);
 
         scope.label_current_instruction(loop_exit_label)?;
         scope.pop_loop_label();
@@ -148,13 +144,13 @@ fn emit_assert_isnum(
     let target = match target {
         target @ NodeOutput::Constant(Constant::Integer(_))
         | target @ NodeOutput::Constant(Constant::Float(_)) => {
-            return target.to_register(scope);
+            return target.into_register(scope);
         }
         NodeOutput::Constant(_) => {
             scope.emit(opcodes::Raise::from(err));
             return scope.push_immediate().no_init_needed();
         }
-        target => target.to_register(scope),
+        target => target.into_register(scope),
     };
 
     scope.emit(opcodes::CheckType::from((
@@ -167,7 +163,7 @@ fn emit_assert_isnum(
         target,
         TypeId::Primitive(PrimitiveType::Float),
     )));
-    scope.emit(opcodes::Or::from((typecheck0, typecheck0, typecheck1)));
+    scope.emit(opcodes::Or::from((typecheck0, typecheck1)));
     scope.emit(opcodes::RaiseIfNot::from((typecheck0, err)));
 
     target

@@ -15,7 +15,7 @@ use tlua_parser::ast::{
 
 use crate::{
     compiler::{
-        unasm::UnasmOp,
+        JumpTemplate,
         LabelId,
     },
     CompileError,
@@ -50,33 +50,32 @@ fn compile_if_block(
     body: &Block,
 ) -> Result<(), CompileError> {
     let cond_value = cond.compile(scope)?;
-    let cond_reg = cond_value.to_register(scope);
-    let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(cond_reg));
-
-    // Reserve an intruction for jumping to the next condition if the operand is
-    // false.
-    let pending_skip_body = scope.reserve_jump_isn();
-
-    body.compile(&mut scope)?;
-
-    scope.emit_jump_label(exit_label);
-
-    let jump_op: UnasmOp = match cond_value {
+    let jump_template = match cond_value {
         NodeOutput::Constant(c) => {
             if c.as_bool() {
                 // Always true, do nothing and just enter the block
-                UnasmOp::Nop
+                None
             } else {
                 // Always false, jump without examining the condition.
-                opcodes::Jump::from(scope.next_instruction()).into()
+                Some(JumpTemplate::unconditional(scope.reserve_jump_isn()))
             }
         }
-        _ => opcodes::JumpNot::from((cond_reg, scope.next_instruction())).into(),
+        cond_value => {
+            let reg = cond_value.into_register(scope);
+            let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_immediate(reg));
+            Some(JumpTemplate::<opcodes::JumpNot>::conditional(
+                scope.reserve_jump_isn(),
+                reg,
+            ))
+        }
     };
 
-    // Now that we know how big our body is, we can update our jump instruction for
-    // a false condition to move to this location.
-    scope.overwrite(pending_skip_body, jump_op);
+    body.compile(scope)?;
+
+    scope.emit_jump_label(exit_label);
+    if let Some(jump) = jump_template {
+        jump.apply(scope.next_instruction(), scope);
+    }
 
     Ok(())
 }

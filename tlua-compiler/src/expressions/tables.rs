@@ -50,7 +50,7 @@ where
                 index.init_from_const(&mut scope, ConstantString::from(name).into());
 
                 let value = expression.compile(&mut scope)?;
-                let value = value.to_register(&mut scope);
+                let value = value.into_register(&mut scope);
 
                 let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(value));
 
@@ -63,14 +63,14 @@ where
                 expression,
             } => {
                 let index_init = index_expr.compile(&mut scope)?;
-                let index_init = index_init.to_register(&mut scope);
+                let index_init = index_init.into_register(&mut scope);
                 let mut scope =
                     guard_on_success(&mut scope, |scope| scope.pop_immediate(index_init));
 
                 index.init_from_immediate(&mut scope, index_init);
 
                 let value = expression.compile(&mut scope)?;
-                let value = value.to_register(&mut scope);
+                let value = value.into_register(&mut scope);
                 let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(value));
 
                 scope.emit(opcodes::SetProperty::from((table, index, value)));
@@ -87,17 +87,15 @@ where
         }
     }
 
+    let va_start = arraylike.len();
     let (last, initializers) = if last_field_va {
-        arraylike
-            .split_last()
-            .map(|(last, rest)| (Some(last), rest))
-            .expect("Should have at least one element")
+        (arraylike.pop(), arraylike)
     } else {
-        (None, arraylike.as_slice())
+        (None, arraylike)
     };
 
-    for (array_index, init) in initializers.iter().enumerate() {
-        let value = init.to_register(&mut scope);
+    for (array_index, init) in initializers.into_iter().enumerate() {
+        let value = init.into_register(&mut scope);
         let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(value));
 
         index.init_from_const(
@@ -115,16 +113,10 @@ where
     if let Some(last) = last {
         match last {
             NodeOutput::ReturnValues => {
-                scope.emit(opcodes::SetAllPropertiesFromRet::from((
-                    table,
-                    initializers.len() + 1,
-                )));
+                scope.emit(opcodes::SetAllPropertiesFromRet::from((table, va_start)));
             }
             NodeOutput::VAStack => {
-                scope.emit(opcodes::SetAllPropertiesFromVa::from((
-                    table,
-                    initializers.len() + 1,
-                )));
+                scope.emit(opcodes::SetAllPropertiesFromVa::from((table, va_start)));
             }
             _ => {
                 unreachable!("Only VA and return value nodes need special handling.")

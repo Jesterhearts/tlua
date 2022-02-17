@@ -27,12 +27,12 @@ impl CompileStatement for Assignment<'_> {
             prefix_expression::map_var,
             |scope, dest, init| match dest {
                 Either::Left(var) => {
-                    let init = init.to_register(scope);
+                    let init = init.into_register(scope);
                     let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(init));
                     var.init_from_immediate(&mut scope, init);
                 }
                 Either::Right(TableIndex { table, index }) => {
-                    let init = init.to_register(scope);
+                    let init = init.into_register(scope);
                     let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(table));
                     let mut scope =
                         guard_on_success(&mut scope, |scope| scope.pop_immediate(index));

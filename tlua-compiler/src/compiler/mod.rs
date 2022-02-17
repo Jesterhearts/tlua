@@ -1,4 +1,7 @@
-use std::ops::Range;
+use std::{
+    marker::PhantomData,
+    ops::Range,
+};
 
 use derive_more::From;
 use scopeguard::guard_on_success;
@@ -63,6 +66,45 @@ impl Compiler {
         };
 
         Ok(self.root.into_chunk(main))
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum JumpTemplate<Op> {
+    Unconditional {
+        location: usize,
+    },
+    Conditional {
+        location: usize,
+        reg: ImmediateRegister,
+        op: PhantomData<Op>,
+    },
+}
+
+impl<Op: From<(ImmediateRegister, usize)> + Into<UnasmOp>> JumpTemplate<Op> {
+    pub(crate) fn unconditional(location: usize) -> Self {
+        Self::Unconditional { location }
+    }
+
+    pub(crate) fn conditional(location: usize, reg: ImmediateRegister) -> Self {
+        Self::Conditional {
+            location,
+            reg,
+            op: Default::default(),
+        }
+    }
+
+    pub(crate) fn apply(self, target: usize, scope: &mut Scope) {
+        match self {
+            JumpTemplate::Unconditional { location } => {
+                scope.overwrite(location, opcodes::Jump::from(target))
+            }
+            JumpTemplate::Conditional {
+                location,
+                reg,
+                op: _,
+            } => scope.overwrite(location, Op::from((reg, target))),
+        }
     }
 }
 

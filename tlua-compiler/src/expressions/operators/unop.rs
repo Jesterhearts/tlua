@@ -36,7 +36,7 @@ where
             Err(err) => Ok(NodeOutput::Err(scope.write_raise(err))),
         },
         src => {
-            let src = src.to_register(scope);
+            let src = src.into_register(scope);
             scope.emit(Op::from((src, src)));
 
             Ok(NodeOutput::Immediate(src))

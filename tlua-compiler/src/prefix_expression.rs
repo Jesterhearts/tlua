@@ -102,7 +102,7 @@ fn emit_load_head(scope: &mut Scope, head: &HeadAtom) -> Result<ImmediateRegiste
                 Ok(scope.push_immediate().no_init_needed())
             }
             NodeOutput::Err(_) => Ok(scope.push_immediate().no_init_needed()),
-            src => Ok(src.to_register(scope)),
+            src => Ok(src.into_register(scope)),
         },
     }
 }
@@ -121,7 +121,7 @@ where
         match next {
             PrefixAtom::Var(v) => {
                 let index = v.compile(scope)?;
-                let index = index.to_register(scope);
+                let index = index.into_register(scope);
                 let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_immediate(index));
 
                 scope.emit(opcodes::Lookup::from((table_reg, table_reg, index)));
@@ -217,7 +217,7 @@ pub(crate) fn emit_standard_call(
             .expect("Still in bounds for args")
             .compile(&mut scope)?;
 
-        let arg_init = arg_init.to_register(&mut scope);
+        let arg_init = arg_init.into_register(&mut scope);
         let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(arg_init));
 
         arg_reg.init_from_immediate(&mut scope, arg_init);
@@ -244,7 +244,7 @@ pub(crate) fn emit_standard_call(
             return Ok(None);
         }
         arg => {
-            let arg_init = arg.to_register(&mut scope);
+            let arg_init = arg.into_register(&mut scope);
             let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(arg_init));
 
             last_reg.init_from_immediate(&mut scope, arg_init);
@@ -267,7 +267,7 @@ pub(crate) fn map_var(
                 VarAtom::Name(ident) => scope
                     .push_immediate()
                     .init_from_const(scope, ConstantString::from(ident).into()),
-                VarAtom::IndexOp(index) => index.compile(scope)?.to_register(scope),
+                VarAtom::IndexOp(index) => index.compile(scope)?.into_register(scope),
             };
 
             Ok(Either::Right(TableIndex { table, index }))

@@ -2,6 +2,7 @@ use derive_more::From;
 
 use crate::{
     binop::{
+        debug_binop,
         traits::ConcatBinop,
         OpName,
     },
@@ -12,23 +13,11 @@ use crate::{
 
 #[derive(Clone, Copy, PartialEq, Eq, From)]
 pub struct Concat {
-    pub dst: ImmediateRegister,
     pub lhs: ImmediateRegister,
     pub rhs: ImmediateRegister,
 }
 
-impl ::std::fmt::Debug for Concat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} {:?} {:?} {:?}",
-            Self::NAME,
-            self.dst,
-            self.lhs,
-            self.rhs
-        )
-    }
-}
+debug_binop! {Concat}
 
 impl OpName for Concat {
     const NAME: &'static str = "concat";

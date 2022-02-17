@@ -7,7 +7,7 @@ use tlua_bytecode::{
 use tlua_parser::ast::statement::while_loop::WhileLoop;
 
 use crate::{
-    compiler::unasm::UnasmOp,
+    compiler::JumpTemplate,
     CompileError,
     CompileExpression,
     CompileStatement,
@@ -21,28 +21,33 @@ impl CompileStatement for WhileLoop<'_> {
 
         let cond_start = scope.next_instruction();
         let init = self.cond.compile(scope)?;
-        let cond = init.to_register(scope);
-        let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(cond));
 
-        let pending_skip_body = scope.reserve_jump_isn();
-
-        self.body.compile(&mut scope)?;
-        scope.emit(opcodes::Jump::from(cond_start));
-
-        let jump_op: UnasmOp = match init {
+        let pending_skip_body = match init {
             NodeOutput::Constant(c) => {
                 if c.as_bool() {
                     // Infinite loop, no need to jump
-                    UnasmOp::Nop
+                    None
                 } else {
                     // Loop never executed, just jump over it.
-                    opcodes::Jump::from(scope.next_instruction()).into()
+                    Some(JumpTemplate::unconditional(scope.reserve_jump_isn()))
                 }
             }
-            _ => opcodes::JumpNot::from((cond, scope.next_instruction())).into(),
+            init => {
+                let cond = init.into_register(scope);
+                let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_immediate(cond));
+                Some(JumpTemplate::<opcodes::JumpNot>::conditional(
+                    scope.reserve_jump_isn(),
+                    cond,
+                ))
+            }
         };
 
-        scope.overwrite(pending_skip_body, jump_op);
+        self.body.compile(scope)?;
+        scope.emit(opcodes::Jump::from(cond_start));
+
+        if let Some(jump) = pending_skip_body {
+            jump.apply(scope.next_instruction(), scope)
+        }
 
         scope.label_current_instruction(loop_exit_label)?;
         scope.pop_loop_label();
