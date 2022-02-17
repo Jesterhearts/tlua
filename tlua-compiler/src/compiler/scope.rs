@@ -543,59 +543,57 @@ impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
         &mut self,
         ident: Ident,
     ) -> Result<UninitRegister<MappedLocalRegister>, CompileError> {
-        {
-            self.block_scope.current_scope_id =
-                self.block_scope.function_scope.root_scope.next_scope_id();
+        self.block_scope.current_scope_id =
+            self.block_scope.function_scope.root_scope.next_scope_id();
 
-            let offset_register = OffsetRegister {
-                source_scope_depth: if self.block_scope.scope_depth.get() >= usize::from(u16::MAX) {
-                    return Err(CompileError::ScopeNestingTooDeep {
-                        max: usize::from(u16::MAX - 1),
-                    });
-                } else {
-                    self.block_scope.scope_depth.get().try_into().unwrap()
-                },
-                offset: self
-                    .block_scope
-                    .declared_locals
-                    .len()
-                    .try_into()
-                    .map_err(|_| CompileError::TooManyLocals {
-                        max: u16::MAX.into(),
-                    })?,
-            };
-            self.block_scope.function_scope.function.local_registers += 1;
-
-            if self.block_scope.declared_locals.contains(&ident) {
-                *self
-                    .block_scope
-                    .function_scope
-                    .root_scope
-                    .all_locals
-                    .get_mut(&ident)
-                    .and_then(|vec| vec.last_mut())
-                    .expect("Previous local decl") = offset_register;
+        let offset_register = OffsetRegister {
+            source_scope_depth: if self.block_scope.scope_depth.get() >= usize::from(u16::MAX) {
+                return Err(CompileError::ScopeNestingTooDeep {
+                    max: usize::from(u16::MAX - 1),
+                });
             } else {
-                self.block_scope.declared_locals.insert(ident);
+                self.block_scope.scope_depth.get().try_into().unwrap()
+            },
+            offset: self
+                .block_scope
+                .declared_locals
+                .len()
+                .try_into()
+                .map_err(|_| CompileError::TooManyLocals {
+                    max: u16::MAX.into(),
+                })?,
+        };
+        self.block_scope.function_scope.function.local_registers += 1;
 
-                match self
-                    .block_scope
-                    .function_scope
-                    .root_scope
-                    .all_locals
-                    .entry(ident)
-                {
-                    hash_map::Entry::Occupied(mut shadow_list) => {
-                        shadow_list.get_mut().push(offset_register);
-                    }
-                    hash_map::Entry::Vacant(first_decl) => {
-                        first_decl.insert(vec![offset_register]);
-                    }
+        if self.block_scope.declared_locals.contains(&ident) {
+            *self
+                .block_scope
+                .function_scope
+                .root_scope
+                .all_locals
+                .get_mut(&ident)
+                .and_then(|vec| vec.last_mut())
+                .expect("Previous local decl") = offset_register;
+        } else {
+            self.block_scope.declared_locals.insert(ident);
+
+            match self
+                .block_scope
+                .function_scope
+                .root_scope
+                .all_locals
+                .entry(ident)
+            {
+                hash_map::Entry::Occupied(mut shadow_list) => {
+                    shadow_list.get_mut().push(offset_register);
+                }
+                hash_map::Entry::Vacant(first_decl) => {
+                    first_decl.insert(vec![offset_register]);
                 }
             }
-
-            Ok(MappedLocalRegister::from(offset_register).into())
         }
+
+        Ok(MappedLocalRegister::from(offset_register).into())
     }
 
     pub(crate) fn push_immediate(&mut self) -> UninitRegister<ImmediateRegister> {
