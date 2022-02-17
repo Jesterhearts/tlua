@@ -29,13 +29,13 @@ impl CompileStatement for WhileLoop<'_> {
                     None
                 } else {
                     // Loop never executed, just jump over it.
-                    Some(JumpTemplate::unconditional(scope.reserve_jump_isn()))
+                    Some(JumpTemplate::unconditional_at(scope.reserve_jump_isn()))
                 }
             }
             init => {
                 let cond = init.into_register(scope);
                 let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_immediate(cond));
-                Some(JumpTemplate::<opcodes::JumpNot>::conditional(
+                Some(JumpTemplate::<opcodes::JumpNot>::conditional_at(
                     scope.reserve_jump_isn(),
                     cond,
                 ))
@@ -46,7 +46,7 @@ impl CompileStatement for WhileLoop<'_> {
         scope.emit(opcodes::Jump::from(cond_start));
 
         if let Some(jump) = pending_skip_body {
-            jump.apply(scope.next_instruction(), scope)
+            jump.resolve_to(scope.next_instruction(), scope)
         }
 
         scope.label_current_instruction(loop_exit_label)?;

@@ -57,13 +57,13 @@ fn compile_if_block(
                 None
             } else {
                 // Always false, jump without examining the condition.
-                Some(JumpTemplate::unconditional(scope.reserve_jump_isn()))
+                Some(JumpTemplate::unconditional_at(scope.reserve_jump_isn()))
             }
         }
         cond_value => {
             let reg = cond_value.into_register(scope);
             let mut scope = guard_on_success(&mut *scope, |scope| scope.pop_immediate(reg));
-            Some(JumpTemplate::<opcodes::JumpNot>::conditional(
+            Some(JumpTemplate::<opcodes::JumpNot>::conditional_at(
                 scope.reserve_jump_isn(),
                 reg,
             ))
@@ -74,7 +74,7 @@ fn compile_if_block(
 
     scope.emit_jump_label(exit_label);
     if let Some(jump) = jump_template {
-        jump.apply(scope.next_instruction(), scope);
+        jump.resolve_to(scope.next_instruction(), scope);
     }
 
     Ok(())

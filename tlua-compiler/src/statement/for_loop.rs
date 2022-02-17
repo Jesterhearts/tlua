@@ -81,7 +81,7 @@ impl CompileStatement for ForLoop<'_> {
             scope.emit(opcodes::GreaterEqual::from((ge_zero, zero)));
 
             // If the step is negative, skip the extra work to negate it.
-            JumpTemplate::<opcodes::JumpNot>::conditional(scope.reserve_jump_isn(), ge_zero)
+            JumpTemplate::<opcodes::JumpNot>::conditional_at(scope.reserve_jump_isn(), ge_zero)
         };
 
         {
@@ -103,7 +103,7 @@ impl CompileStatement for ForLoop<'_> {
         scope.emit(opcodes::UnaryMinus::from((limit, limit)));
         scope.emit(opcodes::UnaryMinus::from((step, step)));
 
-        pending_skip_flip_step.apply(scope.next_instruction(), &mut scope);
+        pending_skip_flip_step.resolve_to(scope.next_instruction(), &mut scope);
 
         let cond_check_start = scope.next_instruction();
 
@@ -113,7 +113,7 @@ impl CompileStatement for ForLoop<'_> {
 
             scope.emit(opcodes::GreaterEqual::from((cond_outcome, limit)));
 
-            JumpTemplate::<opcodes::JumpNot>::conditional(scope.reserve_jump_isn(), cond_outcome)
+            JumpTemplate::<opcodes::JumpNot>::conditional_at(scope.reserve_jump_isn(), cond_outcome)
         };
 
         scope
@@ -125,7 +125,7 @@ impl CompileStatement for ForLoop<'_> {
 
         scope.emit(opcodes::Jump::from(cond_check_start));
 
-        pending_skip_body.apply(scope.next_instruction(), &mut scope);
+        pending_skip_body.resolve_to(scope.next_instruction(), &mut scope);
 
         scope.label_current_instruction(loop_exit_label)?;
         scope.pop_loop_label();

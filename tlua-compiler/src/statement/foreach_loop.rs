@@ -37,7 +37,7 @@ impl CompileStatement for ForEachLoop<'_> {
 
         scope.emit(opcodes::Jump::from(loop_start));
 
-        pending_skip_body.apply(scope.next_instruction(), &mut scope);
+        pending_skip_body.resolve_to(scope.next_instruction(), &mut scope);
 
         scope.label_current_instruction(loop_exit_label)?;
         scope.pop_loop_label();
@@ -103,6 +103,6 @@ fn emit_loop_header(
 
     Ok((
         loop_start,
-        JumpTemplate::<opcodes::JumpNil>::conditional(scope.reserve_jump_isn(), control),
+        JumpTemplate::<opcodes::JumpNil>::conditional_at(scope.reserve_jump_isn(), control),
     ))
 }

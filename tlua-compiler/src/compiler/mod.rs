@@ -82,11 +82,11 @@ pub(crate) enum JumpTemplate<Op> {
 }
 
 impl<Op: From<(ImmediateRegister, usize)> + Into<UnasmOp>> JumpTemplate<Op> {
-    pub(crate) fn unconditional(location: usize) -> Self {
+    pub(crate) fn unconditional_at(location: usize) -> Self {
         Self::Unconditional { location }
     }
 
-    pub(crate) fn conditional(location: usize, reg: ImmediateRegister) -> Self {
+    pub(crate) fn conditional_at(location: usize, reg: ImmediateRegister) -> Self {
         Self::Conditional {
             location,
             reg,
@@ -94,7 +94,7 @@ impl<Op: From<(ImmediateRegister, usize)> + Into<UnasmOp>> JumpTemplate<Op> {
         }
     }
 
-    pub(crate) fn apply(self, target: usize, scope: &mut Scope) {
+    pub(crate) fn resolve_to(self, target: usize, scope: &mut Scope) {
         match self {
             JumpTemplate::Unconditional { location } => {
                 scope.overwrite(location, opcodes::Jump::from(target))
