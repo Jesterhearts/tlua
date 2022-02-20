@@ -10,18 +10,17 @@ use nom::{
     },
     combinator::{
         map_res,
-        opt,
         recognize,
     },
     sequence::{
         delimited,
         pair,
-        preceded,
     },
 };
 use nom_supreme::ParserExt;
 
 use crate::{
+    build_separated_list1,
     is_keyword,
     list::List,
     lua_whitespace0,
@@ -87,28 +86,15 @@ impl From<&str> for Ident {
     }
 }
 
-pub fn identifier_list1<'src, 'chunk>(
-    mut input: Span<'src>,
+pub fn build_identifier_list1<'chunk>(
     alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, List<'chunk, Ident>> {
-    let (remain, head) = Ident::parser(alloc)(input)?;
-    input = remain;
-
-    let mut list = List::default();
-    let mut current = list.cursor_mut().alloc_insert_advance(alloc, head);
-
-    loop {
-        let (remain, maybe_next) = opt(preceded(
-            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, Ident>> {
+    |input| {
+        build_separated_list1(
+            alloc,
             Ident::parser(alloc),
-        ))(input)?;
-        input = remain;
-
-        current = if let Some(next) = maybe_next {
-            current.alloc_insert_advance(alloc, next)
-        } else {
-            return Ok((input, list));
-        };
+            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+        )(input)
     }
 }
 

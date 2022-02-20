@@ -2,12 +2,17 @@ use bumpalo::Bump;
 use nom::{
     branch::alt,
     bytes::complete::take_while1,
-    combinator::value,
+    combinator::{
+        map,
+        opt,
+        value,
+    },
     sequence::{
         delimited,
         preceded,
     },
     IResult,
+    Parser,
 };
 use nom_supreme::{
     error::ErrorTree,
@@ -25,7 +30,10 @@ pub mod statement;
 pub mod string;
 
 use self::comments::parse_comment;
-use crate::block::Block;
+use crate::{
+    block::Block,
+    list::List,
+};
 
 #[derive(Debug, Error)]
 #[error("Errors parsing chunk: {errors:#}")]
@@ -94,6 +102,106 @@ macro_rules! final_parser {
     };
 }
 
+pub(crate) fn build_list0<'chunk, 'src, P, O>(
+    alloc: &'chunk ASTAllocator,
+    parser: P,
+) -> impl FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, O>>
+where
+    P: Parser<Span<'src>, O, InternalLuaParseError<'src>>,
+    O: 'chunk,
+{
+    let mut parser = build_list1(alloc, parser);
+    move |input| {
+        map(opt(|input| parser.parse(input)), |maybe_list| {
+            maybe_list.unwrap_or_default()
+        })(input)
+    }
+}
+
+pub(crate) fn build_list1<'chunk, 'src, P, O>(
+    alloc: &'chunk ASTAllocator,
+    mut parser: P,
+) -> impl FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, O>>
+where
+    P: Parser<Span<'src>, O, InternalLuaParseError<'src>>,
+    O: 'chunk,
+{
+    move |mut input| {
+        let mut list = List::<O>::default();
+        let mut current = list.cursor_mut();
+
+        let (remain, first) = parser.parse(input)?;
+        input = remain;
+        current = current.alloc_insert_advance(alloc, first);
+
+        loop {
+            let (remain, maybe_next) = opt(|input| parser.parse(input))(input)?;
+            input = remain;
+
+            current = if let Some(next) = maybe_next {
+                current.alloc_insert_advance(alloc, next)
+            } else {
+                break;
+            };
+        }
+
+        Ok((input, list))
+    }
+}
+
+pub(crate) fn build_separated_list1<'chunk, 'src, P, S, O1, O2>(
+    alloc: &'chunk ASTAllocator,
+    mut parser: P,
+    mut sep_parser: S,
+) -> impl FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, O1>>
+where
+    P: Parser<Span<'src>, O1, InternalLuaParseError<'src>>,
+    S: Parser<Span<'src>, O2, InternalLuaParseError<'src>>,
+    O1: 'chunk,
+{
+    move |mut input| {
+        let mut list = List::<O1>::default();
+        let mut current = list.cursor_mut();
+
+        let (remain, first) = parser.parse(input)?;
+        input = remain;
+        current = current.alloc_insert_advance(alloc, first);
+
+        loop {
+            let (remain, maybe_next) = opt(preceded(
+                |input| sep_parser.parse(input),
+                |input| parser.parse(input),
+            ))(input)?;
+            input = remain;
+
+            current = if let Some(next) = maybe_next {
+                current.alloc_insert_advance(alloc, next)
+            } else {
+                break;
+            };
+        }
+
+        Ok((input, list))
+    }
+}
+
+pub(crate) fn build_separated_list0<'chunk, 'src, P, S, O1, O2>(
+    alloc: &'chunk ASTAllocator,
+    parser: P,
+    sep_parser: S,
+) -> impl FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, O1>>
+where
+    P: Parser<Span<'src>, O1, InternalLuaParseError<'src>>,
+    S: Parser<Span<'src>, O2, InternalLuaParseError<'src>>,
+    O1: 'chunk,
+{
+    let mut parser = build_separated_list1(alloc, parser, sep_parser);
+    move |input| {
+        map(opt(|input| parser.parse(input)), |maybe_list| {
+            maybe_list.unwrap_or_default()
+        })(input)
+    }
+}
 pub fn lua_whitespace0(mut input: Span) -> ParseResult<()> {
     loop {
         input = match alt((

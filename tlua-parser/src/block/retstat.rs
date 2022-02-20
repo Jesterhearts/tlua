@@ -9,7 +9,7 @@ use nom::{
 
 use crate::{
     expressions::{
-        expression_list1,
+        build_expression_list0,
         Expression,
     },
     list::List,
@@ -34,14 +34,12 @@ impl<'chunk> RetStatement<'chunk> {
                     tag("return"),
                     delimited(
                         lua_whitespace0,
-                        opt(|input| expression_list1(input, alloc)),
+                        build_expression_list0(alloc),
                         lua_whitespace0,
                     ),
                     opt(tag(";")),
                 ),
-                |expressions| Self {
-                    expressions: expressions.unwrap_or_default(),
-                },
+                |expressions| Self { expressions },
             )(input)
         }
     }

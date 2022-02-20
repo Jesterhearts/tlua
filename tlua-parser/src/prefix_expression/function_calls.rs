@@ -13,7 +13,7 @@ use nom::{
 
 use crate::{
     expressions::{
-        expression_list1,
+        build_expression_list1,
         tables::TableConstructor,
         Expression,
     },
@@ -44,7 +44,7 @@ impl<'chunk> FnArgs<'chunk> {
                 map(
                     delimited(
                         pair(tag("("), lua_whitespace0),
-                        opt(|input| expression_list1(input, alloc)),
+                        opt(build_expression_list1(alloc)),
                         pair(lua_whitespace0, tag(")")),
                     ),
                     |exprs| Self::Expressions(exprs.unwrap_or_default()),

@@ -14,8 +14,9 @@ use nom::{
 };
 
 use crate::{
+    build_separated_list1,
     expressions::{
-        expression_list1,
+        build_expression_list1,
         Expression,
     },
     identifiers::Ident,
@@ -90,10 +91,10 @@ impl<'chunk> LocalVarList<'chunk> {
                 preceded(
                     pair(tag("local"), lua_whitespace1),
                     pair(
-                        |input| local_varlist1(input, alloc),
+                        build_local_varlist1(alloc),
                         opt(preceded(
                             delimited(lua_whitespace0, tag("="), lua_whitespace0),
-                            |input| expression_list1(input, alloc),
+                            build_expression_list1(alloc),
                         )),
                     ),
                 ),
@@ -106,33 +107,19 @@ impl<'chunk> LocalVarList<'chunk> {
     }
 }
 
-pub fn local_varlist1<'src, 'chunk>(
-    mut input: Span<'src>,
+pub(crate) fn build_local_varlist1<'chunk>(
     alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, List<'chunk, LocalVar>> {
-    let (remain, head) = LocalVar::parser(alloc)(input)?;
-    input = remain;
-
-    let mut locals = List::default();
-    let current = locals.cursor_mut();
-    let mut current = current.alloc_insert_advance(alloc, head);
-
-    loop {
-        let (remain, maybe_next) = opt(preceded(
-            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, LocalVar>> {
+    |input| {
+        build_separated_list1(
+            alloc,
             LocalVar::parser(alloc),
-        ))(input)?;
-        input = remain;
-
-        current = if let Some(next) = maybe_next {
-            current.alloc_insert_advance(alloc, next)
-        } else {
-            return Ok((input, locals));
-        }
+            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+        )(input)
     }
 }
 
-pub fn varlist1<'src, 'chunk>(
+pub(crate) fn varlist1<'src, 'chunk>(
     mut input: Span<'src>,
     head: VarPrefixExpression<'chunk>,
     alloc: &'chunk ASTAllocator,

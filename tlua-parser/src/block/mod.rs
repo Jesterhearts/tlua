@@ -1,9 +1,16 @@
 use nom::{
-    combinator::opt,
-    sequence::terminated,
+    combinator::{
+        map,
+        opt,
+    },
+    sequence::{
+        pair,
+        terminated,
+    },
 };
 
 use crate::{
+    build_list0,
     list::List,
     lua_whitespace0,
     statement::Statement,
@@ -25,25 +32,14 @@ impl<'chunk> Block<'chunk> {
     pub(crate) fn parser(
         alloc: &'chunk ASTAllocator,
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Block<'chunk>> {
-        |mut input| {
-            let mut statements = List::default();
-            let mut current = statements.cursor_mut();
-
-            loop {
-                let (remain, maybe_next) =
-                    opt(terminated(Statement::parser(alloc), lua_whitespace0))(input)?;
-                input = remain;
-
-                current = if let Some(next) = maybe_next {
-                    current.alloc_insert_advance(alloc, next)
-                } else {
-                    break;
-                };
-            }
-
-            let (remain, ret) = opt(RetStatement::parser(alloc))(input)?;
-
-            Ok((remain, Block { statements, ret }))
+        |input| {
+            map(
+                pair(
+                    build_list0(alloc, terminated(Statement::parser(alloc), lua_whitespace0)),
+                    opt(RetStatement::parser(alloc)),
+                ),
+                |(statements, ret)| Block { statements, ret },
+            )(input)
         }
     }
 }

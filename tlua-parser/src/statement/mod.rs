@@ -16,7 +16,7 @@ use nom_supreme::ParserExt;
 
 use crate::{
     block::Block,
-    expressions::expression_list1,
+    expressions::build_expression_list1,
     identifiers::Ident,
     lua_whitespace0,
     lua_whitespace1,
@@ -155,7 +155,7 @@ fn parse_assignment_or_call<'src, 'chunk>(
 
             let (input, expressions) = preceded(
                 value((), delimited(lua_whitespace0, tag("="), lua_whitespace0)),
-                |input| expression_list1(input, alloc),
+                build_expression_list1(alloc),
             )(input)?;
 
             Ok((

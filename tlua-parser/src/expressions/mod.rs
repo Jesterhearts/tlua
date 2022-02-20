@@ -1,10 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    combinator::{
-        map,
-        opt,
-    },
+    combinator::map,
     sequence::{
         delimited,
         pair,
@@ -13,6 +10,8 @@ use nom::{
 };
 
 use crate::{
+    build_separated_list0,
+    build_separated_list1,
     list::List,
     lua_whitespace0,
     prefix_expression::{
@@ -89,28 +88,27 @@ impl<'chunk> Expression<'chunk> {
     }
 }
 
-pub fn expression_list1<'src, 'chunk>(
-    mut input: Span<'src>,
+pub fn build_expression_list0<'chunk>(
     alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, List<'chunk, Expression<'chunk>>> {
-    let (remain, expr) = Expression::parser(alloc)(input)?;
-    input = remain;
-
-    let mut list = List::default();
-    let mut current = list.cursor_mut().alloc_insert_advance(alloc, expr);
-
-    loop {
-        let (remain, maybe_next) = opt(preceded(
-            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, Expression<'chunk>>> {
+    |input| {
+        build_separated_list0(
+            alloc,
             Expression::parser(alloc),
-        ))(input)?;
-        input = remain;
+            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+        )(input)
+    }
+}
 
-        current = if let Some(next) = maybe_next {
-            current.alloc_insert_advance(alloc, next)
-        } else {
-            return Ok((input, list));
-        };
+pub fn build_expression_list1<'chunk>(
+    alloc: &'chunk ASTAllocator,
+) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, Expression<'chunk>>> {
+    |input| {
+        build_separated_list1(
+            alloc,
+            Expression::parser(alloc),
+            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+        )(input)
     }
 }
 

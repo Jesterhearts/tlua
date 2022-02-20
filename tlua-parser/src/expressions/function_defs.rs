@@ -18,7 +18,7 @@ use nom::{
 use crate::{
     block::Block,
     identifiers::{
-        identifier_list1,
+        build_identifier_list1,
         Ident,
     },
     list::List,
@@ -60,7 +60,7 @@ impl<'chunk> FnParams<'chunk> {
                     opt(alt((
                         map(
                             pair(
-                                |input| identifier_list1(input, alloc),
+                                build_identifier_list1(alloc),
                                 alt((
                                     value(
                                         true,

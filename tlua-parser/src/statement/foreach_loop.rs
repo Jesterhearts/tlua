@@ -13,11 +13,11 @@ use nom::{
 use crate::{
     block::Block,
     expressions::{
-        expression_list1,
+        build_expression_list1,
         Expression,
     },
     identifiers::{
-        identifier_list1,
+        build_identifier_list1,
         Ident,
     },
     list::List,
@@ -45,11 +45,11 @@ impl<'chunk> ForEachLoop<'chunk> {
                 map(
                     tuple((
                         terminated(
-                            |input| identifier_list1(input, alloc),
+                            build_identifier_list1(alloc),
                             delimited(lua_whitespace0, tag("in"), lua_whitespace1),
                         ),
                         terminated(
-                            |input| expression_list1(input, alloc),
+                            build_expression_list1(alloc),
                             delimited(lua_whitespace0, tag("do"), lua_whitespace1),
                         ),
                         terminated(Block::parser(alloc), preceded(lua_whitespace0, tag("end"))),
