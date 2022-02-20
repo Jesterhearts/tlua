@@ -24,7 +24,6 @@ use crate::{
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -37,31 +36,32 @@ pub struct ForEachLoop<'chunk> {
 }
 
 impl<'chunk> ForEachLoop<'chunk> {
-    pub fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        preceded(
-            pair(tag("for"), lua_whitespace1),
-            map(
-                tuple((
-                    terminated(
-                        |input| identifier_list1(input, alloc),
-                        delimited(lua_whitespace0, tag("in"), lua_whitespace1),
-                    ),
-                    terminated(
-                        |input| expression_list1(input, alloc),
-                        delimited(lua_whitespace0, tag("do"), lua_whitespace1),
-                    ),
-                    terminated(
-                        |input| Block::parse(input, alloc),
-                        preceded(lua_whitespace0, tag("end")),
-                    ),
-                )),
-                |(vars, expressions, body)| Self {
-                    vars,
-                    expressions,
-                    body,
-                },
-            ),
-        )(input)
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, ForEachLoop<'chunk>> {
+        |input| {
+            preceded(
+                pair(tag("for"), lua_whitespace1),
+                map(
+                    tuple((
+                        terminated(
+                            |input| identifier_list1(input, alloc),
+                            delimited(lua_whitespace0, tag("in"), lua_whitespace1),
+                        ),
+                        terminated(
+                            |input| expression_list1(input, alloc),
+                            delimited(lua_whitespace0, tag("do"), lua_whitespace1),
+                        ),
+                        terminated(Block::parser(alloc), preceded(lua_whitespace0, tag("end"))),
+                    )),
+                    |(vars, expressions, body)| Self {
+                        vars,
+                        expressions,
+                        body,
+                    },
+                ),
+            )(input)
+        }
     }
 }
 
@@ -75,6 +75,7 @@ mod tests {
             number::Number,
             Expression,
         },
+        final_parser,
         list::{
             List,
             ListNode,
@@ -88,9 +89,8 @@ mod tests {
         let src = "for a,b,c,d in 1,2,3,4 do end";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = ForEachLoop::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => ForEachLoop::parser( &alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             ForEachLoop {

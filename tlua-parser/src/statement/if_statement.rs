@@ -20,7 +20,6 @@ use crate::{
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -39,28 +38,32 @@ pub struct ElseIf<'chunk> {
     pub body: Block<'chunk>,
 }
 
-impl<'chunk> Parse<'chunk> for If<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        delimited(
-            pair(tag("if"), lua_whitespace1),
-            map(
-                tuple((
-                    |input| parse_cond_then_body(input, alloc),
-                    |input| elif0(input, alloc),
-                    opt(preceded(
-                        delimited(lua_whitespace0, tag("else"), lua_whitespace1),
-                        |input| Block::parse(input, alloc),
+impl<'chunk> If<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, If<'chunk>> {
+        |input| {
+            delimited(
+                pair(tag("if"), lua_whitespace1),
+                map(
+                    tuple((
+                        |input| parse_cond_then_body(input, alloc),
+                        |input| elif0(input, alloc),
+                        opt(preceded(
+                            delimited(lua_whitespace0, tag("else"), lua_whitespace1),
+                            Block::parser(alloc),
+                        )),
                     )),
-                )),
-                |((cond, body), elif, else_final)| Self {
-                    cond,
-                    body,
-                    elif,
-                    else_final,
-                },
-            ),
-            pair(lua_whitespace0, tag("end")),
-        )(input)
+                    |((cond, body), elif, else_final)| Self {
+                        cond,
+                        body,
+                        elif,
+                        else_final,
+                    },
+                ),
+                pair(lua_whitespace0, tag("end")),
+            )(input)
+        }
     }
 }
 
@@ -70,10 +73,10 @@ fn parse_cond_then_body<'src, 'chunk>(
 ) -> ParseResult<'src, (Expression<'chunk>, Block<'chunk>)> {
     pair(
         terminated(
-            |input| Expression::parse(input, alloc),
+            Expression::parser(alloc),
             delimited(lua_whitespace0, tag("then"), lua_whitespace0),
         ),
-        |input| Block::parse(input, alloc),
+        Block::parser(alloc),
     )(input)
 }
 
@@ -124,13 +127,13 @@ mod tests {
     use super::If;
     use crate::{
         expressions::Expression,
+        final_parser,
         list::{
             List,
             ListNode,
         },
         statement::if_statement::ElseIf,
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -139,9 +142,8 @@ mod tests {
         let src = "if true then end";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = If::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => If::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             If {
@@ -160,9 +162,8 @@ mod tests {
         let src = "if true then else end";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = If::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => If::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             If {
@@ -181,9 +182,8 @@ mod tests {
         let src = "if true then elseif true then else end";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = If::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => If::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             If {

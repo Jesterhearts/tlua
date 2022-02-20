@@ -18,7 +18,6 @@ use crate::{
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -29,22 +28,26 @@ pub struct RepeatLoop<'chunk> {
     pub terminator: Expression<'chunk>,
 }
 
-impl<'chunk> Parse<'chunk> for RepeatLoop<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        preceded(
-            pair(tag("repeat"), lua_whitespace1),
-            map(
-                tuple((
-                    |input| Block::parse(input, alloc),
-                    value(
-                        (),
-                        delimited(lua_whitespace0, tag("until"), lua_whitespace1),
-                    ),
-                    |input| Expression::parse(input, alloc),
-                )),
-                |(body, _, terminator)| Self { body, terminator },
-            ),
-        )(input)
+impl<'chunk> RepeatLoop<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, RepeatLoop<'chunk>> {
+        |input| {
+            preceded(
+                pair(tag("repeat"), lua_whitespace1),
+                map(
+                    tuple((
+                        Block::parser(alloc),
+                        value(
+                            (),
+                            delimited(lua_whitespace0, tag("until"), lua_whitespace1),
+                        ),
+                        Expression::parser(alloc),
+                    )),
+                    |(body, _, terminator)| Self { body, terminator },
+                ),
+            )(input)
+        }
     }
 }
 
@@ -55,8 +58,8 @@ mod tests {
     use super::RepeatLoop;
     use crate::{
         expressions::Expression,
+        final_parser,
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -65,9 +68,8 @@ mod tests {
         let src = "repeat until true";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = RepeatLoop::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes())=> RepeatLoop::parser( &alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             RepeatLoop {

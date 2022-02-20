@@ -14,14 +14,10 @@ use nom::{
 
 use crate::{
     expressions::Expression,
-    identifiers::{
-        parse_identifier,
-        Ident,
-    },
+    identifiers::Ident,
     list::List,
     lua_whitespace0,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -83,96 +79,104 @@ pub enum PrefixExpression<'chunk> {
     Parenthesized(&'chunk Expression<'chunk>),
 }
 
-impl<'chunk> Parse<'chunk> for PrefixExpression<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        // Prefix expressions must start with either a Name or a parenthesized
-        // expresssion - all other forms of prefix expressions require a preceding
-        // prefix expression.
-        let (mut input, head) = alt((
-            map(|input| parse_identifier(input, alloc), HeadAtom::Name),
-            map(
-                delimited(
-                    pair(tag("("), lua_whitespace0),
-                    |input| Expression::parse(input, alloc),
-                    pair(lua_whitespace0, tag(")")),
+impl<'chunk> PrefixExpression<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, PrefixExpression<'chunk>> {
+        |input| {
+            // Prefix expressions must start with either a Name or a parenthesized
+            // expresssion - all other forms of prefix expressions require a preceding
+            // prefix expression.
+            let (mut input, head) = alt((
+                map(Ident::parser(alloc), HeadAtom::Name),
+                map(
+                    delimited(
+                        pair(tag("("), lua_whitespace0),
+                        Expression::parser(alloc),
+                        pair(lua_whitespace0, tag(")")),
+                    ),
+                    |expr| HeadAtom::Parenthesized(alloc.alloc(expr)),
                 ),
-                |expr| HeadAtom::Parenthesized(alloc.alloc(expr)),
-            ),
-        ))(input)?;
+            ))(input)?;
 
-        // See if there is another expression after our head atom.
-        let (remain, next) = parse_impl(input, alloc)?;
-        input = remain;
-
-        let current = if let Some(next) = next {
-            next
-        } else {
-            return Ok((
-                input,
-                match head {
-                    HeadAtom::Name(ident) => Self::Variable(VarPrefixExpression::Name(ident)),
-                    HeadAtom::Parenthesized(expr) => Self::Parenthesized(expr),
-                },
-            ));
-        };
-
-        // See if this is a greater than length 2 prefix expression.
-        let (remain, next) = parse_impl(input, alloc)?;
-        input = remain;
-
-        let mut middle = List::default();
-
-        let (mut previous, mut current) = if let Some(next) = next {
-            // We have at least 3 prefix expressions so we will fill out both the head,
-            // body, and tail of the expression.
-            (
-                middle.cursor_mut().alloc_insert_advance(alloc, current),
-                next,
-            )
-        } else {
-            // This is a length 2 prefix expression and we want to
-            // populate just the head and tail portions of the list. We divide out
-            // these cases so we don't have to handle e.g. a function expression
-            // with a possible var expression terminating it when processing the AST
-            // as that would be obviously impossible.
-            return Ok((
-                input,
-                match current {
-                    PrefixAtom::Var(v) => Self::Variable(VarPrefixExpression::TableAccess {
-                        head,
-                        middle,
-                        last: alloc.alloc(v),
-                    }),
-                    PrefixAtom::Function(f) => {
-                        Self::FnCall(FnCallPrefixExpression::Call { head, args: f })
-                    }
-                },
-            ));
-        };
-
-        loop {
-            let (remain, maybe_next) = parse_impl(input, alloc)?;
+            // See if there is another expression after our head atom.
+            let (remain, next) = parse_impl(input, alloc)?;
             input = remain;
 
-            current = if let Some(next) = maybe_next {
-                previous = previous.alloc_insert_advance(alloc, current);
+            let current = if let Some(next) = next {
                 next
             } else {
                 return Ok((
                     input,
-                    match current {
-                        PrefixAtom::Var(var) => Self::Variable(VarPrefixExpression::TableAccess {
-                            head,
-                            middle,
-                            last: alloc.alloc(var),
-                        }),
-                        PrefixAtom::Function(f) => Self::FnCall(FnCallPrefixExpression::CallPath {
-                            head,
-                            middle,
-                            last: f,
-                        }),
+                    match head {
+                        HeadAtom::Name(ident) => Self::Variable(VarPrefixExpression::Name(ident)),
+                        HeadAtom::Parenthesized(expr) => Self::Parenthesized(expr),
                     },
                 ));
+            };
+
+            // See if this is a greater than length 2 prefix expression.
+            let (remain, next) = parse_impl(input, alloc)?;
+            input = remain;
+
+            let mut middle = List::default();
+
+            let (mut previous, mut current) = if let Some(next) = next {
+                // We have at least 3 prefix expressions so we will fill out both the head,
+                // body, and tail of the expression.
+                (
+                    middle.cursor_mut().alloc_insert_advance(alloc, current),
+                    next,
+                )
+            } else {
+                // This is a length 2 prefix expression and we want to
+                // populate just the head and tail portions of the list. We divide out
+                // these cases so we don't have to handle e.g. a function expression
+                // with a possible var expression terminating it when processing the AST
+                // as that would be obviously impossible.
+                return Ok((
+                    input,
+                    match current {
+                        PrefixAtom::Var(v) => Self::Variable(VarPrefixExpression::TableAccess {
+                            head,
+                            middle,
+                            last: alloc.alloc(v),
+                        }),
+                        PrefixAtom::Function(f) => {
+                            Self::FnCall(FnCallPrefixExpression::Call { head, args: f })
+                        }
+                    },
+                ));
+            };
+
+            loop {
+                let (remain, maybe_next) = parse_impl(input, alloc)?;
+                input = remain;
+
+                current = if let Some(next) = maybe_next {
+                    previous = previous.alloc_insert_advance(alloc, current);
+                    next
+                } else {
+                    return Ok((
+                        input,
+                        match current {
+                            PrefixAtom::Var(var) => {
+                                Self::Variable(VarPrefixExpression::TableAccess {
+                                    head,
+                                    middle,
+                                    last: alloc.alloc(var),
+                                })
+                            }
+                            PrefixAtom::Function(f) => {
+                                Self::FnCall(FnCallPrefixExpression::CallPath {
+                                    head,
+                                    middle,
+                                    last: f,
+                                })
+                            }
+                        },
+                    ));
+                }
             }
         }
     }
@@ -199,10 +203,9 @@ fn parse_index_op<'src, 'chunk>(
 ) -> ParseResult<'src, PrefixAtom<'chunk>> {
     delimited(
         pair(tag("["), lua_whitespace0),
-        map(
-            |input| Expression::parse(input, alloc),
-            |expr| PrefixAtom::Var(VarAtom::IndexOp(expr)),
-        ),
+        map(Expression::parser(alloc), |expr| {
+            PrefixAtom::Var(VarAtom::IndexOp(expr))
+        }),
         pair(lua_whitespace0, tag("]")),
     )(input)
 }
@@ -213,10 +216,9 @@ fn parse_dot_name<'src, 'chunk>(
 ) -> ParseResult<'src, PrefixAtom<'chunk>> {
     preceded(
         pair(tag("."), lua_whitespace0),
-        map(
-            |input| parse_identifier(input, alloc),
-            |ident| PrefixAtom::Var(VarAtom::Name(ident)),
-        ),
+        map(Ident::parser(alloc), |ident| {
+            PrefixAtom::Var(VarAtom::Name(ident))
+        }),
     )(input)
 }
 
@@ -224,10 +226,9 @@ fn parse_call<'src, 'chunk>(
     input: Span<'src>,
     alloc: &'chunk ASTAllocator,
 ) -> ParseResult<'src, PrefixAtom<'chunk>> {
-    map(
-        |input| FnArgs::parse(input, alloc),
-        |args| PrefixAtom::Function(FunctionAtom::Call(args)),
-    )(input)
+    map(FnArgs::parser(alloc), |args| {
+        PrefixAtom::Function(FunctionAtom::Call(args))
+    })(input)
 }
 
 fn parse_method_call<'src, 'chunk>(
@@ -237,10 +238,7 @@ fn parse_method_call<'src, 'chunk>(
     preceded(
         tag(":"),
         map(
-            pair(
-                |input| parse_identifier(input, alloc),
-                |input| FnArgs::parse(input, alloc),
-            ),
+            pair(Ident::parser(alloc), FnArgs::parser(alloc)),
             |(ident, args)| PrefixAtom::Function(FunctionAtom::MethodCall { name: ident, args }),
         ),
     )(input)
@@ -271,7 +269,6 @@ mod tests {
             VarPrefixExpression,
         },
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -280,7 +277,7 @@ mod tests {
         let src = "a.b.c";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -301,7 +298,7 @@ mod tests {
         let src = "a[b][c]";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -324,7 +321,7 @@ mod tests {
         let src = "a[b].c[d]";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -350,7 +347,7 @@ mod tests {
         let src = "(a)";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -367,7 +364,7 @@ mod tests {
         let src = "(a).b";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -388,7 +385,7 @@ mod tests {
         let src = "(a)[b]";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -411,7 +408,7 @@ mod tests {
         let src = "a()";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -429,7 +426,7 @@ mod tests {
         let src = "a{}";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -449,7 +446,7 @@ mod tests {
         let src = "a\"b\"";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -467,7 +464,7 @@ mod tests {
         let src = "a:foo()";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -488,7 +485,7 @@ mod tests {
         let src = "a:foo{}";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -511,7 +508,7 @@ mod tests {
         let src = "a:foo\"b\"";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => |input| PrefixExpression::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
 
         assert_eq!(
             result,

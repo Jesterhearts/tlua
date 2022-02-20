@@ -48,6 +48,23 @@ impl Ident {
         vec.extend_from_slice(data);
         Self(LocalIntern::new(vec))
     }
+
+    pub(crate) fn parser(
+        _: &'_ ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Ident> + '_ {
+        |input| {
+            map_res(
+                recognize(pair(alt((tag("_"), alpha1)), alphanumeric0)).context("identifier"),
+                |raw_ident| {
+                    if is_keyword(raw_ident) {
+                        Err(SyntaxError::KeywordAsIdent)
+                    } else {
+                        Ok(Ident::new_from_slice(*raw_ident))
+                    }
+                },
+            )(input)
+        }
+    }
 }
 
 impl std::fmt::Debug for Ident {
@@ -70,27 +87,11 @@ impl From<&str> for Ident {
     }
 }
 
-pub fn parse_identifier<'src, 'chunk>(
-    input: Span<'src>,
-    _alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, Ident> {
-    map_res(
-        recognize(pair(alt((tag("_"), alpha1)), alphanumeric0)).context("identifier"),
-        |raw_ident| {
-            if is_keyword(raw_ident) {
-                Err(SyntaxError::KeywordAsIdent)
-            } else {
-                Ok(Ident::new_from_slice(*raw_ident))
-            }
-        },
-    )(input)
-}
-
 pub fn identifier_list1<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,
 ) -> ParseResult<'src, List<'chunk, Ident>> {
-    let (remain, head) = parse_identifier(input, alloc)?;
+    let (remain, head) = Ident::parser(alloc)(input)?;
     input = remain;
 
     let mut list = List::default();
@@ -99,7 +100,7 @@ pub fn identifier_list1<'src, 'chunk>(
     loop {
         let (remain, maybe_next) = opt(preceded(
             delimited(lua_whitespace0, tag(","), lua_whitespace0),
-            |input| parse_identifier(input, alloc),
+            Ident::parser(alloc),
         ))(input)?;
         input = remain;
 
@@ -115,8 +116,9 @@ pub fn identifier_list1<'src, 'chunk>(
 mod tests {
     use pretty_assertions::assert_eq;
 
-    use super::parse_identifier;
     use crate::{
+        final_parser,
+        identifiers::Ident,
         ASTAllocator,
         Span,
     };
@@ -126,9 +128,8 @@ mod tests {
         let ident = "_";
 
         let alloc = ASTAllocator::default();
-        let (remain, ident) = parse_identifier(Span::new(ident.as_bytes()), &alloc)?;
+        let ident = final_parser!(Span::new(ident.as_bytes()) => Ident::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(ident, "_".into());
 
         Ok(())
@@ -139,9 +140,8 @@ mod tests {
         let ident = "a";
 
         let alloc = ASTAllocator::default();
-        let (remain, ident) = parse_identifier(Span::new(ident.as_bytes()), &alloc)?;
+        let ident = final_parser!(Span::new(ident.as_bytes()) => Ident::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(ident, "a".into());
 
         Ok(())
@@ -152,7 +152,7 @@ mod tests {
         let ident = "9";
 
         let alloc = ASTAllocator::default();
-        assert!(parse_identifier(Span::new(ident.as_bytes()), &alloc).is_err());
+        assert!(final_parser!(Span::new(ident.as_bytes()) => Ident::parser(&alloc)).is_err());
     }
 
     #[test]
@@ -160,7 +160,7 @@ mod tests {
         let ident = "while";
 
         let alloc = ASTAllocator::default();
-        assert!(parse_identifier(Span::new(ident.as_bytes()), &alloc).is_err());
+        assert!(final_parser!(Span::new(ident.as_bytes()) => Ident::parser(&alloc)).is_err());
     }
 
     #[test]
@@ -168,9 +168,8 @@ mod tests {
         let ident = "_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
         let alloc = ASTAllocator::default();
-        let (remain, ident) = parse_identifier(Span::new(ident.as_bytes()), &alloc)?;
+        let ident = final_parser!(Span::new(ident.as_bytes()) => Ident::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             ident,
             "_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".into()

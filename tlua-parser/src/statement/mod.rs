@@ -17,10 +17,7 @@ use nom_supreme::ParserExt;
 use crate::{
     block::Block,
     expressions::expression_list1,
-    identifiers::{
-        parse_identifier,
-        Ident,
-    },
+    identifiers::Ident,
     lua_whitespace0,
     lua_whitespace1,
     prefix_expression::{
@@ -41,7 +38,6 @@ use crate::{
         while_loop::WhileLoop,
     },
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
     SyntaxError,
@@ -88,73 +84,60 @@ pub enum Statement<'chunk> {
     LocalVarList(&'chunk LocalVarList<'chunk>),
 }
 
-impl<'chunk> Parse<'chunk> for Statement<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        alt((
-            map(token(';'), |_| Self::Empty(Empty)).context("empty statement"),
-            map(
-                delimited(
-                    pair(tag("::"), lua_whitespace0),
-                    |input| parse_identifier(input, alloc),
-                    pair(lua_whitespace0, tag("::")),
-                ),
-                |ident| Self::Label(Label(ident)),
-            )
-            .context("label statement"),
-            map(tag("break"), |_| Self::Break(Break)).context("break statement"),
-            map(
-                preceded(pair(tag("goto"), lua_whitespace1), |input| {
-                    parse_identifier(input, alloc)
-                }),
-                |ident| Self::Goto(Goto(ident)),
-            )
-            .context("goto statement"),
-            delimited(
-                pair(tag("do"), lua_whitespace0),
+impl<'chunk> Statement<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Statement<'chunk>> {
+        |input| {
+            alt((
+                map(token(';'), |_| Self::Empty(Empty)).context("empty statement"),
                 map(
-                    |input| Block::parse(input, alloc),
-                    |block| Self::Do(alloc.alloc(block)),
-                ),
-                pair(lua_whitespace0, tag("end")),
-            )
-            .context("do statement"),
-            map(
-                |input| WhileLoop::parse(input, alloc),
-                |stat| Self::While(alloc.alloc(stat)),
-            )
-            .context("while statement"),
-            map(
-                |input| RepeatLoop::parse(input, alloc),
-                |stat| Self::Repeat(alloc.alloc(stat)),
-            )
-            .context("repeat statement"),
-            map(
-                |input| If::parse(input, alloc),
-                |stat| Self::If(alloc.alloc(stat)),
-            )
-            .context("if statement"),
-            map(
-                |input| ForLoop::parse(input, alloc),
-                |stat| Self::For(alloc.alloc(stat)),
-            )
-            .context("for statement"),
-            map(
-                |input| ForEachLoop::parse(input, alloc),
-                |stat| Self::ForEach(alloc.alloc(stat)),
-            )
-            .context("foreach statement"),
-            map(
-                |input| FnDecl::parse(input, alloc),
-                |stat| Self::FnDecl(alloc.alloc(stat)),
-            )
-            .context("function declaration"),
-            map(
-                |input| LocalVarList::parse(input, alloc),
-                |stat| Self::LocalVarList(alloc.alloc(stat)),
-            )
-            .context("local variable declaration"),
-            |input| parse_assignment_or_call(input, alloc),
-        ))(input)
+                    delimited(
+                        pair(tag("::"), lua_whitespace0),
+                        Ident::parser(alloc),
+                        pair(lua_whitespace0, tag("::")),
+                    ),
+                    |ident| Self::Label(Label(ident)),
+                )
+                .context("label statement"),
+                map(tag("break"), |_| Self::Break(Break)).context("break statement"),
+                map(
+                    preceded(pair(tag("goto"), lua_whitespace1), Ident::parser(alloc)),
+                    |ident| Self::Goto(Goto(ident)),
+                )
+                .context("goto statement"),
+                delimited(
+                    pair(tag("do"), lua_whitespace0),
+                    map(Block::parser(alloc), |block| Self::Do(alloc.alloc(block))),
+                    pair(lua_whitespace0, tag("end")),
+                )
+                .context("do statement"),
+                map(WhileLoop::parser(alloc), |stat| {
+                    Self::While(alloc.alloc(stat))
+                })
+                .context("while statement"),
+                map(RepeatLoop::parser(alloc), |stat| {
+                    Self::Repeat(alloc.alloc(stat))
+                })
+                .context("repeat statement"),
+                map(If::parser(alloc), |stat| Self::If(alloc.alloc(stat))).context("if statement"),
+                map(ForLoop::parser(alloc), |stat| Self::For(alloc.alloc(stat)))
+                    .context("for statement"),
+                map(ForEachLoop::parser(alloc), |stat| {
+                    Self::ForEach(alloc.alloc(stat))
+                })
+                .context("foreach statement"),
+                map(FnDecl::parser(alloc), |stat| {
+                    Self::FnDecl(alloc.alloc(stat))
+                })
+                .context("function declaration"),
+                map(LocalVarList::parser(alloc), |stat| {
+                    Self::LocalVarList(alloc.alloc(stat))
+                })
+                .context("local variable declaration"),
+                |input| parse_assignment_or_call(input, alloc),
+            ))(input)
+        }
     }
 }
 
@@ -162,7 +145,7 @@ fn parse_assignment_or_call<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,
 ) -> ParseResult<'src, Statement<'chunk>> {
-    let (remain, expr) = PrefixExpression::parse(input, alloc)?;
+    let (remain, expr) = PrefixExpression::parser(alloc)(input)?;
     input = remain;
 
     match expr {
@@ -219,7 +202,6 @@ mod test {
             Label,
         },
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -228,8 +210,7 @@ mod test {
         let src = ";";
 
         let alloc = ASTAllocator::default();
-        let stat =
-            final_parser!(Span::new(src.as_bytes()) => |input| Statement::parse(input, &alloc))?;
+        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
 
         assert_eq!(stat, Statement::Empty(Empty));
 
@@ -241,8 +222,7 @@ mod test {
         let src = "break";
 
         let alloc = ASTAllocator::default();
-        let stat =
-            final_parser!(Span::new(src.as_bytes()) => |input| Statement::parse(input, &alloc))?;
+        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
 
         assert_eq!(stat, Statement::Break(Break));
 
@@ -254,8 +234,7 @@ mod test {
         let src = "::foo::";
 
         let alloc = ASTAllocator::default();
-        let stat =
-            final_parser!(Span::new(src.as_bytes()) => |input| Statement::parse(input, &alloc))?;
+        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
 
         assert_eq!(stat, Statement::Label(Label("foo".into())));
 
@@ -267,8 +246,7 @@ mod test {
         let src = "goto foo";
 
         let alloc = ASTAllocator::default();
-        let stat =
-            final_parser!(Span::new(src.as_bytes()) => |input| Statement::parse(input, &alloc))?;
+        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
 
         assert_eq!(stat, Statement::Goto(Goto("foo".into())));
 
@@ -280,8 +258,7 @@ mod test {
         let src = "goto gotofoo";
 
         let alloc = ASTAllocator::default();
-        let stat =
-            final_parser!(Span::new(src.as_bytes()) => |input| Statement::parse(input, &alloc))?;
+        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
 
         assert_eq!(stat, Statement::Goto(Goto("gotofoo".into())));
 
@@ -293,8 +270,7 @@ mod test {
         let src = "do end";
 
         let alloc = ASTAllocator::default();
-        let stat =
-            final_parser!(Span::new(src.as_bytes()) => |input| Statement::parse(input, &alloc))?;
+        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
 
         assert_eq!(
             stat,
@@ -312,8 +288,7 @@ mod test {
         let src = "a = 10";
 
         let alloc = ASTAllocator::default();
-        let result =
-            final_parser!(Span::new(src.as_bytes()) => |input| Statement::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -331,8 +306,7 @@ mod test {
         let src = "a ,b, c , d = 10, 11, 12 , 13";
 
         let alloc = ASTAllocator::default();
-        let result =
-            final_parser!(Span::new(src.as_bytes()) => |input| Statement::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
 
         assert_eq!(
             result,

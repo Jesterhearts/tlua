@@ -9,7 +9,6 @@ use crate::{
     final_parser,
     prefix_expression::VarPrefixExpression,
     ASTAllocator,
-    Parse,
     Span,
 };
 
@@ -18,8 +17,7 @@ pub fn parses_exponentiation() -> anyhow::Result<()> {
     let src = "1 ^ 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -37,8 +35,7 @@ pub fn parses_unary_not() -> anyhow::Result<()> {
     let src = "not 1";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -55,8 +52,7 @@ pub fn parses_unary_not_handles_ident() -> anyhow::Result<()> {
     let src = "not notabc";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -73,8 +69,7 @@ pub fn parses_unary_len() -> anyhow::Result<()> {
     let src = "#1";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -91,8 +86,7 @@ pub fn parses_unary_minus() -> anyhow::Result<()> {
     let src = "-1";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -109,8 +103,7 @@ pub fn parses_unary_bitnot() -> anyhow::Result<()> {
     let src = "~1";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -127,8 +120,7 @@ pub fn parses_times() -> anyhow::Result<()> {
     let src = "1 * 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -146,8 +138,7 @@ pub fn parses_div() -> anyhow::Result<()> {
     let src = "1 / 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -165,8 +156,7 @@ pub fn parses_idiv() -> anyhow::Result<()> {
     let src = "1 // 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -184,8 +174,7 @@ pub fn parses_modulo() -> anyhow::Result<()> {
     let src = "1 % 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -203,8 +192,7 @@ pub fn parses_add() -> anyhow::Result<()> {
     let src = "1 + 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -222,8 +210,7 @@ pub fn parses_minus() -> anyhow::Result<()> {
     let src = "1 - 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -241,8 +228,7 @@ pub fn parses_concat() -> anyhow::Result<()> {
     let src = "1 .. 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -260,8 +246,7 @@ pub fn parses_shiftl() -> anyhow::Result<()> {
     let src = "1 << 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -279,8 +264,7 @@ pub fn parses_shiftr() -> anyhow::Result<()> {
     let src = "1 >> 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -298,8 +282,7 @@ pub fn parses_bitand() -> anyhow::Result<()> {
     let src = "1 & 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -317,8 +300,7 @@ pub fn parses_bitxor() -> anyhow::Result<()> {
     let src = "1 ~ 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -336,8 +318,7 @@ pub fn parses_bitor() -> anyhow::Result<()> {
     let src = "1 | 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -355,8 +336,7 @@ pub fn parses_lt() -> anyhow::Result<()> {
     let src = "1 < 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -374,8 +354,7 @@ pub fn parses_le() -> anyhow::Result<()> {
     let src = "1 <= 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -393,8 +372,7 @@ pub fn parses_gt() -> anyhow::Result<()> {
     let src = "1 > 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -412,8 +390,7 @@ pub fn parses_ge() -> anyhow::Result<()> {
     let src = "1 >= 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -431,8 +408,7 @@ pub fn parses_ne() -> anyhow::Result<()> {
     let src = "1 ~= 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -450,8 +426,7 @@ pub fn parses_eq() -> anyhow::Result<()> {
     let src = "1 == 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -469,8 +444,7 @@ pub fn parses_and() -> anyhow::Result<()> {
     let src = "1 and 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -488,8 +462,7 @@ pub fn parses_and_handles_ident() -> anyhow::Result<()> {
     let src = "1 and and2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -507,8 +480,7 @@ pub fn parses_or() -> anyhow::Result<()> {
     let src = "1 or 2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -526,8 +498,7 @@ pub fn parses_or_handles_ident() -> anyhow::Result<()> {
     let src = "1 or or2";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -545,8 +516,7 @@ pub fn parses_multi_left_assoc() -> anyhow::Result<()> {
     let src = "1 == 2 <= 3 >= 4";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -570,8 +540,7 @@ pub fn parses_multi_right_assoc() -> anyhow::Result<()> {
     let src = "1 .. 2 .. 3 .. 4";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -595,8 +564,7 @@ pub fn parses_multi_right_assoc_precedence() -> anyhow::Result<()> {
     let src = "1 .. 2 ^ 3 .. 4";
 
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -619,8 +587,7 @@ pub fn parses_multi_right_assoc_precedence() -> anyhow::Result<()> {
 pub fn parse_precedence_simple_down() -> anyhow::Result<()> {
     let src = "1 ^ -2 == 1 and true";
     let alloc = ASTAllocator::default();
-    let expr =
-        final_parser!(Span::new(src.as_bytes()) => |input| Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -644,8 +611,7 @@ pub fn parses_precedence_up() -> anyhow::Result<()> {
     let src = "1 or 2 and 3 < 4 | 5 ~ 6 & 7 << 8 .. 9 + 10 * -11 ^ 12";
 
     let alloc = ASTAllocator::default();
-    let expr = final_parser!(Span::new(src.as_bytes()) => |input|
-Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,
@@ -707,8 +673,7 @@ pub fn parses_precedence_down() -> anyhow::Result<()> {
     let src = "1 ^ -2 / 3 - 4 .. 5 >> 6 & 7 ~ 8 | 9 > 10 and 11 or 12";
 
     let alloc = ASTAllocator::default();
-    let expr = final_parser!(Span::new(src.as_bytes()) => |input|
-Expression::parse(input, &alloc))?;
+    let expr = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
 
     assert_eq!(
         expr,

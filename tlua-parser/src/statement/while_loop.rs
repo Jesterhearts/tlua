@@ -17,7 +17,6 @@ use crate::{
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -28,20 +27,24 @@ pub struct WhileLoop<'chunk> {
     pub body: Block<'chunk>,
 }
 
-impl<'chunk> Parse<'chunk> for WhileLoop<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        delimited(
-            pair(tag("while"), lua_whitespace1),
-            map(
-                tuple((
-                    |input| Expression::parse(input, alloc),
-                    value((), delimited(lua_whitespace0, tag("do"), lua_whitespace1)),
-                    |input| Block::parse(input, alloc),
-                )),
-                |(cond, _, body)| Self { cond, body },
-            ),
-            pair(lua_whitespace0, tag("end")),
-        )(input)
+impl<'chunk> WhileLoop<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, WhileLoop<'chunk>> {
+        |input| {
+            delimited(
+                pair(tag("while"), lua_whitespace1),
+                map(
+                    tuple((
+                        Expression::parser(alloc),
+                        value((), delimited(lua_whitespace0, tag("do"), lua_whitespace1)),
+                        Block::parser(alloc),
+                    )),
+                    |(cond, _, body)| Self { cond, body },
+                ),
+                pair(lua_whitespace0, tag("end")),
+            )(input)
+        }
     }
 }
 
@@ -52,8 +55,8 @@ mod tests {
     use super::WhileLoop;
     use crate::{
         expressions::Expression,
+        final_parser,
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -62,9 +65,8 @@ mod tests {
         let src = "while true do end";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = WhileLoop::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => WhileLoop::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             WhileLoop {

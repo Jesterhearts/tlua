@@ -94,10 +94,6 @@ macro_rules! final_parser {
     };
 }
 
-pub trait Parse<'chunk>: Sized {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self>;
-}
-
 pub fn lua_whitespace0(mut input: Span) -> ParseResult<()> {
     loop {
         input = match alt((
@@ -129,7 +125,7 @@ pub fn parse_chunk<'src, 'chunk>(
     Span::new(input.as_bytes()) =>
                 delimited(
                 lua_whitespace0,
-                |input| Block::parse(input, alloc),
+                Block::parser(alloc),
                 lua_whitespace0,
             ))
 }

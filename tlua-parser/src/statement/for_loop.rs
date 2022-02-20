@@ -16,14 +16,10 @@ use nom::{
 use crate::{
     block::Block,
     expressions::Expression,
-    identifiers::{
-        parse_identifier,
-        Ident,
-    },
+    identifiers::Ident,
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -37,40 +33,44 @@ pub struct ForLoop<'chunk> {
     pub body: Block<'chunk>,
 }
 
-impl<'chunk> Parse<'chunk> for ForLoop<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        preceded(
-            pair(tag("for"), lua_whitespace1),
-            map(
-                tuple((
-                    terminated(
-                        |input| parse_identifier(input, alloc),
-                        delimited(lua_whitespace0, tag("="), lua_whitespace0),
-                    ),
-                    terminated(
-                        |input| Expression::parse(input, alloc),
-                        delimited(lua_whitespace0, tag(","), lua_whitespace0),
-                    ),
-                    |input| Expression::parse(input, alloc),
-                    opt(preceded(
-                        delimited(lua_whitespace0, tag(","), lua_whitespace0),
-                        |input| Expression::parse(input, alloc),
+impl<'chunk> ForLoop<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, ForLoop<'chunk>> {
+        |input| {
+            preceded(
+                pair(tag("for"), lua_whitespace1),
+                map(
+                    tuple((
+                        terminated(
+                            Ident::parser(alloc),
+                            delimited(lua_whitespace0, tag("="), lua_whitespace0),
+                        ),
+                        terminated(
+                            Expression::parser(alloc),
+                            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+                        ),
+                        Expression::parser(alloc),
+                        opt(preceded(
+                            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+                            Expression::parser(alloc),
+                        )),
+                        delimited(
+                            delimited(lua_whitespace0, tag("do"), lua_whitespace1),
+                            Block::parser(alloc),
+                            preceded(lua_whitespace0, tag("end")),
+                        ),
                     )),
-                    delimited(
-                        delimited(lua_whitespace0, tag("do"), lua_whitespace1),
-                        |input| Block::parse(input, alloc),
-                        preceded(lua_whitespace0, tag("end")),
-                    ),
-                )),
-                |(var, init, condition, increment, body)| Self {
-                    var,
-                    init,
-                    condition,
-                    increment,
-                    body,
-                },
-            ),
-        )(input)
+                    |(var, init, condition, increment, body)| Self {
+                        var,
+                        init,
+                        condition,
+                        increment,
+                        body,
+                    },
+                ),
+            )(input)
+        }
     }
 }
 
@@ -84,8 +84,8 @@ mod tests {
             number::Number,
             Expression,
         },
+        final_parser,
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -94,9 +94,8 @@ mod tests {
         let src = "for a = 0, 10 do end";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = ForLoop::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes())=> ForLoop::parser( &alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             ForLoop {

@@ -15,14 +15,10 @@ use crate::{
         FnBody,
         FnName,
     },
-    identifiers::{
-        parse_identifier,
-        Ident,
-    },
+    identifiers::Ident,
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -39,35 +35,39 @@ pub enum FnDecl<'chunk> {
     },
 }
 
-impl<'chunk> Parse<'chunk> for FnDecl<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        alt((
-            preceded(
-                tuple((
-                    tag("local"),
-                    lua_whitespace1,
-                    tag("function"),
-                    lua_whitespace1,
-                )),
-                map(
-                    pair(
-                        terminated(|input| parse_identifier(input, alloc), lua_whitespace0),
-                        |input| FnBody::parse(input, alloc),
+impl<'chunk> FnDecl<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnDecl<'chunk>> {
+        |input| {
+            alt((
+                preceded(
+                    tuple((
+                        tag("local"),
+                        lua_whitespace1,
+                        tag("function"),
+                        lua_whitespace1,
+                    )),
+                    map(
+                        pair(
+                            terminated(Ident::parser(alloc), lua_whitespace0),
+                            FnBody::parser(alloc),
+                        ),
+                        |(name, body)| Self::Local { name, body },
                     ),
-                    |(name, body)| Self::Local { name, body },
                 ),
-            ),
-            preceded(
-                pair(tag("function"), lua_whitespace1),
-                map(
-                    pair(
-                        terminated(|input| FnName::parse(input, alloc), lua_whitespace0),
-                        |input| FnBody::parse(input, alloc),
+                preceded(
+                    pair(tag("function"), lua_whitespace1),
+                    map(
+                        pair(
+                            terminated(FnName::parser(alloc), lua_whitespace0),
+                            FnBody::parser(alloc),
+                        ),
+                        |(name, body)| Self::Function { name, body },
                     ),
-                    |(name, body)| Self::Function { name, body },
                 ),
-            ),
-        ))(input)
+            ))(input)
+        }
     }
 }
 
@@ -86,7 +86,6 @@ mod tests {
         },
         statement::fn_decl::FnDecl,
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -95,8 +94,7 @@ mod tests {
         let src = "local function foo() end";
         let alloc = ASTAllocator::default();
 
-        let result =
-            final_parser!(Span::new(src.as_bytes()) => |input| FnDecl::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnDecl::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -120,8 +118,7 @@ mod tests {
         let src = "function foo() end";
         let alloc = ASTAllocator::default();
 
-        let result =
-            final_parser!(Span::new(src.as_bytes())=> |input| FnDecl::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes())=> FnDecl::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -148,8 +145,7 @@ mod tests {
         let src = "function foo.bar:baz() end";
         let alloc = ASTAllocator::default();
 
-        let result =
-            final_parser!(Span::new(src.as_bytes())=> |input| FnDecl::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes())=> FnDecl::parser(&alloc))?;
 
         assert_eq!(
             result,

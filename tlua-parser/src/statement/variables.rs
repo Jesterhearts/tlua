@@ -18,10 +18,7 @@ use crate::{
         expression_list1,
         Expression,
     },
-    identifiers::{
-        parse_identifier,
-        Ident,
-    },
+    identifiers::Ident,
     list::List,
     lua_whitespace0,
     lua_whitespace1,
@@ -30,7 +27,6 @@ use crate::{
         VarPrefixExpression,
     },
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
     SyntaxError,
@@ -54,51 +50,59 @@ pub struct LocalVarList<'chunk> {
     pub initializers: List<'chunk, Expression<'chunk>>,
 }
 
-impl<'chunk> Parse<'chunk> for LocalVar {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        map_res(
-            pair(
-                terminated(|input| parse_identifier(input, alloc), lua_whitespace0),
-                opt(delimited(
-                    pair(tag("<"), lua_whitespace0),
-                    |input| parse_identifier(input, alloc),
-                    pair(lua_whitespace0, tag(">")),
-                )),
-            ),
-            |(name, attribute)| {
-                let attribute = match attribute {
-                    None => None,
-                    Some(attribute) => Some(match &*attribute {
-                        b"const" => Attribute::Const,
-                        b"close" => Attribute::Close,
-                        _ => return Err(SyntaxError::InvalidAttribute),
-                    }),
-                };
+impl LocalVar {
+    pub(crate) fn parser(
+        alloc: &'_ ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, LocalVar> + '_ {
+        |input| {
+            map_res(
+                pair(
+                    terminated(Ident::parser(alloc), lua_whitespace0),
+                    opt(delimited(
+                        pair(tag("<"), lua_whitespace0),
+                        Ident::parser(alloc),
+                        pair(lua_whitespace0, tag(">")),
+                    )),
+                ),
+                |(name, attribute)| {
+                    let attribute = match attribute {
+                        None => None,
+                        Some(attribute) => Some(match &*attribute {
+                            b"const" => Attribute::Const,
+                            b"close" => Attribute::Close,
+                            _ => return Err(SyntaxError::InvalidAttribute),
+                        }),
+                    };
 
-                Ok(Self { name, attribute })
-            },
-        )(input)
+                    Ok(Self { name, attribute })
+                },
+            )(input)
+        }
     }
 }
 
-impl<'chunk> Parse<'chunk> for LocalVarList<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        map(
-            preceded(
-                pair(tag("local"), lua_whitespace1),
-                pair(
-                    |input| local_varlist1(input, alloc),
-                    opt(preceded(
-                        delimited(lua_whitespace0, tag("="), lua_whitespace0),
-                        |input| expression_list1(input, alloc),
-                    )),
+impl<'chunk> LocalVarList<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, LocalVarList<'chunk>> {
+        |input| {
+            map(
+                preceded(
+                    pair(tag("local"), lua_whitespace1),
+                    pair(
+                        |input| local_varlist1(input, alloc),
+                        opt(preceded(
+                            delimited(lua_whitespace0, tag("="), lua_whitespace0),
+                            |input| expression_list1(input, alloc),
+                        )),
+                    ),
                 ),
-            ),
-            |(vars, initializers)| Self {
-                vars,
-                initializers: initializers.unwrap_or_default(),
-            },
-        )(input)
+                |(vars, initializers)| Self {
+                    vars,
+                    initializers: initializers.unwrap_or_default(),
+                },
+            )(input)
+        }
     }
 }
 
@@ -106,7 +110,7 @@ pub fn local_varlist1<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,
 ) -> ParseResult<'src, List<'chunk, LocalVar>> {
-    let (remain, head) = LocalVar::parse(input, alloc)?;
+    let (remain, head) = LocalVar::parser(alloc)(input)?;
     input = remain;
 
     let mut locals = List::default();
@@ -116,7 +120,7 @@ pub fn local_varlist1<'src, 'chunk>(
     loop {
         let (remain, maybe_next) = opt(preceded(
             delimited(lua_whitespace0, tag(","), lua_whitespace0),
-            |input| LocalVar::parse(input, alloc),
+            LocalVar::parser(alloc),
         ))(input)?;
         input = remain;
 
@@ -139,15 +143,12 @@ pub fn varlist1<'src, 'chunk>(
     loop {
         let (remain, maybe_next) = opt(preceded(
             delimited(lua_whitespace0, tag(","), lua_whitespace0),
-            map_res(
-                |input| PrefixExpression::parse(input, alloc),
-                |expr| match expr {
-                    PrefixExpression::Variable(var) => Ok(var),
-                    PrefixExpression::FnCall(_) | PrefixExpression::Parenthesized(_) => {
-                        Err(SyntaxError::ExpectedVariable)
-                    }
-                },
-            ),
+            map_res(PrefixExpression::parser(alloc), |expr| match expr {
+                PrefixExpression::Variable(var) => Ok(var),
+                PrefixExpression::FnCall(_) | PrefixExpression::Parenthesized(_) => {
+                    Err(SyntaxError::ExpectedVariable)
+                }
+            }),
         ))(input)?;
         input = remain;
 
@@ -168,6 +169,7 @@ mod tests {
             number::Number,
             Expression,
         },
+        final_parser,
         list::{
             List,
             ListNode,
@@ -177,7 +179,6 @@ mod tests {
             Attribute,
             LocalVar,
             LocalVarList,
-            Parse,
             Span,
         },
     };
@@ -187,9 +188,8 @@ mod tests {
         let local = "local foo";
 
         let alloc = ASTAllocator::default();
-        let (remain, decl) = LocalVarList::parse(Span::new(local.as_bytes()), &alloc)?;
+        let decl = final_parser!(Span::new(local.as_bytes())=>LocalVarList::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             decl,
             LocalVarList {
@@ -209,9 +209,8 @@ mod tests {
         let local = "local foo,bar";
 
         let alloc = ASTAllocator::default();
-        let (remain, decl) = LocalVarList::parse(Span::new(local.as_bytes()), &alloc)?;
+        let decl = final_parser!(Span::new(local.as_bytes())=>LocalVarList::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             decl,
             LocalVarList {
@@ -237,9 +236,8 @@ mod tests {
         let local = "local foo<const>, bar<close>";
 
         let alloc = ASTAllocator::default();
-        let (remain, decl) = LocalVarList::parse(Span::new(local.as_bytes()), &alloc)?;
+        let decl = final_parser!(Span::new(local.as_bytes())=>LocalVarList::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             decl,
             LocalVarList {
@@ -265,9 +263,8 @@ mod tests {
         let local = "local foo,bar = 10";
 
         let alloc = ASTAllocator::default();
-        let (remain, decl) = LocalVarList::parse(Span::new(local.as_bytes()), &alloc)?;
+        let decl = final_parser!(Span::new(local.as_bytes())=>LocalVarList::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             decl,
             LocalVarList {

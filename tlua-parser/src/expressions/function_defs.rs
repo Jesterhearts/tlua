@@ -19,13 +19,11 @@ use crate::{
     block::Block,
     identifiers::{
         identifier_list1,
-        parse_identifier,
         Ident,
     },
     list::List,
     lua_whitespace0,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -51,91 +49,104 @@ pub struct FnName<'chunk> {
     pub method: Option<Ident>,
 }
 
-impl<'chunk> Parse<'chunk> for FnParams<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        delimited(
-            pair(tag("("), lua_whitespace0),
-            map(
-                opt(alt((
-                    map(
-                        pair(
-                            |input| identifier_list1(input, alloc),
-                            alt((
-                                value(
-                                    true,
-                                    pair(
-                                        preceded(lua_whitespace0, tag(",")),
-                                        preceded(lua_whitespace0, tag("...")),
+impl<'chunk> FnParams<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnParams<'chunk>> {
+        |input| {
+            delimited(
+                pair(tag("("), lua_whitespace0),
+                map(
+                    opt(alt((
+                        map(
+                            pair(
+                                |input| identifier_list1(input, alloc),
+                                alt((
+                                    value(
+                                        true,
+                                        pair(
+                                            preceded(lua_whitespace0, tag(",")),
+                                            preceded(lua_whitespace0, tag("...")),
+                                        ),
                                     ),
-                                ),
-                                success(false),
-                            )),
+                                    success(false),
+                                )),
+                            ),
+                            |(named_params, varargs)| Self {
+                                named_params,
+                                varargs,
+                            },
                         ),
-                        |(named_params, varargs)| Self {
-                            named_params,
-                            varargs,
-                        },
-                    ),
-                    map(value((), tag("...")), |_| Self {
-                        named_params: Default::default(),
-                        varargs: true,
-                    }),
-                ))),
-                |maybe_params| {
-                    maybe_params.unwrap_or_else(|| Self {
-                        named_params: Default::default(),
-                        varargs: false,
-                    })
-                },
-            ),
-            pair(lua_whitespace0, tag(")")),
-        )(input)
-    }
-}
-
-impl<'chunk> Parse<'chunk> for FnBody<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        map(
-            terminated(
-                pair(
-                    |input| FnParams::parse(input, alloc),
-                    preceded(lua_whitespace0, |input| Block::parse(input, alloc)),
+                        map(value((), tag("...")), |_| Self {
+                            named_params: Default::default(),
+                            varargs: true,
+                        }),
+                    ))),
+                    |maybe_params| {
+                        maybe_params.unwrap_or_else(|| Self {
+                            named_params: Default::default(),
+                            varargs: false,
+                        })
+                    },
                 ),
-                pair(lua_whitespace0, tag("end")),
-            ),
-            |(params, body)| Self { params, body },
-        )(input)
+                pair(lua_whitespace0, tag(")")),
+            )(input)
+        }
     }
 }
 
-impl<'chunk> Parse<'chunk> for FnName<'chunk> {
-    fn parse<'src>(mut input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        let (remain, head) = parse_identifier(input, alloc)?;
-        input = remain;
+impl<'chunk> FnBody<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnBody<'chunk>> {
+        |input| {
+            map(
+                terminated(
+                    pair(
+                        FnParams::parser(alloc),
+                        preceded(lua_whitespace0, Block::parser(alloc)),
+                    ),
+                    pair(lua_whitespace0, tag("end")),
+                ),
+                |(params, body)| Self { params, body },
+            )(input)
+        }
+    }
+}
 
-        let mut path = List::default();
-        let current = path.cursor_mut();
-        let mut current = current.alloc_insert_advance(alloc, head);
-
-        loop {
-            let (remain, maybe_ident) = opt(preceded(
-                delimited(lua_whitespace0, tag("."), lua_whitespace0),
-                |input| parse_identifier(input, alloc),
-            ))(input)?;
+impl<'chunk> FnName<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnName<'chunk>> {
+        |mut input| {
+            let (remain, head) = Ident::parser(alloc)(input)?;
             input = remain;
 
-            current = if let Some(next) = maybe_ident {
-                current.alloc_insert_advance(alloc, next)
-            } else {
-                break;
-            };
+            let mut path = List::default();
+            let current = path.cursor_mut();
+            let mut current = current.alloc_insert_advance(alloc, head);
+
+            loop {
+                let (remain, maybe_ident) = opt(preceded(
+                    delimited(lua_whitespace0, tag("."), lua_whitespace0),
+                    Ident::parser(alloc),
+                ))(input)?;
+                input = remain;
+
+                current = if let Some(next) = maybe_ident {
+                    current.alloc_insert_advance(alloc, next)
+                } else {
+                    break;
+                };
+            }
+
+            let (remain, method) = opt(preceded(
+                pair(lua_whitespace0, tag(":")),
+                Ident::parser(alloc),
+            ))(input)?;
+
+            Ok((remain, Self { path, method }))
         }
-
-        let (remain, method) = opt(preceded(pair(lua_whitespace0, tag(":")), |input| {
-            parse_identifier(input, alloc)
-        }))(input)?;
-
-        Ok((remain, Self { path, method }))
     }
 }
 
@@ -156,12 +167,12 @@ mod tests {
             number::Number,
             Expression,
         },
+        final_parser,
         list::{
             List,
             ListNode,
         },
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -170,9 +181,8 @@ mod tests {
         let src = "()";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = FnParams::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnParams::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             FnParams {
@@ -189,9 +199,8 @@ mod tests {
         let src = "(a)";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = FnParams::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnParams::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             FnParams {
@@ -208,9 +217,8 @@ mod tests {
         let src = "(...)";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = FnParams::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnParams::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             FnParams {
@@ -227,9 +235,8 @@ mod tests {
         let src = "(a,b, c, ...)";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = FnParams::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnParams::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             FnParams {
@@ -250,9 +257,8 @@ mod tests {
         let src = "() return 10 end";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = FnBody::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnBody::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             FnBody {

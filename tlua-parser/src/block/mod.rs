@@ -8,7 +8,6 @@ use crate::{
     lua_whitespace0,
     statement::Statement,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -22,28 +21,30 @@ pub struct Block<'chunk> {
     pub ret: Option<RetStatement<'chunk>>,
 }
 
-impl<'chunk> Parse<'chunk> for Block<'chunk> {
-    fn parse<'src>(mut input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        let mut statements = List::default();
-        let mut current = statements.cursor_mut();
+impl<'chunk> Block<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Block<'chunk>> {
+        |mut input| {
+            let mut statements = List::default();
+            let mut current = statements.cursor_mut();
 
-        loop {
-            let (remain, maybe_next) = opt(terminated(
-                |input| Statement::parse(input, alloc),
-                lua_whitespace0,
-            ))(input)?;
-            input = remain;
+            loop {
+                let (remain, maybe_next) =
+                    opt(terminated(Statement::parser(alloc), lua_whitespace0))(input)?;
+                input = remain;
 
-            current = if let Some(next) = maybe_next {
-                current.alloc_insert_advance(alloc, next)
-            } else {
-                break;
-            };
+                current = if let Some(next) = maybe_next {
+                    current.alloc_insert_advance(alloc, next)
+                } else {
+                    break;
+                };
+            }
+
+            let (remain, ret) = opt(RetStatement::parser(alloc))(input)?;
+
+            Ok((remain, Block { statements, ret }))
         }
-
-        let (remain, ret) = opt(|input| RetStatement::parse(input, alloc))(input)?;
-
-        Ok((remain, Block { statements, ret }))
     }
 }
 
@@ -64,7 +65,6 @@ mod tests {
             ListNode,
         },
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -73,8 +73,7 @@ mod tests {
         let src = "";
 
         let alloc = ASTAllocator::default();
-        let result =
-            final_parser!(Span::new(src.as_bytes()) => |input| Block::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => Block::parser(&alloc))?;
 
         assert_eq!(
             result,
@@ -92,8 +91,7 @@ mod tests {
         let src = "return 10";
 
         let alloc = ASTAllocator::default();
-        let result =
-            final_parser!(Span::new(src.as_bytes()) => |input| Block::parse(input, &alloc))?;
+        let result = final_parser!(Span::new(src.as_bytes()) => Block::parser( &alloc))?;
 
         assert_eq!(
             result,

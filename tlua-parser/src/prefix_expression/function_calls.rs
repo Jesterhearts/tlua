@@ -24,7 +24,6 @@ use crate::{
         ConstantString,
     },
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -36,23 +35,24 @@ pub enum FnArgs<'chunk> {
     String(ConstantString),
 }
 
-impl<'chunk> Parse<'chunk> for FnArgs<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        alt((
-            map(
-                delimited(
-                    pair(tag("("), lua_whitespace0),
-                    opt(|input| expression_list1(input, alloc)),
-                    pair(lua_whitespace0, tag(")")),
+impl<'chunk> FnArgs<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnArgs<'chunk>> {
+        |input| {
+            alt((
+                map(
+                    delimited(
+                        pair(tag("("), lua_whitespace0),
+                        opt(|input| expression_list1(input, alloc)),
+                        pair(lua_whitespace0, tag(")")),
+                    ),
+                    |exprs| Self::Expressions(exprs.unwrap_or_default()),
                 ),
-                |exprs| Self::Expressions(exprs.unwrap_or_default()),
-            ),
-            map(
-                |input| TableConstructor::parse(input, alloc),
-                Self::TableConstructor,
-            ),
-            map(parse_string, Self::String),
-        ))(input)
+                map(TableConstructor::parser(alloc), Self::TableConstructor),
+                map(parse_string, Self::String),
+            ))(input)
+        }
     }
 }
 
@@ -67,12 +67,12 @@ mod tests {
             Expression,
             Nil,
         },
+        final_parser,
         list::{
             List,
             ListNode,
         },
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -81,9 +81,8 @@ mod tests {
         let src = "()";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = FnArgs::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnArgs::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(result, FnArgs::Expressions(Default::default()));
 
         Ok(())
@@ -94,9 +93,8 @@ mod tests {
         let src = "(nil, nil, nil)";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = FnArgs::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnArgs::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             FnArgs::Expressions(List::from_slice(&mut [
@@ -114,9 +112,8 @@ mod tests {
         let src = "{}";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = FnArgs::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnArgs::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             FnArgs::TableConstructor(TableConstructor {
@@ -132,9 +129,8 @@ mod tests {
         let src = "\"arg\"";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = FnArgs::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => FnArgs::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(result, FnArgs::String("arg".into()));
 
         Ok(())

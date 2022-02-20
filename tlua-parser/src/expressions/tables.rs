@@ -15,14 +15,10 @@ use nom::{
 
 use crate::{
     expressions::Expression,
-    identifiers::{
-        parse_identifier,
-        Ident,
-    },
+    identifiers::Ident,
     list::List,
     lua_whitespace0,
     ASTAllocator,
-    Parse,
     ParseResult,
     Span,
 };
@@ -60,51 +56,59 @@ pub struct TableConstructor<'chunk> {
     pub fields: List<'chunk, Field<'chunk>>,
 }
 
-impl<'chunk> Parse<'chunk> for Field<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        alt((
-            map(
-                pair(
-                    delimited(
-                        pair(tag("["), lua_whitespace0),
-                        |input| Expression::parse(input, alloc),
-                        pair(lua_whitespace0, tag("]")),
+impl<'chunk> Field<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Field<'chunk>> {
+        |input| {
+            alt((
+                map(
+                    pair(
+                        delimited(
+                            pair(tag("["), lua_whitespace0),
+                            Expression::parser(alloc),
+                            pair(lua_whitespace0, tag("]")),
+                        ),
+                        preceded(
+                            delimited(lua_whitespace0, tag("="), lua_whitespace0),
+                            Expression::parser(alloc),
+                        ),
                     ),
-                    preceded(
-                        delimited(lua_whitespace0, tag("="), lua_whitespace0),
-                        |input| Expression::parse(input, alloc),
-                    ),
+                    |(index, expression)| Self::Indexed { index, expression },
                 ),
-                |(index, expression)| Self::Indexed { index, expression },
-            ),
-            map(
-                pair(
-                    |input| parse_identifier(input, alloc),
-                    preceded(
-                        delimited(lua_whitespace0, tag("="), lua_whitespace0),
-                        |input| Expression::parse(input, alloc),
+                map(
+                    pair(
+                        Ident::parser(alloc),
+                        preceded(
+                            delimited(lua_whitespace0, tag("="), lua_whitespace0),
+                            Expression::parser(alloc),
+                        ),
                     ),
+                    |(name, expression)| Self::Named { name, expression },
                 ),
-                |(name, expression)| Self::Named { name, expression },
-            ),
-            map(
-                preceded(lua_whitespace0, |input| Expression::parse(input, alloc)),
-                |expression| Self::Arraylike { expression },
-            ),
-        ))(input)
+                map(
+                    preceded(lua_whitespace0, Expression::parser(alloc)),
+                    |expression| Self::Arraylike { expression },
+                ),
+            ))(input)
+        }
     }
 }
 
-impl<'chunk> Parse<'chunk> for TableConstructor<'chunk> {
-    fn parse<'src>(input: Span<'src>, alloc: &'chunk ASTAllocator) -> ParseResult<'src, Self> {
-        map(
-            delimited(
-                pair(tag("{"), lua_whitespace0),
-                |input| parse_table_ctor(input, alloc),
-                pair(lua_whitespace0, tag("}")),
-            ),
-            |fields| TableConstructor { fields },
-        )(input)
+impl<'chunk> TableConstructor<'chunk> {
+    pub(crate) fn parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, TableConstructor<'chunk>> {
+        |input| {
+            map(
+                delimited(
+                    pair(tag("{"), lua_whitespace0),
+                    |input| parse_table_ctor(input, alloc),
+                    pair(lua_whitespace0, tag("}")),
+                ),
+                |fields| TableConstructor { fields },
+            )(input)
+        }
     }
 }
 
@@ -112,7 +116,7 @@ fn parse_table_ctor<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,
 ) -> ParseResult<'src, List<'chunk, Field<'chunk>>> {
-    let (remain, maybe_head) = opt(|input| Field::parse(input, alloc))(input)?;
+    let (remain, maybe_head) = opt(Field::parser(alloc))(input)?;
     input = remain;
 
     let mut result = List::default();
@@ -127,7 +131,7 @@ fn parse_table_ctor<'src, 'chunk>(
     loop {
         let (remain, maybe_next) = opt(preceded(
             delimited(lua_whitespace0, one_of(",;"), lua_whitespace0),
-            |input| Field::parse(input, alloc),
+            Field::parser(alloc),
         ))(input)?;
         input = remain;
 
@@ -154,12 +158,12 @@ mod tests {
             tables::Field,
             Expression,
         },
+        final_parser,
         list::{
             List,
             ListNode,
         },
         ASTAllocator,
-        Parse,
         Span,
     };
 
@@ -168,9 +172,8 @@ mod tests {
         let src = "{}";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = TableConstructor::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => TableConstructor::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             TableConstructor {
@@ -186,9 +189,8 @@ mod tests {
         let src = "{;}";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = TableConstructor::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => TableConstructor::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             TableConstructor {
@@ -203,9 +205,8 @@ mod tests {
         let src = "10";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = Field::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => Field::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             Field::Arraylike {
@@ -221,9 +222,8 @@ mod tests {
         let src = "a = 10";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = Field::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => Field::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             Field::Named {
@@ -240,9 +240,8 @@ mod tests {
         let src = "[11] = 10";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = Field::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => Field::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             Field::Indexed {
@@ -259,9 +258,8 @@ mod tests {
         let src = "{10, [11] = 12, a = 13; 14}";
 
         let alloc = ASTAllocator::default();
-        let (remain, result) = TableConstructor::parse(Span::new(src.as_bytes()), &alloc)?;
+        let result = final_parser!(Span::new(src.as_bytes()) => TableConstructor::parser(&alloc))?;
 
-        assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(
             result,
             TableConstructor {
