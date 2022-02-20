@@ -4,7 +4,7 @@ use tlua_bytecode::{
     Number,
     Truthy,
 };
-pub use tlua_parser::ast::constant_string::ConstantString;
+pub use tlua_parser::string::ConstantString;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Constant {

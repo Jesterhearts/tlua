@@ -1,4 +1,4 @@
-use tlua_parser::ast::expressions::operator::{
+use tlua_parser::expressions::operator::{
     BinaryOperator,
     UnaryOperator,
 };

@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::ast::ASTAllocator;
+use crate::ASTAllocator;
 
 #[derive(Debug)]
 pub struct ListNode<'list, T> {

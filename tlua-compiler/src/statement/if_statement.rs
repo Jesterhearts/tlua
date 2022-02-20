@@ -4,7 +4,7 @@ use tlua_bytecode::{
     OpError,
     Truthy,
 };
-use tlua_parser::ast::{
+use tlua_parser::{
     block::Block,
     expressions::Expression,
     statement::if_statement::{

@@ -3,7 +3,7 @@ use tlua_bytecode::{
     opcodes,
     OpError,
 };
-use tlua_parser::ast::statement::fn_decl::FnDecl;
+use tlua_parser::statement::fn_decl::FnDecl;
 
 use crate::{
     compiler::{

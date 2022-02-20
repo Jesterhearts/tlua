@@ -4,7 +4,7 @@ use tlua_bytecode::{
     OpError,
     Truthy,
 };
-use tlua_parser::ast::statement::while_loop::WhileLoop;
+use tlua_parser::statement::while_loop::WhileLoop;
 
 use crate::{
     compiler::JumpTemplate,

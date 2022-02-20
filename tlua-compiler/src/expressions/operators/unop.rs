@@ -9,7 +9,7 @@ use tlua_bytecode::{
     OpError,
     Truthy,
 };
-use tlua_parser::ast::expressions::operator::*;
+use tlua_parser::expressions::operator::*;
 
 use crate::{
     compiler::unasm::UnasmOp,

@@ -1,5 +1,5 @@
 use tlua_bytecode::opcodes;
-use tlua_parser::ast::{
+use tlua_parser::{
     expressions::function_defs::FnBody,
     identifiers::Ident,
 };

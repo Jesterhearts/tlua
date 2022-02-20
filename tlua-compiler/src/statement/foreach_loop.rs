@@ -3,7 +3,7 @@ use tlua_bytecode::{
     opcodes,
     OpError,
 };
-use tlua_parser::ast::{
+use tlua_parser::{
     identifiers::Ident,
     statement::foreach_loop::ForEachLoop,
 };

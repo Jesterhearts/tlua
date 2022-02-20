@@ -1,10 +1,10 @@
-use tlua_parser::ast::{
-    constant_string::ConstantString,
+use tlua_parser::{
     expressions::{
         number::Number,
         Nil,
         VarArgs,
     },
+    string::ConstantString,
 };
 
 use crate::{

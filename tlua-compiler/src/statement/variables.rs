@@ -1,6 +1,6 @@
 use scopeguard::guard_on_success;
 use tlua_bytecode::OpError;
-use tlua_parser::ast::statement::variables::LocalVarList;
+use tlua_parser::statement::variables::LocalVarList;
 
 use crate::{
     compiler::InitRegister,

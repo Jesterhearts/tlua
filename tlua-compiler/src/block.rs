@@ -4,14 +4,12 @@ use tlua_bytecode::{
     OpError,
 };
 use tlua_parser::{
-    ast::{
-        block::{
-            retstat::RetStatement,
-            Block,
-        },
-        statement::Statement,
+    block::{
+        retstat::RetStatement,
+        Block,
     },
     list::List,
+    statement::Statement,
 };
 
 use crate::{

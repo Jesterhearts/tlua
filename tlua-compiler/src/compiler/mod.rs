@@ -9,7 +9,7 @@ use tlua_bytecode::{
     opcodes,
     ImmediateRegister,
 };
-use tlua_parser::ast::{
+use tlua_parser::{
     block::Block,
     identifiers::Ident,
 };

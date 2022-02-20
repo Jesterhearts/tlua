@@ -1,6 +1,6 @@
 use thiserror::Error;
 pub use tlua_bytecode::OpError;
-use tlua_parser::parsing::ChunkParseError;
+use tlua_parser::ChunkParseError;
 
 pub mod vm;
 

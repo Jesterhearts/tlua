@@ -1,5 +1,5 @@
 use derive_more::From;
-use tlua_parser::ast::constant_string::ConstantString;
+use tlua_parser::string::ConstantString;
 
 pub use crate::binop::*;
 use crate::{

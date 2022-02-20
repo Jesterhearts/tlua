@@ -4,7 +4,7 @@ use tlua_bytecode::{
     OpError,
     Truthy,
 };
-use tlua_parser::ast::statement::repeat_loop::RepeatLoop;
+use tlua_parser::statement::repeat_loop::RepeatLoop;
 
 use crate::{
     block::emit_block,

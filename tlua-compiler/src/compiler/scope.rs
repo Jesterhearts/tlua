@@ -17,7 +17,7 @@ use tlua_bytecode::{
     ImmediateRegister,
     OpError,
 };
-use tlua_parser::ast::identifiers::Ident;
+use tlua_parser::identifiers::Ident;
 
 use crate::{
     compiler::{

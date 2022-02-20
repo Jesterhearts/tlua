@@ -19,7 +19,7 @@ pub use register::{
     Register,
 };
 pub use string::LuaString;
-use tlua_parser::ast::constant_string::ConstantString;
+use tlua_parser::string::ConstantString;
 
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum ByteCodeError {

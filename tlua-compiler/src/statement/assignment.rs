@@ -4,7 +4,7 @@ use tlua_bytecode::{
     opcodes,
     OpError,
 };
-use tlua_parser::ast::statement::assignment::Assignment;
+use tlua_parser::statement::assignment::Assignment;
 
 use crate::{
     compiler::InitRegister,

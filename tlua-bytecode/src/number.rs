@@ -3,7 +3,7 @@ use std::hash::{
     Hasher,
 };
 
-use tlua_parser::ast;
+use tlua_parser::expressions;
 
 use crate::{
     binop::f64inbounds,
@@ -65,11 +65,11 @@ impl Number {
     }
 }
 
-impl From<ast::expressions::number::Number> for Number {
-    fn from(ast_num: ast::expressions::number::Number) -> Self {
+impl From<expressions::number::Number> for Number {
+    fn from(ast_num: expressions::number::Number) -> Self {
         match ast_num {
-            ast::expressions::number::Number::Float(f) => Self::Float(f),
-            ast::expressions::number::Number::Integer(i) => Self::Integer(i),
+            expressions::number::Number::Float(f) => Self::Float(f),
+            expressions::number::Number::Integer(i) => Self::Integer(i),
         }
     }
 }

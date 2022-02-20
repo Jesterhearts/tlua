@@ -6,7 +6,7 @@ use tlua_bytecode::{
     PrimitiveType,
     TypeId,
 };
-use tlua_parser::ast::statement::for_loop::ForLoop;
+use tlua_parser::statement::for_loop::ForLoop;
 
 use crate::{
     compiler::{

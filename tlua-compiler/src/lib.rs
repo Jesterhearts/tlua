@@ -17,16 +17,12 @@ use tlua_bytecode::{
     TypeId,
 };
 use tlua_parser::{
-    ast::{
-        expressions::Expression,
-        identifiers::Ident,
-        statement::Statement,
-        ASTAllocator,
-    },
-    parsing::{
-        parse_chunk,
-        ChunkParseError,
-    },
+    expressions::Expression,
+    identifiers::Ident,
+    parse_chunk,
+    statement::Statement,
+    ASTAllocator,
+    ChunkParseError,
 };
 
 mod block;

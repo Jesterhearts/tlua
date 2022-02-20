@@ -17,7 +17,7 @@ use tlua_bytecode::{
     LuaString,
     OpError,
 };
-use tlua_parser::ast::expressions::{
+use tlua_parser::expressions::{
     operator,
     Expression,
 };

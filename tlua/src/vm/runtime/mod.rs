@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use tlua_compiler::Chunk;
-use tlua_parser::ast::identifiers::Ident;
+use tlua_parser::identifiers::Ident;
 use tracing_rc::rc::collect_full;
 
 use crate::{

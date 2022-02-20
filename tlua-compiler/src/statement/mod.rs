@@ -2,7 +2,7 @@ use tlua_bytecode::{
     opcodes,
     OpError,
 };
-use tlua_parser::ast::statement::{
+use tlua_parser::statement::{
     Break,
     Empty,
     Goto,

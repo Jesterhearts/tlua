@@ -3,9 +3,9 @@ use derive_more::{
     Deref,
     DerefMut,
 };
-use tlua_parser::ast::{
-    constant_string::ConstantString,
+use tlua_parser::{
     identifiers::Ident,
+    string::ConstantString,
 };
 
 use crate::{
