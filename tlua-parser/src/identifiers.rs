@@ -6,12 +6,13 @@ use nom::{
     bytes::complete::tag,
     character::complete::{
         alpha1,
-        alphanumeric0,
+        alphanumeric1,
     },
     combinator::{
         map_res,
         recognize,
     },
+    multi::many0,
     sequence::{
         delimited,
         pair,
@@ -53,7 +54,11 @@ impl Ident {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Ident> + '_ {
         |input| {
             map_res(
-                recognize(pair(alt((tag("_"), alpha1)), alphanumeric0)).context("identifier"),
+                recognize(pair(
+                    alt((tag("_"), alpha1)),
+                    many0(alt((alphanumeric1, tag("_")))),
+                ))
+                .context("identifier"),
                 |raw_ident| {
                     if is_keyword(raw_ident) {
                         Err(SyntaxError::KeywordAsIdent)
@@ -151,14 +156,14 @@ mod tests {
 
     #[test]
     pub fn parses_ident_alphanum() -> anyhow::Result<()> {
-        let ident = "_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        let ident = "_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_";
 
         let alloc = ASTAllocator::default();
         let ident = final_parser!(Span::new(ident.as_bytes()) => Ident::parser(&alloc))?;
 
         assert_eq!(
             ident,
-            "_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ".into()
+            "_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_".into()
         );
 
         Ok(())

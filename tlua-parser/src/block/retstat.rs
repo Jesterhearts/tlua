@@ -151,4 +151,23 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    pub fn parses_paren() -> anyhow::Result<()> {
+        let src = "return(10)";
+
+        let alloc = ASTAllocator::default();
+        let result = final_parser!(Span::new(src.as_bytes()) => RetStatement::parser(&alloc))?;
+
+        assert_eq!(
+            result,
+            RetStatement {
+                expressions: List::from_slice(&mut [ListNode::new(Expression::Number(
+                    Number::Integer(10)
+                )),])
+            }
+        );
+
+        Ok(())
+    }
 }
