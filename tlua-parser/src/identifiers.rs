@@ -3,7 +3,6 @@ use std::ops::Deref;
 use internment::LocalIntern;
 use nom::{
     branch::alt,
-    bytes::complete::tag,
     character::complete::{
         alpha1,
         char as token,
@@ -22,9 +21,11 @@ use nom::{
         terminated,
     },
 };
+use nom_supreme::tag::complete::tag;
 
 use crate::{
     build_separated_list1,
+    expecting,
     is_keyword,
     list::List,
     lua_whitespace0,
@@ -59,10 +60,13 @@ impl Ident {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Ident> + '_ {
         |input| {
             map_res(
-                recognize(pair(
-                    alt((tag("_"), alpha1)),
-                    many0_count(one_of(WORD_CHARS)),
-                )),
+                expecting(
+                    recognize(pair(
+                        alt((tag("_"), alpha1)),
+                        many0_count(one_of(WORD_CHARS)),
+                    )),
+                    "ident",
+                ),
                 |raw_ident| {
                     if is_keyword(raw_ident) {
                         Err(SyntaxError::KeywordAsIdent)
@@ -96,7 +100,7 @@ impl From<&str> for Ident {
 }
 
 pub fn keyword(kw: &'static str) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, ()> {
-    move |input| value((), terminated(tag(kw), not(one_of(WORD_CHARS))))(input)
+    move |input| expecting(value((), terminated(tag(kw), not(one_of(WORD_CHARS)))), kw)(input)
 }
 
 pub fn build_identifier_list1<'chunk>(

@@ -5,6 +5,8 @@ use nom::{
         one_of,
     },
     combinator::{
+        cut,
+        fail,
         map,
         opt,
     },
@@ -13,6 +15,7 @@ use nom::{
         pair,
         preceded,
         terminated,
+        tuple,
     },
 };
 
@@ -68,15 +71,17 @@ impl<'chunk> Field<'chunk> {
             alt((
                 map(
                     pair(
-                        delimited(
-                            pair(token('['), lua_whitespace0),
-                            Expression::parser(alloc),
-                            pair(lua_whitespace0, token(']')),
-                        ),
                         preceded(
+                            pair(token('['), lua_whitespace0),
+                            cut(terminated(
+                                Expression::parser(alloc),
+                                pair(lua_whitespace0, token(']')),
+                            )),
+                        ),
+                        cut(preceded(
                             delimited(lua_whitespace0, token('='), lua_whitespace0),
                             Expression::parser(alloc),
-                        ),
+                        )),
                     ),
                     |(index, expression)| Self::Indexed { index, expression },
                 ),
@@ -85,7 +90,7 @@ impl<'chunk> Field<'chunk> {
                         Ident::parser(alloc),
                         preceded(
                             delimited(lua_whitespace0, token('='), lua_whitespace0),
-                            Expression::parser(alloc),
+                            cut(Expression::parser(alloc)),
                         ),
                     ),
                     |(name, expression)| Self::Named { name, expression },
@@ -94,6 +99,7 @@ impl<'chunk> Field<'chunk> {
                     preceded(lua_whitespace0, Expression::parser(alloc)),
                     |expression| Self::Arraylike { expression },
                 ),
+                fail,
             ))(input)
         }
     }
@@ -105,17 +111,16 @@ impl<'chunk> TableConstructor<'chunk> {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, TableConstructor<'chunk>> {
         |input| {
             map(
-                delimited(
+                preceded(
                     pair(token('{'), lua_whitespace0),
-                    terminated(
+                    cut(terminated(
                         build_separated_list0(
                             alloc,
                             Field::parser(alloc),
                             delimited(lua_whitespace0, one_of(",;"), lua_whitespace0),
                         ),
-                        opt(one_of(",;")),
-                    ),
-                    pair(lua_whitespace0, token('}')),
+                        tuple((opt(one_of(",;")), lua_whitespace0, token('}'))),
+                    )),
                 ),
                 |fields| TableConstructor { fields },
             )(input)

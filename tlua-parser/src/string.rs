@@ -5,7 +5,6 @@ use nom::{
     branch::alt,
     bytes::complete::{
         is_not,
-        tag,
         take_till,
         take_until,
     },
@@ -35,8 +34,10 @@ use nom::{
     Offset,
     Slice,
 };
+use nom_supreme::tag::complete::tag;
 
 use crate::{
+    expecting,
     identifiers::Ident,
     lua_whitespace0,
     ParseResult,
@@ -89,11 +90,14 @@ impl PartialEq<&str> for ConstantString {
 /// - regex `\[(=*)\[.*?\]\1\]`
 /// See the internal documentation for the exact details of string parsing.
 pub fn parse_string(input: Span) -> ParseResult<ConstantString> {
-    alt((
-        preceded(token('\''), cut(parse_remaining_quoted_string::<b'\''>)),
-        preceded(token('"'), cut(parse_remaining_quoted_string::<b'"'>)),
-        parse_raw_string,
-    ))(input)
+    expecting(
+        alt((
+            preceded(token('\''), cut(parse_remaining_quoted_string::<b'\''>)),
+            preceded(token('"'), cut(parse_remaining_quoted_string::<b'"'>)),
+            parse_raw_string,
+        )),
+        "string",
+    )(input)
 }
 
 /// Expects an input string with the opening delimiter already skipped.

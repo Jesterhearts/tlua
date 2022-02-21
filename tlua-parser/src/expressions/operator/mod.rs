@@ -1,6 +1,5 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
     character::complete::char as token,
     combinator::{
         cut,
@@ -14,6 +13,7 @@ use nom::{
         tuple,
     },
 };
+use nom_supreme::tag::complete::tag;
 
 use crate::{
     expressions::{

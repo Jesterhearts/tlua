@@ -1,6 +1,5 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
     character::complete::char as token,
     combinator::{
         map,
@@ -15,6 +14,7 @@ use nom::{
         terminated,
     },
 };
+use nom_supreme::tag::complete::tag;
 
 use crate::{
     block::Block,

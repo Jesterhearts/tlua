@@ -1,7 +1,6 @@
 use nom::{
     branch::alt,
     bytes::complete::{
-        tag,
         take_till,
         take_until,
     },
@@ -15,6 +14,7 @@ use nom::{
         preceded,
     },
 };
+use nom_supreme::tag::complete::tag;
 
 use crate::{
     ParseResult,

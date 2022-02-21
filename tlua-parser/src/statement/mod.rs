@@ -1,11 +1,12 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
     character::complete::char as token,
     combinator::{
         cut,
         map,
+        peek,
         value,
+        verify,
     },
     sequence::{
         delimited,
@@ -14,9 +15,11 @@ use nom::{
         terminated,
     },
 };
+use nom_supreme::tag::complete::tag;
 
 use crate::{
     block::Block,
+    expecting,
     expressions::build_expression_list1,
     identifiers::{
         keyword,
@@ -44,7 +47,6 @@ use crate::{
     ASTAllocator,
     ParseResult,
     Span,
-    SyntaxError,
 };
 
 pub mod assignment;
@@ -97,7 +99,7 @@ impl<'chunk> Statement<'chunk> {
                 map(token(';'), |_| Self::Empty(Empty)),
                 map(
                     preceded(
-                        pair(tag("::"), lua_whitespace0),
+                        pair(expecting(tag("::"), "::"), lua_whitespace0),
                         cut(terminated(
                             Ident::parser(alloc),
                             pair(lua_whitespace0, tag("::")),
@@ -125,10 +127,15 @@ impl<'chunk> Statement<'chunk> {
                     Self::Repeat(alloc.alloc(stat))
                 }),
                 map(If::parser(alloc), |stat| Self::If(alloc.alloc(stat))),
-                map(ForLoop::parser(alloc), |stat| Self::For(alloc.alloc(stat))),
-                map(ForEachLoop::parser(alloc), |stat| {
-                    Self::ForEach(alloc.alloc(stat))
-                }),
+                preceded(
+                    peek(pair(keyword("for"), lua_whitespace1)),
+                    cut(alt((
+                        map(ForLoop::parser(alloc), |stat| Self::For(alloc.alloc(stat))),
+                        map(ForEachLoop::parser(alloc), |stat| {
+                            Self::ForEach(alloc.alloc(stat))
+                        }),
+                    ))),
+                ),
                 map(FnDecl::parser(alloc), |stat| {
                     Self::FnDecl(alloc.alloc(stat))
                 }),
@@ -145,7 +152,12 @@ fn parse_assignment_or_call<'src, 'chunk>(
     mut input: Span<'src>,
     alloc: &'chunk ASTAllocator,
 ) -> ParseResult<'src, Statement<'chunk>> {
-    let (remain, expr) = PrefixExpression::parser(alloc)(input)?;
+    let (remain, expr) = expecting(
+        verify(PrefixExpression::parser(alloc), |expr| {
+            !matches!(expr, PrefixExpression::Parenthesized(_))
+        }),
+        "variable or function call",
+    )(input)?;
     input = remain;
 
     match expr {
@@ -153,10 +165,10 @@ fn parse_assignment_or_call<'src, 'chunk>(
         PrefixExpression::Variable(var) => {
             let (input, varlist) = varlist1(input, var, alloc)?;
 
-            let (input, expressions) = preceded(
+            let (input, expressions) = cut(preceded(
                 value((), delimited(lua_whitespace0, token('='), lua_whitespace0)),
                 build_expression_list1(alloc),
-            )(input)?;
+            ))(input)?;
 
             Ok((
                 input,
@@ -166,14 +178,7 @@ fn parse_assignment_or_call<'src, 'chunk>(
                 })),
             ))
         }
-        PrefixExpression::Parenthesized(_) => {
-            Err(nom::Err::Error(nom_supreme::error::ErrorTree::Base {
-                location: input,
-                kind: nom_supreme::error::BaseErrorKind::External(Box::new(
-                    SyntaxError::ExpectedVarOrCall,
-                )),
-            }))
-        }
+        PrefixExpression::Parenthesized(_) => unreachable!("Verified expr is not parenthesized"),
     }
 }
 

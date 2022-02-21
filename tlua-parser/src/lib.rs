@@ -15,9 +15,9 @@ use nom::{
     IResult,
     Parser,
 };
-use nom_supreme::{
-    error::ErrorTree,
-    ParserExt,
+use nom_supreme::error::{
+    ErrorTree,
+    Expectation,
 };
 use thiserror::Error;
 
@@ -42,7 +42,63 @@ pub struct ChunkParseError {
     pub errors: ErrorTree<ErrorSpan>,
 }
 
-#[derive(Debug)]
+#[cfg(feature = "rendered-errors")]
+impl ChunkParseError {
+    pub fn build_report(&self) -> ariadne::Report<std::ops::Range<usize>> {
+        use ariadne::{
+            Label,
+            Report,
+            ReportKind,
+        };
+        use indexmap::indexset;
+
+        let mut labels = indexset! {};
+        Self::build_tree(&mut labels, &self.errors);
+
+        let mut builder = Report::build(
+            ReportKind::Error,
+            (),
+            labels.first().map(|(span, _)| span.start).unwrap_or(0),
+        )
+        .with_message("Failed to parse LUA");
+
+        for (range, label) in labels {
+            builder = builder.with_label(Label::new(range.start..range.end).with_message(label));
+        }
+
+        builder.finish()
+    }
+
+    fn build_tree(tree: &mut indexmap::IndexSet<(ErrorSpan, String)>, err: &ErrorTree<ErrorSpan>) {
+        use nom_supreme::error::BaseErrorKind;
+
+        match err {
+            ErrorTree::Base { location, kind } => {
+                let label = match kind {
+                    BaseErrorKind::External(e) => e.to_string(),
+                    k => k.to_string(),
+                };
+                tree.insert((*location, label));
+            }
+            ErrorTree::Stack { base, contexts } => {
+                tree.extend(
+                    contexts
+                        .iter()
+                        .rev()
+                        .map(|(span, context)| (*span, context.to_string())),
+                );
+                Self::build_tree(tree, base);
+            }
+            ErrorTree::Alt(cases) => {
+                for case in cases {
+                    Self::build_tree(tree, case);
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ErrorSpan {
     start: usize,
     end: usize,
@@ -67,23 +123,21 @@ impl From<Span<'_>> for ErrorSpan {
     }
 }
 
-#[derive(Debug, Clone, Error, PartialEq)]
+#[derive(Debug, Clone, Copy, Error, PartialEq)]
 pub enum SyntaxError {
     #[error("decimal escape too large")]
     DecimalEscapeTooLarge,
     #[error("UTF-8 value too large")]
     Utf8ValueTooLarge,
-    #[error("Malformed number")]
+    #[error("malformed number")]
     MalformedNumber,
-    #[error("Integer constant can't fit in integer")]
+    #[error("integer constant can't fit in integer")]
     IntegerConstantTooLarge,
-    #[error("Keyword cannot be used as identifier")]
+    #[error("keyword cannot be used as identifier")]
     KeywordAsIdent,
-    #[error("Expected a variable declaration")]
+    #[error("expected a variable declaration")]
     ExpectedVariable,
-    #[error("Expected a function call or a variable, encountered a parenthesized expression")]
-    ExpectedVarOrCall,
-    #[error("Invalid attribute - expected <const> or <close>")]
+    #[error("invalid attribute - expected <const> or <close>")]
     InvalidAttribute,
 }
 
@@ -94,13 +148,32 @@ pub type Span<'a> = nom_locate::LocatedSpan<&'a [u8]>;
 pub type InternalLuaParseError<'a> = nom_supreme::error::ErrorTree<Span<'a>>;
 pub type ParseResult<'a, T> = IResult<Span<'a>, T, InternalLuaParseError<'a>>;
 
-#[macro_export]
 macro_rules! final_parser {
-    ($input:expr => $parser:expr) => {
+    ($input:expr => $parser:expr) => {{
         ::nom_supreme::final_parser::final_parser($parser)($input)
-            .map_err(|e: crate::InternalLuaParseError| e.map_locations(crate::ErrorSpan::from))
+            .map_err(|e: $crate::InternalLuaParseError| e.map_locations($crate::ErrorSpan::from))
             .map_err(|errors| $crate::ChunkParseError { errors })
-    };
+    }};
+}
+
+pub(crate) use final_parser;
+
+pub(crate) fn expecting<'src, P, O>(
+    mut parser: P,
+    expect: &'static str,
+) -> impl FnMut(Span<'src>) -> ParseResult<'src, O>
+where
+    P: Parser<Span<'src>, O, InternalLuaParseError<'src>>,
+{
+    move |input| {
+        parser.parse(input).map_err(|e| match e {
+            nom::Err::Error(_) => nom::Err::Error(nom_supreme::error::ErrorTree::Base {
+                location: input,
+                kind: nom_supreme::error::BaseErrorKind::Expected(Expectation::Tag(expect)),
+            }),
+            e => e,
+        })
+    }
 }
 
 pub(crate) fn build_list0<'chunk, 'src, P, O>(
@@ -196,7 +269,7 @@ where
 pub fn lua_whitespace0(mut input: Span) -> ParseResult<()> {
     loop {
         input = match alt((
-            value((), take_while1(|c| LUA_WHITESPACE.contains(&c))).context("whitespace"),
+            value((), take_while1(|c| LUA_WHITESPACE.contains(&c))),
             parse_comment,
         ))(input)
         {
@@ -224,7 +297,7 @@ pub fn parse_chunk<'src, 'chunk>(
     Span::new(input.as_bytes()) =>
                 delimited(
                 lua_whitespace0,
-                Block::parser(alloc),
+                Block::main_parser(alloc),
                 lua_whitespace0,
             ))
 }
@@ -257,26 +330,6 @@ pub fn is_keyword(span: Span) -> bool {
     )
 }
 
-#[cfg(test)]
-mod tests {
-
-    use crate::{
-        parse_chunk,
-        ASTAllocator,
-    };
-
-    #[test]
-    fn foo() {
-        let src = "abc";
-        let alloc = ASTAllocator::default();
-        let err = dbg!(parse_chunk(src, &alloc));
-
-        if !matches!(err, Err(_)) {
-            assert!(err.is_ok());
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct ASTAllocator(Bump);
 
@@ -294,5 +347,32 @@ impl ASTAllocator {
 impl Default for ASTAllocator {
     fn default() -> Self {
         Self(Bump::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "rendered-errors")]
+    #[test]
+    #[ignore = "just for interacting with error output"]
+    fn dbg_rendered_error() {
+        use ariadne::Source;
+
+        use crate::{
+            parse_chunk,
+            ASTAllocator,
+        };
+
+        let src = "if true then 10";
+        let alloc = ASTAllocator::default();
+        let err = parse_chunk(src, &alloc);
+
+        match err {
+            Ok(_) => assert!(dbg!(err).is_err()),
+            Err(e) => {
+                let report = e.build_report();
+                report.eprint(Source::from(src)).unwrap();
+            }
+        }
     }
 }

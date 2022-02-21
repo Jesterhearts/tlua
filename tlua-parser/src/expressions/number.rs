@@ -2,7 +2,6 @@ use atoi::atoi;
 use hexf_parse::parse_hexf64;
 use nom::{
     branch::alt,
-    bytes::complete::tag,
     character::complete::{
         char as token,
         digit0,
@@ -25,8 +24,10 @@ use nom::{
         tuple,
     },
 };
+use nom_supreme::tag::complete::tag;
 
 use crate::{
+    expecting,
     lua_whitespace0,
     ParseResult,
     Span,
@@ -41,12 +42,15 @@ pub enum Number {
 
 /// Locale-insensitive parsing for numbers.
 pub fn parse_number(input: Span) -> ParseResult<Number> {
-    alt((
-        map(parse_hex_float, Number::Float),
-        map(parse_float, Number::Float),
-        map(parse_hex_integer, Number::Integer),
-        parse_integer,
-    ))(input)
+    expecting(
+        alt((
+            map(parse_hex_float, Number::Float),
+            map(parse_float, Number::Float),
+            map(parse_hex_integer, Number::Integer),
+            parse_integer,
+        )),
+        "number",
+    )(input)
 }
 
 pub fn parse_float(input: Span) -> ParseResult<f64> {

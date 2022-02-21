@@ -1,7 +1,8 @@
 use nom::{
     branch::alt,
-    character::complete::{char as token},
+    character::complete::char as token,
     combinator::{
+        cut,
         map,
         opt,
     },
@@ -9,6 +10,7 @@ use nom::{
         delimited,
         pair,
         preceded,
+        terminated,
     },
 };
 
@@ -90,10 +92,12 @@ impl<'chunk> PrefixExpression<'chunk> {
             let (mut input, head) = alt((
                 map(Ident::parser(alloc), HeadAtom::Name),
                 map(
-                    delimited(
+                    preceded(
                         pair(token('('), lua_whitespace0),
-                        Expression::parser(alloc),
-                        pair(lua_whitespace0, token(')')),
+                        cut(terminated(
+                            Expression::parser(alloc),
+                            pair(lua_whitespace0, token(')')),
+                        )),
                     ),
                     |expr| HeadAtom::Parenthesized(alloc.alloc(expr)),
                 ),

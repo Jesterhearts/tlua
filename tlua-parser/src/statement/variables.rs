@@ -1,6 +1,7 @@
 use nom::{
     character::complete::char as token,
     combinator::{
+        cut,
         map,
         map_res,
         opt,
@@ -97,7 +98,7 @@ impl<'chunk> LocalVarList<'chunk> {
                         build_local_varlist1(alloc),
                         opt(preceded(
                             delimited(lua_whitespace0, token('='), lua_whitespace0),
-                            build_expression_list1(alloc),
+                            cut(build_expression_list1(alloc)),
                         )),
                     ),
                 ),

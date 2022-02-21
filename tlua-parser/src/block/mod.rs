@@ -1,5 +1,7 @@
 use nom::{
+    branch::alt,
     combinator::{
+        eof,
         map,
         opt,
     },
@@ -11,6 +13,7 @@ use nom::{
 
 use crate::{
     build_list0,
+    build_list1,
     list::List,
     lua_whitespace0,
     statement::Statement,
@@ -40,6 +43,27 @@ impl<'chunk> Block<'chunk> {
                 ),
                 |(statements, ret)| Block { statements, ret },
             )(input)
+        }
+    }
+
+    pub(crate) fn main_parser(
+        alloc: &'chunk ASTAllocator,
+    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Block<'chunk>> {
+        |input| {
+            alt((
+                map(eof, |_| Self::default()),
+                map(
+                    pair(
+                        build_list1(alloc, terminated(Statement::parser(alloc), lua_whitespace0)),
+                        opt(RetStatement::parser(alloc)),
+                    ),
+                    |(statements, ret)| Block { statements, ret },
+                ),
+                map(RetStatement::parser(alloc), |ret| Block {
+                    statements: Default::default(),
+                    ret: Some(ret),
+                }),
+            ))(input)
         }
     }
 }

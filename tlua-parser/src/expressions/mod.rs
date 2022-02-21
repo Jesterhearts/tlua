@@ -1,6 +1,5 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
     character::complete::char as token,
     combinator::{
         cut,
@@ -12,6 +11,7 @@ use nom::{
         preceded,
     },
 };
+use nom_supreme::tag::complete::tag;
 
 use crate::{
     build_separated_list0,
