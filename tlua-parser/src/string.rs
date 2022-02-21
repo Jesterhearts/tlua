@@ -4,11 +4,10 @@ use internment::LocalIntern;
 use nom::{
     branch::alt,
     bytes::complete::{
-        is_a,
         is_not,
         tag,
         take_till,
-        take_while,
+        take_until,
     },
     character::complete::{
         char as token,
@@ -16,13 +15,16 @@ use nom::{
         satisfy,
     },
     combinator::{
+        cut,
         map,
         map_res,
         opt,
-        recognize,
         value,
     },
-    multi::many1_count,
+    multi::{
+        many0_count,
+        many1_count,
+    },
     sequence::{
         delimited,
         pair,
@@ -30,6 +32,7 @@ use nom::{
         terminated,
         tuple,
     },
+    Offset,
     Slice,
 };
 
@@ -87,8 +90,8 @@ impl PartialEq<&str> for ConstantString {
 /// See the internal documentation for the exact details of string parsing.
 pub fn parse_string(input: Span) -> ParseResult<ConstantString> {
     alt((
-        preceded(token('\''), parse_remaining_quoted_string::<b'\''>),
-        preceded(token('"'), parse_remaining_quoted_string::<b'"'>),
+        preceded(token('\''), cut(parse_remaining_quoted_string::<b'\''>)),
+        preceded(token('"'), cut(parse_remaining_quoted_string::<b'"'>)),
         parse_raw_string,
     ))(input)
 }
@@ -304,24 +307,32 @@ fn encode_utf8_raw(seq: Span) -> Result<(usize, [u8; 6]), SyntaxError> {
     Ok((len, bytes))
 }
 
-/// Loops over the input until it encounters a `]` followed by sep followed by a
-/// `]`. This is used in concert with nom::recognize to extract the raw string.
-fn discard_raw_str<'a>(mut pending: Span<'a>, sep: &'a [u8]) -> ParseResult<'a, ()> {
+fn extract_raw_str(input: Span, sep_len: usize) -> ParseResult<Span> {
+    let mut pending = input;
     loop {
-        pending = take_till(|c| c == b']')(pending)?.0;
+        pending = take_until("]")(pending)?.0;
 
-        if pending[1..].starts_with(sep) && pending[1 + sep.len()..].starts_with(&[b']']) {
-            return Ok((pending, ()));
-        }
+        let (remain, tag_len) = preceded(token(']'), many0_count(token('=')))(pending)?;
 
-        pending = pair(tag(b"]"), opt(is_a(sep)))(pending)?.0;
+        let remain = if tag_len == sep_len {
+            let (remain, close) = opt(token(']'))(remain)?;
+            if close.is_some() {
+                let index = input.offset(&pending);
+                return Ok((remain, input.slice(..index)));
+            }
+
+            remain
+        } else {
+            remain
+        };
+
+        pending = remain;
     }
 }
 
 fn parse_raw_string(input: Span) -> ParseResult<ConstantString> {
-    let (remain, open) = delimited(token('['), take_while(|c| c == b'='), token('['))(input)?;
-    let (remain, data) = recognize(|input| discard_raw_str(input, *open))(remain)?;
-    let (remain, ()) = value((), delimited(token(']'), tag(*open), token(']')))(remain)?;
+    let (remain, tag_len) = delimited(token('['), many0_count(token('=')), token('['))(input)?;
+    let (remain, data) = cut(|input| extract_raw_str(input, tag_len))(remain)?;
 
     let mut result = Vec::default();
     let mut data = opt(alt((tag("\r\n"), tag("\n\r"), tag("\n"), tag("\r"))))(data)?.0;

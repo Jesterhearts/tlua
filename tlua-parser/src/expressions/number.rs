@@ -21,11 +21,13 @@ use nom::{
     sequence::{
         pair,
         preceded,
+        terminated,
         tuple,
     },
 };
 
 use crate::{
+    lua_whitespace0,
     ParseResult,
     Span,
     SyntaxError,
@@ -50,7 +52,7 @@ pub fn parse_number(input: Span) -> ParseResult<Number> {
 pub fn parse_float(input: Span) -> ParseResult<f64> {
     map_res(
         recognize(tuple((
-            opt(token('-')),
+            opt(terminated(token('-'), lua_whitespace0)),
             digit0,
             // We try to match either a mandatory decimal part + an optional exponent part or a
             // mandatory exponent part here in order to disambiguate with integer parsing.
@@ -70,17 +72,22 @@ pub fn parse_float(input: Span) -> ParseResult<f64> {
         |float_str: Span| {
             // SAFETY: We know that we only have [-]<decimal digits>[.[<decimal
             // digits>]][<eE>[-]<decimal digits>] in our float string.
-            unsafe { std::str::from_utf8_unchecked(*float_str) }
-                .parse::<f64>()
-                .map_err(|_| SyntaxError::MalformedNumber)
+            unsafe { convert_float(float_str) }
         },
     )(input)
+}
+
+/// SAFETY: `float_str` must be valid utf8.
+unsafe fn convert_float(float_str: Span<'_>) -> Result<f64, SyntaxError> {
+    std::str::from_utf8_unchecked(*float_str)
+        .parse::<f64>()
+        .map_err(|_| SyntaxError::MalformedNumber)
 }
 
 pub fn parse_hex_float(input: Span) -> ParseResult<f64> {
     map_res(
         recognize(tuple((
-            opt(token('-')),
+            opt(terminated(token('-'), lua_whitespace0)),
             tag("0x"),
             hex_digit0,
             // The same reasoning for this odd alt matching applies here as for regular floating
@@ -107,19 +114,17 @@ pub fn parse_hex_float(input: Span) -> ParseResult<f64> {
 
 /// Parses an integer, falling back to a float if the integer would overflow.
 pub fn parse_integer<'src>(input: Span<'src>) -> ParseResult<'src, Number> {
-    alt((
-        map_res(
-            recognize(pair(opt(token('-')), digit1)),
-            |num_str: Span<'src>| {
-                if let Some(i) = atoi::<i64>(*num_str).map(Number::Integer) {
-                    Ok(i)
-                } else {
-                    Err(SyntaxError::IntegerConstantTooLarge)
-                }
-            },
-        ),
-        map(parse_float, Number::Float),
-    ))(input)
+    map_res(
+        recognize(pair(opt(terminated(token('-'), lua_whitespace0)), digit1)),
+        |num_str: Span<'src>| {
+            if let Some(i) = atoi::<i64>(*num_str).map(Number::Integer) {
+                Ok(i)
+            } else {
+                // SAFETY: We know that we only have <decimal digits> in our string.
+                unsafe { convert_float(num_str).map(Number::Float) }
+            }
+        },
+    )(input)
 }
 
 pub fn parse_hex_integer(input: Span) -> ParseResult<i64> {
@@ -258,18 +263,6 @@ mod tests {
 
         assert_eq!(std::str::from_utf8(*remain)?, "");
         assert_eq!(number, Number::Integer(9007199254740993));
-
-        Ok(())
-    }
-
-    #[test]
-    pub fn parses_negative_integer_constant() -> anyhow::Result<()> {
-        let negative = "-10";
-
-        let (remain, number) = parse_number(Span::new(negative.as_bytes()))?;
-
-        assert_eq!(std::str::from_utf8(*remain)?, "");
-        assert_eq!(number, Number::Integer(-10));
 
         Ok(())
     }

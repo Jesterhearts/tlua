@@ -3,6 +3,7 @@ use nom::{
     bytes::complete::tag,
     character::complete::char as token,
     combinator::{
+        cut,
         map,
         value,
     },
@@ -10,14 +11,17 @@ use nom::{
         delimited,
         pair,
         preceded,
+        terminated,
     },
 };
-use nom_supreme::ParserExt;
 
 use crate::{
     block::Block,
     expressions::build_expression_list1,
-    identifiers::Ident,
+    identifiers::{
+        keyword,
+        Ident,
+    },
     lua_whitespace0,
     lua_whitespace1,
     prefix_expression::{
@@ -90,51 +94,47 @@ impl<'chunk> Statement<'chunk> {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Statement<'chunk>> {
         |input| {
             alt((
-                map(token(';'), |_| Self::Empty(Empty)).context("empty statement"),
+                map(token(';'), |_| Self::Empty(Empty)),
                 map(
-                    delimited(
+                    preceded(
                         pair(tag("::"), lua_whitespace0),
-                        Ident::parser(alloc),
-                        pair(lua_whitespace0, tag("::")),
+                        cut(terminated(
+                            Ident::parser(alloc),
+                            pair(lua_whitespace0, tag("::")),
+                        )),
                     ),
                     |ident| Self::Label(Label(ident)),
-                )
-                .context("label statement"),
-                map(tag("break"), |_| Self::Break(Break)).context("break statement"),
+                ),
+                map(keyword("break"), |_| Self::Break(Break)),
                 map(
-                    preceded(pair(tag("goto"), lua_whitespace1), Ident::parser(alloc)),
+                    preceded(
+                        pair(keyword("goto"), lua_whitespace1),
+                        cut(Ident::parser(alloc)),
+                    ),
                     |ident| Self::Goto(Goto(ident)),
-                )
-                .context("goto statement"),
+                ),
                 delimited(
-                    pair(tag("do"), lua_whitespace0),
+                    pair(keyword("do"), lua_whitespace0),
                     map(Block::parser(alloc), |block| Self::Do(alloc.alloc(block))),
-                    pair(lua_whitespace0, tag("end")),
-                )
-                .context("do statement"),
+                    pair(lua_whitespace0, keyword("end")),
+                ),
                 map(WhileLoop::parser(alloc), |stat| {
                     Self::While(alloc.alloc(stat))
-                })
-                .context("while statement"),
+                }),
                 map(RepeatLoop::parser(alloc), |stat| {
                     Self::Repeat(alloc.alloc(stat))
-                })
-                .context("repeat statement"),
-                map(If::parser(alloc), |stat| Self::If(alloc.alloc(stat))).context("if statement"),
-                map(ForLoop::parser(alloc), |stat| Self::For(alloc.alloc(stat)))
-                    .context("for statement"),
+                }),
+                map(If::parser(alloc), |stat| Self::If(alloc.alloc(stat))),
+                map(ForLoop::parser(alloc), |stat| Self::For(alloc.alloc(stat))),
                 map(ForEachLoop::parser(alloc), |stat| {
                     Self::ForEach(alloc.alloc(stat))
-                })
-                .context("foreach statement"),
+                }),
                 map(FnDecl::parser(alloc), |stat| {
                     Self::FnDecl(alloc.alloc(stat))
-                })
-                .context("function declaration"),
+                }),
                 map(LocalVarList::parser(alloc), |stat| {
                     Self::LocalVarList(alloc.alloc(stat))
-                })
-                .context("local variable declaration"),
+                }),
                 |input| parse_assignment_or_call(input, alloc),
             ))(input)
         }
@@ -154,7 +154,7 @@ fn parse_assignment_or_call<'src, 'chunk>(
             let (input, varlist) = varlist1(input, var, alloc)?;
 
             let (input, expressions) = preceded(
-                value((), delimited(lua_whitespace0, tag("="), lua_whitespace0)),
+                value((), delimited(lua_whitespace0, token('='), lua_whitespace0)),
                 build_expression_list1(alloc),
             )(input)?;
 

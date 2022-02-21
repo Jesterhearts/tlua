@@ -1,6 +1,6 @@
 use nom::{
-    bytes::complete::tag,
     combinator::{
+        cut,
         map,
         opt,
     },
@@ -15,7 +15,9 @@ use nom::{
 
 use crate::{
     block::Block,
+    build_list0,
     expressions::Expression,
+    identifiers::keyword,
     list::List,
     lua_whitespace0,
     lua_whitespace1,
@@ -44,16 +46,25 @@ impl<'chunk> If<'chunk> {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, If<'chunk>> {
         |input| {
             delimited(
-                pair(tag("if"), lua_whitespace1),
+                pair(keyword("if"), lua_whitespace1),
                 map(
-                    tuple((
+                    cut(tuple((
                         |input| parse_cond_then_body(input, alloc),
-                        |input| elif0(input, alloc),
+                        build_list0(
+                            alloc,
+                            map(
+                                preceded(
+                                    delimited(lua_whitespace0, keyword("elseif"), lua_whitespace1),
+                                    |input| parse_cond_then_body(input, alloc),
+                                ),
+                                |(cond, body)| ElseIf { cond, body },
+                            ),
+                        ),
                         opt(preceded(
-                            delimited(lua_whitespace0, tag("else"), lua_whitespace1),
+                            delimited(lua_whitespace0, keyword("else"), lua_whitespace1),
                             Block::parser(alloc),
                         )),
-                    )),
+                    ))),
                     |((cond, body), elif, else_final)| Self {
                         cond,
                         body,
@@ -61,7 +72,7 @@ impl<'chunk> If<'chunk> {
                         else_final,
                     },
                 ),
-                pair(lua_whitespace0, tag("end")),
+                pair(lua_whitespace0, keyword("end")),
             )(input)
         }
     }
@@ -74,49 +85,9 @@ fn parse_cond_then_body<'src, 'chunk>(
     pair(
         terminated(
             Expression::parser(alloc),
-            delimited(lua_whitespace0, tag("then"), lua_whitespace0),
+            delimited(lua_whitespace0, keyword("then"), lua_whitespace0),
         ),
         Block::parser(alloc),
-    )(input)
-}
-
-fn elif0<'src, 'chunk>(
-    mut input: Span<'src>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, List<'chunk, ElseIf<'chunk>>> {
-    let (remain, head) = opt(|input| parse_elif(input, alloc))(input)?;
-    input = remain;
-
-    let mut elifs = List::default();
-
-    let mut current = if let Some(head) = head {
-        elifs.cursor_mut().alloc_insert_advance(alloc, head)
-    } else {
-        return Ok((remain, List::default()));
-    };
-
-    loop {
-        let (remain, next) = opt(|input| parse_elif(input, alloc))(input)?;
-        input = remain;
-
-        current = if let Some(next) = next {
-            current.alloc_insert_advance(alloc, next)
-        } else {
-            return Ok((remain, elifs));
-        };
-    }
-}
-
-fn parse_elif<'src, 'chunk>(
-    input: Span<'src>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, ElseIf<'chunk>> {
-    map(
-        preceded(
-            delimited(lua_whitespace0, tag("elseif"), lua_whitespace1),
-            |input| parse_cond_then_body(input, alloc),
-        ),
-        |(cond, body)| ElseIf { cond, body },
     )(input)
 }
 

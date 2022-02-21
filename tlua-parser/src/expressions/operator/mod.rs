@@ -1,7 +1,9 @@
 use nom::{
     branch::alt,
     bytes::complete::tag,
+    character::complete::char as token,
     combinator::{
+        cut,
         map,
         not,
         opt,
@@ -18,8 +20,8 @@ use crate::{
         parse_non_op_expr,
         Expression,
     },
+    identifiers::keyword,
     lua_whitespace0,
-    lua_whitespace1,
     ASTAllocator,
     ParseResult,
     Span,
@@ -218,9 +220,10 @@ pub fn parse_exp_expr<'src, 'chunk>(
     parse_right_assoc_binop(
         input,
         |input| parse_non_op_expr(input, alloc),
-        opt(preceded(pair(tag("^"), lua_whitespace0), |input| {
-            parse_non_op_expr(input, alloc)
-        })),
+        opt(preceded(
+            pair(token('^'), lua_whitespace0),
+            cut(|input| parse_non_op_expr(input, alloc)),
+        )),
         |lhs, rhs| {
             BinaryOperator::Exponetiation(Exponetiation {
                 lhs: alloc.alloc(lhs),
@@ -241,32 +244,35 @@ pub fn parse_unop_expr<'src, 'chunk>(
 ) -> ParseResult<'src, Expression<'chunk>> {
     alt((
         map(
-            preceded(pair(tag("not"), lua_whitespace1), |input| {
-                parse_exp_expr(input, alloc)
-            }),
+            preceded(
+                pair(keyword("not"), lua_whitespace0),
+                cut(|input| parse_exp_expr(input, alloc)),
+            ),
             |expr| Expression::UnaryOp(UnaryOperator::Not(Not(alloc.alloc(expr)))),
         ),
         map(
-            preceded(pair(tag("#"), lua_whitespace0), |input| {
-                parse_exp_expr(input, alloc)
-            }),
+            preceded(
+                pair(token('#'), lua_whitespace0),
+                cut(|input| parse_exp_expr(input, alloc)),
+            ),
             |expr| Expression::UnaryOp(UnaryOperator::Length(Length(alloc.alloc(expr)))),
         ),
         map(
-            preceded(pair(tag("-"), lua_whitespace0), |input| {
-                parse_exp_expr(input, alloc)
-            }),
+            preceded(
+                pair(token('-'), lua_whitespace0),
+                cut(|input| parse_exp_expr(input, alloc)),
+            ),
             |expr| Expression::UnaryOp(UnaryOperator::Minus(Negation(alloc.alloc(expr)))),
         ),
         map(
             preceded(
                 tuple((
-                    tag("~"),
+                    token('~'),
                     lua_whitespace0,
                     // This is required to disambiguate from not equals
-                    not(tag("=")),
+                    not(token('=')),
                 )),
-                |input| parse_exp_expr(input, alloc),
+                cut(|input| parse_exp_expr(input, alloc)),
             ),
             |expr| Expression::UnaryOp(UnaryOperator::BitNot(BitNot(alloc.alloc(expr)))),
         ),
@@ -282,9 +288,10 @@ pub fn parse_muldivmod_expr<'src, 'chunk>(
         input,
         |input| parse_unop_expr(input, alloc),
         |lhs, input| {
-            if let (input, Some(rhs)) = opt(preceded(pair(tag("*"), lua_whitespace0), |input| {
-                parse_unop_expr(input, alloc)
-            }))(input)?
+            if let (input, Some(rhs)) = opt(preceded(
+                pair(token('*'), lua_whitespace0),
+                cut(|input| parse_unop_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -293,10 +300,10 @@ pub fn parse_muldivmod_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag("//"), lua_whitespace0), |input| {
-                    parse_unop_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(tag("//"), lua_whitespace0),
+                cut(|input| parse_unop_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -305,10 +312,10 @@ pub fn parse_muldivmod_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag("/"), lua_whitespace0), |input| {
-                    parse_unop_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(token('/'), lua_whitespace0),
+                cut(|input| parse_unop_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -317,10 +324,10 @@ pub fn parse_muldivmod_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag("%"), lua_whitespace0), |input| {
-                    parse_unop_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(token('%'), lua_whitespace0),
+                cut(|input| parse_unop_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -344,9 +351,10 @@ pub fn parse_addsub_expr<'src, 'chunk>(
         input,
         |input| parse_muldivmod_expr(input, alloc),
         |lhs, input| {
-            if let (input, Some(rhs)) = opt(preceded(pair(tag("+"), lua_whitespace0), |input| {
-                parse_muldivmod_expr(input, alloc)
-            }))(input)?
+            if let (input, Some(rhs)) = opt(preceded(
+                pair(token('+'), lua_whitespace0),
+                cut(|input| parse_muldivmod_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -355,10 +363,10 @@ pub fn parse_addsub_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag("-"), lua_whitespace0), |input| {
-                    parse_muldivmod_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(token('-'), lua_whitespace0),
+                cut(|input| parse_muldivmod_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -381,9 +389,10 @@ pub fn parse_concat_expr<'src, 'chunk>(
     parse_right_assoc_binop(
         input,
         |input| parse_addsub_expr(input, alloc),
-        opt(preceded(pair(tag(".."), lua_whitespace0), |input| {
-            parse_addsub_expr(input, alloc)
-        })),
+        opt(preceded(
+            pair(tag(".."), lua_whitespace0),
+            cut(|input| parse_addsub_expr(input, alloc)),
+        )),
         |lhs, rhs| {
             BinaryOperator::Concat(Concat {
                 lhs: alloc.alloc(lhs),
@@ -401,9 +410,10 @@ pub fn parse_shift_expr<'src, 'chunk>(
         input,
         |input| parse_concat_expr(input, alloc),
         |lhs, input| {
-            if let (input, Some(rhs)) = opt(preceded(pair(tag("<<"), lua_whitespace0), |input| {
-                parse_concat_expr(input, alloc)
-            }))(input)?
+            if let (input, Some(rhs)) = opt(preceded(
+                pair(tag("<<"), lua_whitespace0),
+                cut(|input| parse_concat_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -412,10 +422,10 @@ pub fn parse_shift_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag(">>"), lua_whitespace0), |input| {
-                    parse_concat_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(tag(">>"), lua_whitespace0),
+                cut(|input| parse_concat_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -439,9 +449,10 @@ pub fn parse_bitand_expr<'src, 'chunk>(
         input,
         |input| parse_shift_expr(input, alloc),
         |lhs, input| {
-            if let (input, Some(rhs)) = opt(preceded(pair(tag("&"), lua_whitespace0), |input| {
-                parse_shift_expr(input, alloc)
-            }))(input)?
+            if let (input, Some(rhs)) = opt(preceded(
+                pair(token('&'), lua_whitespace0),
+                cut(|input| parse_shift_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -466,8 +477,8 @@ pub fn parse_bitxor_expr<'src, 'chunk>(
         |input| parse_bitand_expr(input, alloc),
         |lhs, input| {
             if let (input, Some(rhs)) = opt(preceded(
-                tuple((tag("~"), lua_whitespace0, not(tag("=")))),
-                |input| parse_bitand_expr(input, alloc),
+                tuple((token('~'), lua_whitespace0, not(token('=')))),
+                cut(|input| parse_bitand_expr(input, alloc)),
             ))(input)?
             {
                 Ok((
@@ -492,9 +503,10 @@ pub fn parse_bitor_expr<'src, 'chunk>(
         input,
         |input| parse_bitxor_expr(input, alloc),
         |lhs, input| {
-            if let (input, Some(rhs)) = opt(preceded(pair(tag("|"), lua_whitespace0), |input| {
-                parse_bitxor_expr(input, alloc)
-            }))(input)?
+            if let (input, Some(rhs)) = opt(preceded(
+                pair(token('|'), lua_whitespace0),
+                cut(|input| parse_bitxor_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -518,9 +530,10 @@ pub fn parse_logical_expr<'src, 'chunk>(
         input,
         |input| parse_bitor_expr(input, alloc),
         |lhs, input| {
-            if let (input, Some(rhs)) = opt(preceded(pair(tag("<="), lua_whitespace0), |input| {
-                parse_bitor_expr(input, alloc)
-            }))(input)?
+            if let (input, Some(rhs)) = opt(preceded(
+                pair(tag("<="), lua_whitespace0),
+                cut(|input| parse_bitor_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -529,10 +542,10 @@ pub fn parse_logical_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag("<"), lua_whitespace0), |input| {
-                    parse_bitor_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(token('<'), lua_whitespace0),
+                cut(|input| parse_bitor_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -541,10 +554,10 @@ pub fn parse_logical_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag(">="), lua_whitespace0), |input| {
-                    parse_bitor_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(tag(">="), lua_whitespace0),
+                cut(|input| parse_bitor_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -553,10 +566,10 @@ pub fn parse_logical_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag(">"), lua_whitespace0), |input| {
-                    parse_bitor_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(token('>'), lua_whitespace0),
+                cut(|input| parse_bitor_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -565,10 +578,10 @@ pub fn parse_logical_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag("=="), lua_whitespace0), |input| {
-                    parse_bitor_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(tag("=="), lua_whitespace0),
+                cut(|input| parse_bitor_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -577,10 +590,10 @@ pub fn parse_logical_expr<'src, 'chunk>(
                         rhs: alloc.alloc(rhs),
                     })),
                 ))
-            } else if let (input, Some(rhs)) =
-                opt(preceded(pair(tag("~="), lua_whitespace0), |input| {
-                    parse_bitor_expr(input, alloc)
-                }))(input)?
+            } else if let (input, Some(rhs)) = opt(preceded(
+                pair(tag("~="), lua_whitespace0),
+                cut(|input| parse_bitor_expr(input, alloc)),
+            ))(input)?
             {
                 Ok((
                     input,
@@ -605,12 +618,8 @@ pub fn parse_and_expr<'src, 'chunk>(
         |input| parse_logical_expr(input, alloc),
         |lhs, input| {
             if let (input, Some(rhs)) = opt(preceded(
-                pair(
-                    tag("and"),
-                    // This is required to disambiguate from an identifier
-                    lua_whitespace1,
-                ),
-                |input| parse_logical_expr(input, alloc),
+                pair(keyword("and"), lua_whitespace0),
+                cut(|input| parse_logical_expr(input, alloc)),
             ))(input)?
             {
                 Ok((
@@ -636,12 +645,8 @@ pub fn parse_or_expr<'src, 'chunk>(
         |input| parse_and_expr(input, alloc),
         |lhs, input| {
             if let (input, Some(rhs)) = opt(preceded(
-                pair(
-                    tag("or"),
-                    // This is required to disambiguate from an identifier
-                    lua_whitespace1,
-                ),
-                |input| parse_and_expr(input, alloc),
+                pair(keyword("or"), lua_whitespace0),
+                cut(|input| parse_and_expr(input, alloc)),
             ))(input)?
             {
                 Ok((

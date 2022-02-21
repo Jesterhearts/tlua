@@ -1,7 +1,11 @@
 use nom::{
     branch::alt,
     bytes::complete::tag,
-    combinator::map,
+    character::complete::char as token,
+    combinator::{
+        cut,
+        map,
+    },
     sequence::{
         delimited,
         pair,
@@ -12,6 +16,7 @@ use nom::{
 use crate::{
     build_separated_list0,
     build_separated_list1,
+    identifiers::keyword,
     list::List,
     lua_whitespace0,
     prefix_expression::{
@@ -95,7 +100,7 @@ pub fn build_expression_list0<'chunk>(
         build_separated_list0(
             alloc,
             Expression::parser(alloc),
-            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+            delimited(lua_whitespace0, token(','), lua_whitespace0),
         )(input)
     }
 }
@@ -107,7 +112,7 @@ pub fn build_expression_list1<'chunk>(
         build_separated_list1(
             alloc,
             Expression::parser(alloc),
-            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+            delimited(lua_whitespace0, token(','), lua_whitespace0),
         )(input)
     }
 }
@@ -124,8 +129,8 @@ fn parse_non_op_expr<'src, 'chunk>(
         map(tag("..."), |_| Expression::VarArgs(VarArgs)),
         map(
             preceded(
-                pair(tag("function"), lua_whitespace0),
-                FnBody::parser(alloc),
+                pair(keyword("function"), lua_whitespace0),
+                cut(FnBody::parser(alloc)),
             ),
             |body| Expression::FnDef(alloc.alloc(body)),
         ),

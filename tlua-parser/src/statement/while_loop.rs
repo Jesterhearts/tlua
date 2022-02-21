@@ -1,6 +1,6 @@
 use nom::{
-    bytes::complete::tag,
     combinator::{
+        cut,
         map,
         value,
     },
@@ -14,6 +14,7 @@ use nom::{
 use crate::{
     block::Block,
     expressions::Expression,
+    identifiers::keyword,
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
@@ -33,16 +34,19 @@ impl<'chunk> WhileLoop<'chunk> {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, WhileLoop<'chunk>> {
         |input| {
             delimited(
-                pair(tag("while"), lua_whitespace1),
+                pair(keyword("while"), lua_whitespace0),
                 map(
-                    tuple((
+                    cut(tuple((
                         Expression::parser(alloc),
-                        value((), delimited(lua_whitespace0, tag("do"), lua_whitespace1)),
+                        value(
+                            (),
+                            delimited(lua_whitespace0, keyword("do"), lua_whitespace1),
+                        ),
                         Block::parser(alloc),
-                    )),
+                    ))),
                     |(cond, _, body)| Self { cond, body },
                 ),
-                pair(lua_whitespace0, tag("end")),
+                pair(lua_whitespace0, keyword("end")),
             )(input)
         }
     }

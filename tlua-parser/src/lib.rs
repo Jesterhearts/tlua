@@ -3,6 +3,7 @@ use nom::{
     branch::alt,
     bytes::complete::take_while1,
     combinator::{
+        iterator,
         map,
         opt,
         value,
@@ -134,18 +135,13 @@ where
         input = remain;
         current = current.alloc_insert_advance(alloc, first);
 
-        loop {
-            let (remain, maybe_next) = opt(|input| parser.parse(input))(input)?;
-            input = remain;
+        let mut iter = iterator(input, |input| parser.parse(input));
 
-            current = if let Some(next) = maybe_next {
-                current.alloc_insert_advance(alloc, next)
-            } else {
-                break;
-            };
+        for next in iter.into_iter() {
+            current = current.alloc_insert_advance(alloc, next);
         }
 
-        Ok((input, list))
+        iter.finish().map(|(remain, ())| (remain, list))
     }
 }
 
@@ -167,21 +163,16 @@ where
         input = remain;
         current = current.alloc_insert_advance(alloc, first);
 
-        loop {
-            let (remain, maybe_next) = opt(preceded(
-                |input| sep_parser.parse(input),
-                |input| parser.parse(input),
-            ))(input)?;
-            input = remain;
+        let mut iter = iterator(
+            input,
+            preceded(|input| sep_parser.parse(input), |input| parser.parse(input)),
+        );
 
-            current = if let Some(next) = maybe_next {
-                current.alloc_insert_advance(alloc, next)
-            } else {
-                break;
-            };
+        for next in iter.into_iter() {
+            current = current.alloc_insert_advance(alloc, next);
         }
 
-        Ok((input, list))
+        iter.finish().map(|(remain, ())| (remain, list))
     }
 }
 

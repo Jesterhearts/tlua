@@ -1,6 +1,7 @@
 use nom::{
-    bytes::complete::tag,
+    character::complete::char as token,
     combinator::{
+        cut,
         map,
         opt,
     },
@@ -16,7 +17,10 @@ use nom::{
 use crate::{
     block::Block,
     expressions::Expression,
-    identifiers::Ident,
+    identifiers::{
+        keyword,
+        Ident,
+    },
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
@@ -39,29 +43,31 @@ impl<'chunk> ForLoop<'chunk> {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, ForLoop<'chunk>> {
         |input| {
             preceded(
-                pair(tag("for"), lua_whitespace1),
+                pair(keyword("for"), lua_whitespace1),
                 map(
-                    tuple((
+                    pair(
                         terminated(
                             Ident::parser(alloc),
-                            delimited(lua_whitespace0, tag("="), lua_whitespace0),
+                            delimited(lua_whitespace0, token('='), lua_whitespace0),
                         ),
-                        terminated(
+                        cut(tuple((
+                            terminated(
+                                Expression::parser(alloc),
+                                delimited(lua_whitespace0, token(','), lua_whitespace0),
+                            ),
                             Expression::parser(alloc),
-                            delimited(lua_whitespace0, tag(","), lua_whitespace0),
-                        ),
-                        Expression::parser(alloc),
-                        opt(preceded(
-                            delimited(lua_whitespace0, tag(","), lua_whitespace0),
-                            Expression::parser(alloc),
-                        )),
-                        delimited(
-                            delimited(lua_whitespace0, tag("do"), lua_whitespace1),
-                            Block::parser(alloc),
-                            preceded(lua_whitespace0, tag("end")),
-                        ),
-                    )),
-                    |(var, init, condition, increment, body)| Self {
+                            opt(preceded(
+                                delimited(lua_whitespace0, token(','), lua_whitespace0),
+                                Expression::parser(alloc),
+                            )),
+                            delimited(
+                                delimited(lua_whitespace0, keyword("do"), lua_whitespace1),
+                                Block::parser(alloc),
+                                preceded(lua_whitespace0, keyword("end")),
+                            ),
+                        ))),
+                    ),
+                    |(var, (init, condition, increment, body))| Self {
                         var,
                         init,
                         condition,

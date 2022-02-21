@@ -6,15 +6,15 @@ use nom::{
         take_until,
     },
     combinator::{
+        cut,
         success,
         value,
     },
     sequence::{
-        delimited,
+        pair,
         preceded,
     },
 };
-use nom_supreme::ParserExt;
 
 use crate::{
     ParseResult,
@@ -25,18 +25,18 @@ pub fn parse_comment(input: Span) -> ParseResult<()> {
     alt((
         value(
             (),
-            delimited(
+            preceded(
                 tag("--[["),
-                alt((value((), take_until("]]")), success(()))),
-                tag("]]"),
+                cut(pair(
+                    alt((value((), take_until("]]")), success(()))),
+                    tag("]]"),
+                )),
             ),
-        )
-        .context("multiline comment"),
+        ),
         value(
             (),
             preceded(tag("--"), take_till(|c| c == b'\r' || c == b'\n')),
-        )
-        .context("comment"),
+        ),
     ))(input)
 }
 

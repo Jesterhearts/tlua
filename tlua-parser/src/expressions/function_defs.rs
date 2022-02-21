@@ -1,6 +1,7 @@
 use nom::{
     branch::alt,
     bytes::complete::tag,
+    character::complete::char as token,
     combinator::{
         map,
         opt,
@@ -17,8 +18,10 @@ use nom::{
 
 use crate::{
     block::Block,
+    build_separated_list1,
     identifiers::{
         build_identifier_list1,
+        keyword,
         Ident,
     },
     list::List,
@@ -55,7 +58,7 @@ impl<'chunk> FnParams<'chunk> {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnParams<'chunk>> {
         |input| {
             delimited(
-                pair(tag("("), lua_whitespace0),
+                pair(token('('), lua_whitespace0),
                 map(
                     opt(alt((
                         map(
@@ -65,7 +68,7 @@ impl<'chunk> FnParams<'chunk> {
                                     value(
                                         true,
                                         pair(
-                                            preceded(lua_whitespace0, tag(",")),
+                                            preceded(lua_whitespace0, token(',')),
                                             preceded(lua_whitespace0, tag("...")),
                                         ),
                                     ),
@@ -89,7 +92,7 @@ impl<'chunk> FnParams<'chunk> {
                         })
                     },
                 ),
-                pair(lua_whitespace0, tag(")")),
+                pair(lua_whitespace0, token(')')),
             )(input)
         }
     }
@@ -106,7 +109,7 @@ impl<'chunk> FnBody<'chunk> {
                         FnParams::parser(alloc),
                         preceded(lua_whitespace0, Block::parser(alloc)),
                     ),
-                    pair(lua_whitespace0, tag("end")),
+                    pair(lua_whitespace0, keyword("end")),
                 ),
                 |(params, body)| Self { params, body },
             )(input)
@@ -118,34 +121,21 @@ impl<'chunk> FnName<'chunk> {
     pub(crate) fn parser(
         alloc: &'chunk ASTAllocator,
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnName<'chunk>> {
-        |mut input| {
-            let (remain, head) = Ident::parser(alloc)(input)?;
-            input = remain;
-
-            let mut path = List::default();
-            let current = path.cursor_mut();
-            let mut current = current.alloc_insert_advance(alloc, head);
-
-            loop {
-                let (remain, maybe_ident) = opt(preceded(
-                    delimited(lua_whitespace0, tag("."), lua_whitespace0),
-                    Ident::parser(alloc),
-                ))(input)?;
-                input = remain;
-
-                current = if let Some(next) = maybe_ident {
-                    current.alloc_insert_advance(alloc, next)
-                } else {
-                    break;
-                };
-            }
-
-            let (remain, method) = opt(preceded(
-                pair(lua_whitespace0, tag(":")),
-                Ident::parser(alloc),
-            ))(input)?;
-
-            Ok((remain, Self { path, method }))
+        |input| {
+            map(
+                pair(
+                    build_separated_list1(
+                        alloc,
+                        Ident::parser(alloc),
+                        delimited(lua_whitespace0, token('.'), lua_whitespace0),
+                    ),
+                    opt(preceded(
+                        pair(lua_whitespace0, token(':')),
+                        Ident::parser(alloc),
+                    )),
+                ),
+                |(path, method)| Self { path, method },
+            )(input)
         }
     }
 }

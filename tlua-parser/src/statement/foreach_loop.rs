@@ -1,12 +1,13 @@
 use nom::{
-    bytes::complete::tag,
-    combinator::map,
+    combinator::{
+        cut,
+        map,
+    },
     sequence::{
         delimited,
         pair,
         preceded,
         terminated,
-        tuple,
     },
 };
 
@@ -18,6 +19,7 @@ use crate::{
     },
     identifiers::{
         build_identifier_list1,
+        keyword,
         Ident,
     },
     list::List,
@@ -41,20 +43,25 @@ impl<'chunk> ForEachLoop<'chunk> {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, ForEachLoop<'chunk>> {
         |input| {
             preceded(
-                pair(tag("for"), lua_whitespace1),
+                pair(keyword("for"), lua_whitespace1),
                 map(
-                    tuple((
+                    pair(
                         terminated(
                             build_identifier_list1(alloc),
-                            delimited(lua_whitespace0, tag("in"), lua_whitespace1),
+                            delimited(lua_whitespace0, keyword("in"), lua_whitespace1),
                         ),
-                        terminated(
-                            build_expression_list1(alloc),
-                            delimited(lua_whitespace0, tag("do"), lua_whitespace1),
-                        ),
-                        terminated(Block::parser(alloc), preceded(lua_whitespace0, tag("end"))),
-                    )),
-                    |(vars, expressions, body)| Self {
+                        cut(pair(
+                            terminated(
+                                build_expression_list1(alloc),
+                                delimited(lua_whitespace0, keyword("do"), lua_whitespace1),
+                            ),
+                            terminated(
+                                Block::parser(alloc),
+                                preceded(lua_whitespace0, keyword("end")),
+                            ),
+                        )),
+                    ),
+                    |(vars, (expressions, body))| Self {
                         vars,
                         expressions,
                         body,

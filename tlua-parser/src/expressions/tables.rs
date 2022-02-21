@@ -1,7 +1,9 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
-    character::complete::one_of,
+    character::complete::{
+        char as token,
+        one_of,
+    },
     combinator::{
         map,
         opt,
@@ -10,10 +12,12 @@ use nom::{
         delimited,
         pair,
         preceded,
+        terminated,
     },
 };
 
 use crate::{
+    build_separated_list0,
     expressions::Expression,
     identifiers::Ident,
     list::List,
@@ -65,12 +69,12 @@ impl<'chunk> Field<'chunk> {
                 map(
                     pair(
                         delimited(
-                            pair(tag("["), lua_whitespace0),
+                            pair(token('['), lua_whitespace0),
                             Expression::parser(alloc),
-                            pair(lua_whitespace0, tag("]")),
+                            pair(lua_whitespace0, token(']')),
                         ),
                         preceded(
-                            delimited(lua_whitespace0, tag("="), lua_whitespace0),
+                            delimited(lua_whitespace0, token('='), lua_whitespace0),
                             Expression::parser(alloc),
                         ),
                     ),
@@ -80,7 +84,7 @@ impl<'chunk> Field<'chunk> {
                     pair(
                         Ident::parser(alloc),
                         preceded(
-                            delimited(lua_whitespace0, tag("="), lua_whitespace0),
+                            delimited(lua_whitespace0, token('='), lua_whitespace0),
                             Expression::parser(alloc),
                         ),
                     ),
@@ -102,49 +106,21 @@ impl<'chunk> TableConstructor<'chunk> {
         |input| {
             map(
                 delimited(
-                    pair(tag("{"), lua_whitespace0),
-                    |input| parse_table_ctor(input, alloc),
-                    pair(lua_whitespace0, tag("}")),
+                    pair(token('{'), lua_whitespace0),
+                    terminated(
+                        build_separated_list0(
+                            alloc,
+                            Field::parser(alloc),
+                            delimited(lua_whitespace0, one_of(",;"), lua_whitespace0),
+                        ),
+                        opt(one_of(",;")),
+                    ),
+                    pair(lua_whitespace0, token('}')),
                 ),
                 |fields| TableConstructor { fields },
             )(input)
         }
     }
-}
-
-fn parse_table_ctor<'src, 'chunk>(
-    mut input: Span<'src>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, List<'chunk, Field<'chunk>>> {
-    let (remain, maybe_head) = opt(Field::parser(alloc))(input)?;
-    input = remain;
-
-    let mut result = List::default();
-
-    let mut current = if let Some(head) = maybe_head {
-        result.cursor_mut().alloc_insert_advance(alloc, head)
-    } else {
-        let (remain, _) = opt(one_of(",;"))(input)?;
-        return Ok((remain, result));
-    };
-
-    loop {
-        let (remain, maybe_next) = opt(preceded(
-            delimited(lua_whitespace0, one_of(",;"), lua_whitespace0),
-            Field::parser(alloc),
-        ))(input)?;
-        input = remain;
-
-        current = if let Some(next) = maybe_next {
-            current.alloc_insert_advance(alloc, next)
-        } else {
-            break;
-        };
-    }
-
-    let (remain, _) = opt(one_of(",;"))(input)?;
-
-    Ok((remain, result))
 }
 
 #[cfg(test)]

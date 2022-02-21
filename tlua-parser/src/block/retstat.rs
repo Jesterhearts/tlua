@@ -1,5 +1,5 @@
 use nom::{
-    bytes::complete::tag,
+    character::complete::char as token,
     combinator::{
         map,
         opt,
@@ -12,6 +12,7 @@ use crate::{
         build_expression_list0,
         Expression,
     },
+    identifiers::keyword,
     list::List,
     lua_whitespace0,
     ASTAllocator,
@@ -31,13 +32,13 @@ impl<'chunk> RetStatement<'chunk> {
         |input| {
             map(
                 delimited(
-                    tag("return"),
+                    keyword("return"),
                     delimited(
                         lua_whitespace0,
                         build_expression_list0(alloc),
                         lua_whitespace0,
                     ),
-                    opt(tag(";")),
+                    opt(token(';')),
                 ),
                 |expressions| Self { expressions },
             )(input)
@@ -162,8 +163,8 @@ mod tests {
         assert_eq!(
             result,
             RetStatement {
-                expressions: List::from_slice(&mut [ListNode::new(Expression::Number(
-                    Number::Integer(10)
+                expressions: List::from_slice(&mut [ListNode::new(Expression::Parenthesized(
+                    &Expression::Number(Number::Integer(10))
                 )),])
             }
         );

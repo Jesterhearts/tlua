@@ -1,21 +1,21 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
     combinator::value,
 };
 
 use crate::{
     expressions::Nil,
+    identifiers::keyword,
     ParseResult,
     Span,
 };
 
 pub fn parse_nil(input: Span) -> ParseResult<Nil> {
-    value(Nil, tag("nil"))(input)
+    value(Nil, keyword("nil"))(input)
 }
 
 pub fn parse_bool(input: Span) -> ParseResult<bool> {
-    alt((value(true, tag("true")), value(false, tag("false"))))(input)
+    alt((value(true, keyword("true")), value(false, keyword("false"))))(input)
 }
 
 #[cfg(test)]

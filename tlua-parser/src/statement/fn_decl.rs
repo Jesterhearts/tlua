@@ -1,7 +1,9 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
-    combinator::map,
+    combinator::{
+        cut,
+        map,
+    },
     sequence::{
         pair,
         preceded,
@@ -15,7 +17,10 @@ use crate::{
         FnBody,
         FnName,
     },
-    identifiers::Ident,
+    identifiers::{
+        keyword,
+        Ident,
+    },
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
@@ -43,28 +48,28 @@ impl<'chunk> FnDecl<'chunk> {
             alt((
                 preceded(
                     tuple((
-                        tag("local"),
+                        keyword("local"),
                         lua_whitespace1,
-                        tag("function"),
+                        keyword("function"),
                         lua_whitespace1,
                     )),
-                    map(
+                    cut(map(
                         pair(
                             terminated(Ident::parser(alloc), lua_whitespace0),
                             FnBody::parser(alloc),
                         ),
                         |(name, body)| Self::Local { name, body },
-                    ),
+                    )),
                 ),
                 preceded(
-                    pair(tag("function"), lua_whitespace1),
-                    map(
+                    pair(keyword("function"), lua_whitespace1),
+                    cut(map(
                         pair(
                             terminated(FnName::parser(alloc), lua_whitespace0),
                             FnBody::parser(alloc),
                         ),
                         |(name, body)| Self::Function { name, body },
-                    ),
+                    )),
                 ),
             ))(input)
         }

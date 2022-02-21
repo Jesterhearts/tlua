@@ -1,6 +1,6 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
+    character::complete::{char as token},
     combinator::{
         map,
         opt,
@@ -91,9 +91,9 @@ impl<'chunk> PrefixExpression<'chunk> {
                 map(Ident::parser(alloc), HeadAtom::Name),
                 map(
                     delimited(
-                        pair(tag("("), lua_whitespace0),
+                        pair(token('('), lua_whitespace0),
                         Expression::parser(alloc),
-                        pair(lua_whitespace0, tag(")")),
+                        pair(lua_whitespace0, token(')')),
                     ),
                     |expr| HeadAtom::Parenthesized(alloc.alloc(expr)),
                 ),
@@ -202,11 +202,11 @@ fn parse_index_op<'src, 'chunk>(
     alloc: &'chunk ASTAllocator,
 ) -> ParseResult<'src, PrefixAtom<'chunk>> {
     delimited(
-        pair(tag("["), lua_whitespace0),
+        pair(token('['), lua_whitespace0),
         map(Expression::parser(alloc), |expr| {
             PrefixAtom::Var(VarAtom::IndexOp(expr))
         }),
-        pair(lua_whitespace0, tag("]")),
+        pair(lua_whitespace0, token(']')),
     )(input)
 }
 
@@ -215,7 +215,7 @@ fn parse_dot_name<'src, 'chunk>(
     alloc: &'chunk ASTAllocator,
 ) -> ParseResult<'src, PrefixAtom<'chunk>> {
     preceded(
-        pair(tag("."), lua_whitespace0),
+        pair(token('.'), lua_whitespace0),
         map(Ident::parser(alloc), |ident| {
             PrefixAtom::Var(VarAtom::Name(ident))
         }),
@@ -236,7 +236,7 @@ fn parse_method_call<'src, 'chunk>(
     alloc: &'chunk ASTAllocator,
 ) -> ParseResult<'src, PrefixAtom<'chunk>> {
     preceded(
-        tag(":"),
+        token(':'),
         map(
             pair(Ident::parser(alloc), FnArgs::parser(alloc)),
             |(ident, args)| PrefixAtom::Function(FunctionAtom::MethodCall { name: ident, args }),

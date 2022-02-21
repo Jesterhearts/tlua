@@ -6,19 +6,22 @@ use nom::{
     bytes::complete::tag,
     character::complete::{
         alpha1,
-        alphanumeric1,
+        char as token,
+        one_of,
     },
     combinator::{
         map_res,
+        not,
         recognize,
+        value,
     },
-    multi::many0,
+    multi::many0_count,
     sequence::{
         delimited,
         pair,
+        terminated,
     },
 };
-use nom_supreme::ParserExt;
 
 use crate::{
     build_separated_list1,
@@ -30,6 +33,8 @@ use crate::{
     Span,
     SyntaxError,
 };
+
+const WORD_CHARS: &str = "_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Ident(pub(crate) LocalIntern<Vec<u8>>);
@@ -56,9 +61,8 @@ impl Ident {
             map_res(
                 recognize(pair(
                     alt((tag("_"), alpha1)),
-                    many0(alt((alphanumeric1, tag("_")))),
-                ))
-                .context("identifier"),
+                    many0_count(one_of(WORD_CHARS)),
+                )),
                 |raw_ident| {
                     if is_keyword(raw_ident) {
                         Err(SyntaxError::KeywordAsIdent)
@@ -91,6 +95,10 @@ impl From<&str> for Ident {
     }
 }
 
+pub fn keyword(kw: &'static str) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, ()> {
+    move |input| value((), terminated(tag(kw), not(one_of(WORD_CHARS))))(input)
+}
+
 pub fn build_identifier_list1<'chunk>(
     alloc: &'chunk ASTAllocator,
 ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, Ident>> {
@@ -98,7 +106,7 @@ pub fn build_identifier_list1<'chunk>(
         build_separated_list1(
             alloc,
             Ident::parser(alloc),
-            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+            delimited(lua_whitespace0, token(','), lua_whitespace0),
         )(input)
     }
 }

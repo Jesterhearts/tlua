@@ -1,5 +1,5 @@
 use nom::{
-    bytes::complete::tag,
+    character::complete::char as token,
     combinator::{
         map,
         map_res,
@@ -19,7 +19,10 @@ use crate::{
         build_expression_list1,
         Expression,
     },
-    identifiers::Ident,
+    identifiers::{
+        keyword,
+        Ident,
+    },
     list::List,
     lua_whitespace0,
     lua_whitespace1,
@@ -60,9 +63,9 @@ impl LocalVar {
                 pair(
                     terminated(Ident::parser(alloc), lua_whitespace0),
                     opt(delimited(
-                        pair(tag("<"), lua_whitespace0),
+                        pair(token('<'), lua_whitespace0),
                         Ident::parser(alloc),
-                        pair(lua_whitespace0, tag(">")),
+                        pair(lua_whitespace0, token('>')),
                     )),
                 ),
                 |(name, attribute)| {
@@ -89,11 +92,11 @@ impl<'chunk> LocalVarList<'chunk> {
         |input| {
             map(
                 preceded(
-                    pair(tag("local"), lua_whitespace1),
+                    pair(keyword("local"), lua_whitespace1),
                     pair(
                         build_local_varlist1(alloc),
                         opt(preceded(
-                            delimited(lua_whitespace0, tag("="), lua_whitespace0),
+                            delimited(lua_whitespace0, token('='), lua_whitespace0),
                             build_expression_list1(alloc),
                         )),
                     ),
@@ -114,7 +117,7 @@ pub(crate) fn build_local_varlist1<'chunk>(
         build_separated_list1(
             alloc,
             LocalVar::parser(alloc),
-            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+            delimited(lua_whitespace0, token(','), lua_whitespace0),
         )(input)
     }
 }
@@ -129,7 +132,7 @@ pub(crate) fn varlist1<'src, 'chunk>(
 
     loop {
         let (remain, maybe_next) = opt(preceded(
-            delimited(lua_whitespace0, tag(","), lua_whitespace0),
+            delimited(lua_whitespace0, token(','), lua_whitespace0),
             map_res(PrefixExpression::parser(alloc), |expr| match expr {
                 PrefixExpression::Variable(var) => Ok(var),
                 PrefixExpression::FnCall(_) | PrefixExpression::Parenthesized(_) => {

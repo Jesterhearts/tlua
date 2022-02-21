@@ -1,6 +1,6 @@
 use nom::{
-    bytes::complete::tag,
     combinator::{
+        cut,
         map,
         value,
     },
@@ -15,6 +15,7 @@ use nom::{
 use crate::{
     block::Block,
     expressions::Expression,
+    identifiers::keyword,
     lua_whitespace0,
     lua_whitespace1,
     ASTAllocator,
@@ -34,16 +35,16 @@ impl<'chunk> RepeatLoop<'chunk> {
     ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, RepeatLoop<'chunk>> {
         |input| {
             preceded(
-                pair(tag("repeat"), lua_whitespace1),
+                pair(keyword("repeat"), lua_whitespace1),
                 map(
-                    tuple((
+                    cut(tuple((
                         Block::parser(alloc),
                         value(
                             (),
-                            delimited(lua_whitespace0, tag("until"), lua_whitespace1),
+                            delimited(lua_whitespace0, keyword("until"), lua_whitespace0),
                         ),
                         Expression::parser(alloc),
-                    )),
+                    ))),
                     |(body, _, terminator)| Self { body, terminator },
                 ),
             )(input)

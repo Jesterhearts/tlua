@@ -1,6 +1,6 @@
 use nom::{
     branch::alt,
-    bytes::complete::tag,
+    character::complete::{char as token},
     combinator::{
         map,
         opt,
@@ -43,9 +43,9 @@ impl<'chunk> FnArgs<'chunk> {
             alt((
                 map(
                     delimited(
-                        pair(tag("("), lua_whitespace0),
+                        pair(token('('), lua_whitespace0),
                         opt(build_expression_list1(alloc)),
-                        pair(lua_whitespace0, tag(")")),
+                        pair(lua_whitespace0, token(')')),
                     ),
                     |exprs| Self::Expressions(exprs.unwrap_or_default()),
                 ),
