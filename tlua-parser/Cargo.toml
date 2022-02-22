@@ -12,9 +12,11 @@ rendered-errors = [ "ariadne", "indexmap" ]
 
 [dependencies]
 atoi = '1.0.0'
+bstr = '0.2.17'
 derive_more = '0.99.17'
 hexf-parse = '0.2.1'
 internment = '0.5.6'
+logos = '0.12.0'
 nom = '7.1.0'
 nom_locate = '4.0.0'
 nom-supreme = '0.6.0'

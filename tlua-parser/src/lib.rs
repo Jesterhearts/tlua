@@ -25,6 +25,7 @@ pub mod block;
 pub mod comments;
 pub mod expressions;
 pub mod identifiers;
+mod lexer;
 pub mod list;
 pub mod prefix_expression;
 pub mod statement;
