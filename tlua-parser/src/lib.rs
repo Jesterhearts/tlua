@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use bumpalo::Bump;
 use nom::{
     branch::alt,
@@ -112,6 +114,12 @@ impl std::fmt::Display for ErrorSpan {
             start = self.start,
             end = self.end
         ))
+    }
+}
+
+impl From<Range<usize>> for ErrorSpan {
+    fn from(Range { start, end }: Range<usize>) -> Self {
+        Self { start, end }
     }
 }
 
