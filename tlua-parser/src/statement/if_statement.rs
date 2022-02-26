@@ -54,6 +54,10 @@ impl<'chunk> If<'chunk> {
             .and_then(|_| Block::parse(lexer, alloc))
             .recover()?;
 
+        lexer.next_if_eq(Token::KWend).ok_or_else(|| {
+            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWend))
+        })?;
+
         Ok(Self {
             cond,
             body,

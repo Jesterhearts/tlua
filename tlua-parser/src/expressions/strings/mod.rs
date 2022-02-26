@@ -433,7 +433,7 @@ mod tests {
         assert_eq!(result, ConstantString(0));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
-            Some(b"\0x07".as_bstr())
+            Some(b"\x07".as_bstr())
         );
 
         Ok(())
@@ -451,7 +451,7 @@ mod tests {
         assert_eq!(result, ConstantString(0));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
-            Some(b"\0x08".as_bstr())
+            Some(b"\x08".as_bstr())
         );
 
         Ok(())
@@ -469,7 +469,7 @@ mod tests {
         assert_eq!(result, ConstantString(0));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
-            Some(b"\0x0C".as_bstr())
+            Some(b"\x0C".as_bstr())
         );
 
         Ok(())
@@ -541,7 +541,7 @@ mod tests {
         assert_eq!(result, ConstantString(0));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
-            Some(b"\0x0B".as_bstr())
+            Some(b"\x0B".as_bstr())
         );
 
         Ok(())
@@ -668,7 +668,7 @@ mod tests {
         assert_eq!(result, ConstantString(0));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
-            Some(b"line1 \r a string".as_bstr())
+            Some(b"line1 \n a string".as_bstr())
         );
 
         Ok(())
@@ -686,7 +686,7 @@ mod tests {
         assert_eq!(result, ConstantString(0));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
-            Some(b"line1 \r\n a string".as_bstr())
+            Some(b"line1 \n a string".as_bstr())
         );
 
         Ok(())
@@ -704,7 +704,7 @@ mod tests {
         assert_eq!(result, ConstantString(0));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
-            Some(b"line1 \n\r a string".as_bstr())
+            Some(b"line1 \n a string".as_bstr())
         );
 
         Ok(())

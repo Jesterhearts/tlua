@@ -163,11 +163,17 @@ impl<'chunk> PrefixExpression<'chunk> {
                     middle,
                     last: alloc.alloc(var),
                 }),
-                PrefixAtom::Function(f) => Self::FnCall(FnCallPrefixExpression::CallPath {
-                    head,
-                    middle,
-                    last: f,
-                }),
+                PrefixAtom::Function(args) => {
+                    if middle.is_empty() {
+                        Self::FnCall(FnCallPrefixExpression::Call { head, args })
+                    } else {
+                        Self::FnCall(FnCallPrefixExpression::CallPath {
+                            head,
+                            middle,
+                            last: args,
+                        })
+                    }
+                }
             })
         } else {
             debug_assert!(middle.is_empty());

@@ -68,9 +68,8 @@ impl<'chunk> Exponetiation<'chunk> {
         parse_right_assoc_binop(
             lexer,
             alloc,
-            |lexer, alloc| {
-                Expression::parse_leaf(lexer, alloc).recover_with(|| parse_unary(lexer, alloc))
-            },
+            Expression::parse_leaf,
+            parse_unary,
             Token::Caret,
             |lhs, rhs| {
                 Expression::BinaryOp(BinaryOperator::Exponetiation(Exponetiation { lhs, rhs }))
@@ -207,12 +206,13 @@ impl<'chunk> Concat<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Expression<'chunk>, ParseError> {
-        parse_left_assoc_binop(
+        parse_right_assoc_binop(
             lexer,
             alloc,
             parse_addsub,
-            |tok| *tok == Token::DoublePeriod,
-            |_, lhs, rhs| Expression::BinaryOp(BinaryOperator::Concat(Self { lhs, rhs })),
+            Self::parse,
+            Token::DoublePeriod,
+            |lhs, rhs| Expression::BinaryOp(BinaryOperator::Concat(Self { lhs, rhs })),
         )
     }
 }
@@ -468,24 +468,28 @@ where
     }
 }
 
-fn parse_right_assoc_binop<'src, 'chunk, F, C>(
+fn parse_right_assoc_binop<'src, 'chunk, F1, F2, C>(
     lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
-    higher_precedent: F,
+    higher_precedent: F1,
+    equal_precedent: F2,
     match_next: Token,
     combine: C,
 ) -> Result<Expression<'chunk>, ParseError>
 where
-    F: Fn(&mut PeekableLexer, &'chunk ASTAllocator) -> Result<Expression<'chunk>, ParseError>,
+    F1: Fn(&mut PeekableLexer, &'chunk ASTAllocator) -> Result<Expression<'chunk>, ParseError>,
+    F2: Fn(&mut PeekableLexer, &'chunk ASTAllocator) -> Result<Expression<'chunk>, ParseError>,
     C: Fn(&'chunk Expression<'chunk>, &'chunk Expression<'chunk>) -> Expression<'chunk>,
 {
     let lhs = higher_precedent(lexer, alloc)?;
 
     let mut exprs = vec![lhs];
     while lexer.next_if_eq(match_next).is_some() {
-        let rhs = higher_precedent(lexer, alloc).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedExpression)
-        })?;
+        let rhs = higher_precedent(lexer, alloc)
+            .recover_with(|| equal_precedent(lexer, alloc))
+            .ok_or_else(|| {
+                ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedExpression)
+            })?;
 
         exprs.push(rhs);
     }

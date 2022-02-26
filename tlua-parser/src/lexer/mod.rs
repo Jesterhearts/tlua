@@ -80,25 +80,25 @@ pub(crate) enum Token {
     /// [-] 0x<hex digits>.<hex digits?><power>
     /// [-] 0x<hex digits><power>
     #[regex(
-        br#"-?0[xX][0-9A-Fa-f]+(:?\.[0-9A-Fa-f]*)?[pP][-+]?[0-9A-Fa-f]+"#,
+        br#"0[xX][0-9A-Fa-f]+(:?\.[0-9A-Fa-f]*)?[pP][-+]?[0-9A-Fa-f]+"#,
         parse_hex_float
     )]
     HexFloat(LexedNumber),
 
     /// Exactly:
     /// [-] 0x<hex digits>.<hex digits?>
-    #[regex(br#"-?0[xX][0-9A-Fa-f]+(:?\.[0-9A-Fa-f]*)"#, parse_hex_float_no_power)]
+    #[regex(br#"0[xX][0-9A-Fa-f]+\.[0-9A-Fa-f]*"#, parse_hex_float_no_power)]
     HexFloatNoPower(LexedNumber),
 
     /// Exactly
     /// [-] 0x<hex digits>
-    #[regex(br#"-?0[xX][0-9A-Fa-f]+"#, parse_hex_int)]
+    #[regex(br#"0[xX][0-9A-Fa-f]+"#, parse_hex_int)]
     HexInt(LexedNumber),
 
-    #[regex(br#"-?\d+(:?\.\d*(:?[eE][-+]?\d+)?|[eE][-+]?\d+)"#, parse_float)]
+    #[regex(br#"\d+(:?\.\d*(:?[eE][-+]?\d+)?|[eE][-+]?\d+)"#, parse_float)]
     Float(LexedNumber),
 
-    #[regex(br#"-?\d+"#, parse_int)]
+    #[regex(br#"\d+"#, parse_int)]
     Int(LexedNumber),
 
     #[regex(br#"true|false"#, |lex| match lex.slice() {

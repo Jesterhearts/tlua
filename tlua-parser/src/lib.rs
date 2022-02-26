@@ -244,7 +244,7 @@ impl<'src> SpannedTokenStream<'src, '_> {
     fn reset(&mut self, token: SpannedToken<'src>) {
         self.peeked = Some(token);
         self.lexer = Lexer::new(self.src);
-        self.lexer.bump(self.src.offset(token.src));
+        self.lexer.bump(token.span.end + 1);
     }
 
     fn set_source_loc(&mut self, src: &'src [u8]) {
@@ -490,6 +490,7 @@ where
             current = current.alloc_insert_advance(alloc, next);
         } else {
             lexer.reset(sep);
+            break;
         }
     }
 

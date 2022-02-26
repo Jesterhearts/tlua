@@ -6,6 +6,7 @@ use crate::{
     parse_separated_list1,
     ASTAllocator,
     ParseError,
+    ParseErrorExt,
     PeekableLexer,
     SyntaxError,
 };
@@ -40,26 +41,43 @@ impl<'chunk> FnParams<'chunk> {
             ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::LParen))
         })?;
 
-        let named_params =
-            parse_separated_list1(lexer, alloc, Ident::parse, |token| *token == Token::Comma)?;
+        parse_separated_list1(lexer, alloc, Ident::parse, |token| *token == Token::Comma)
+            .and_then(|named_params| {
+                let varargs = if lexer.next_if_eq(Token::Comma).is_some() {
+                    lexer.next_if_eq(Token::Ellipses).ok_or_else(|| {
+                        ParseError::unrecoverable_from_here(
+                            lexer,
+                            SyntaxError::ExpectedIdentOrVaArgs,
+                        )
+                    })?;
+                    true
+                } else {
+                    false
+                };
 
-        let varargs = if lexer.next_if_eq(Token::Comma).is_some() {
-            lexer.next_if_eq(Token::Ellipses).ok_or_else(|| {
-                ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedIdentOrVaArgs)
-            })?;
-            true
-        } else {
-            false
-        };
-
-        lexer.next_if_eq(Token::RParen).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::RParen))
-        })?;
-
-        Ok(Self {
-            named_params,
-            varargs,
-        })
+                Ok(Self {
+                    named_params,
+                    varargs,
+                })
+            })
+            .recover_with(|| {
+                let varargs = lexer.next_if_eq(Token::Ellipses).is_some();
+                Ok(Self {
+                    named_params: Default::default(),
+                    varargs,
+                })
+            })
+            .and_then(|params| {
+                lexer
+                    .next_if_eq(Token::RParen)
+                    .ok_or_else(|| {
+                        ParseError::unrecoverable_from_here(
+                            lexer,
+                            SyntaxError::ExpectedToken(Token::RParen),
+                        )
+                    })
+                    .map(|_| params)
+            })
     }
 }
 

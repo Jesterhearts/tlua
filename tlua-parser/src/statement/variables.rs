@@ -118,7 +118,7 @@ mod tests {
     };
 
     #[test]
-    pub fn parses_local() -> anyhow::Result<()> {
+    fn parses_local() -> anyhow::Result<()> {
         let local = "local foo";
 
         let alloc = ASTAllocator::default();
@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    pub fn parses_local_namelist() -> anyhow::Result<()> {
+    fn parses_local_namelist() -> anyhow::Result<()> {
         let local = "local foo,bar";
 
         let alloc = ASTAllocator::default();
@@ -168,7 +168,7 @@ mod tests {
     }
 
     #[test]
-    pub fn parses_local_with_attrib() -> anyhow::Result<()> {
+    fn parses_local_with_attrib() -> anyhow::Result<()> {
         let local = "local foo<const>, bar<close>";
 
         let alloc = ASTAllocator::default();
@@ -196,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    pub fn parses_local_init() -> anyhow::Result<()> {
+    fn parses_local_init() -> anyhow::Result<()> {
         let local = "local foo,bar = 10";
 
         let alloc = ASTAllocator::default();
@@ -212,7 +212,7 @@ mod tests {
                         attribute: None
                     }),
                     ListNode::new(LocalVar {
-                        name: Ident(0),
+                        name: Ident(1),
                         attribute: None
                     })
                 ]),
