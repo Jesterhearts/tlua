@@ -1,7 +1,11 @@
-use std::ops::{
-    Index,
-    IndexMut,
-    Range,
+use std::{
+    cell::RefCell,
+    ops::{
+        Index,
+        IndexMut,
+        Range,
+    },
+    rc::Rc,
 };
 
 use derive_more::{
@@ -294,7 +298,19 @@ impl Context<'_> {
 
                 // Register operations
                 Op::LoadConstant(LoadConstant { dst, src }) => {
-                    self.imm[dst] = src.into();
+                    self.imm[dst] = match src {
+                        Constant::Nil => Value::Nil,
+                        Constant::Bool(b) => Value::Bool(b),
+                        Constant::Float(f) => Value::Number(Number::Float(f)),
+                        Constant::Integer(i) => Value::Number(Number::Integer(i)),
+                        Constant::String(s) => Value::String(Rc::new(RefCell::new(
+                            self.chunk
+                                .strings
+                                .get_string(s)
+                                .expect("Valid string id")
+                                .clone(),
+                        ))),
+                    };
                 }
                 Op::LoadVa(LoadVa {
                     dst_start,

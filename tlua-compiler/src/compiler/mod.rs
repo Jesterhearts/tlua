@@ -7,6 +7,7 @@ use derive_more::From;
 use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
+    Constant,
     ImmediateRegister,
 };
 use tlua_parser::{
@@ -16,7 +17,6 @@ use tlua_parser::{
 
 use crate::{
     block::emit_block,
-    constant::Constant,
     BuiltinType,
     Chunk,
     CompileError,
@@ -180,7 +180,7 @@ impl InitRegister for ImmediateRegister {
 
     fn init_from_const(self, scope: &mut Scope, value: Constant) -> Self {
         let reg = self.no_init_needed();
-        scope.emit(opcodes::LoadConstant::from((reg, value.into())));
+        scope.emit(opcodes::LoadConstant::from((reg, value)));
         reg
     }
 

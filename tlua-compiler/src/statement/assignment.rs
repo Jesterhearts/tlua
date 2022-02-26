@@ -2,13 +2,13 @@ use either::Either;
 use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
+    Constant,
     OpError,
 };
 use tlua_parser::statement::assignment::Assignment;
 
 use crate::{
     compiler::InitRegister,
-    constant::Constant,
     prefix_expression::{
         self,
         TableIndex,

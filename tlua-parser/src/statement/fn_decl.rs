@@ -1,31 +1,15 @@
-use nom::{
-    branch::alt,
-    combinator::{
-        cut,
-        map,
-    },
-    sequence::{
-        pair,
-        preceded,
-        terminated,
-        tuple,
-    },
-};
-
 use crate::{
     expressions::function_defs::{
         FnBody,
         FnName,
     },
-    identifiers::{
-        keyword,
-        Ident,
-    },
-    lua_whitespace0,
-    lua_whitespace1,
+    identifiers::Ident,
+    lexer::Token,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -41,37 +25,29 @@ pub enum FnDecl<'chunk> {
 }
 
 impl<'chunk> FnDecl<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnDecl<'chunk>> {
-        |input| {
-            alt((
-                preceded(
-                    tuple((
-                        keyword("local"),
-                        lua_whitespace1,
-                        keyword("function"),
-                        lua_whitespace1,
-                    )),
-                    cut(map(
-                        pair(
-                            terminated(Ident::parser(alloc), lua_whitespace0),
-                            FnBody::parser(alloc),
-                        ),
-                        |(name, body)| Self::Local { name, body },
-                    )),
-                ),
-                preceded(
-                    pair(keyword("function"), lua_whitespace1),
-                    cut(map(
-                        pair(
-                            terminated(FnName::parser(alloc), lua_whitespace0),
-                            FnBody::parser(alloc),
-                        ),
-                        |(name, body)| Self::Function { name, body },
-                    )),
-                ),
-            ))(input)
+    ) -> Result<Self, ParseError> {
+        let is_local = lexer.next_if_eq(Token::KWlocal);
+
+        lexer.next_if_eq(Token::KWfunction).ok_or_else(|| {
+            if let Some(token) = is_local {
+                lexer.reset(token)
+            }
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWfunction))
+        })?;
+
+        if is_local.is_some() {
+            Ok(Self::Local {
+                name: Ident::parse(lexer, alloc).mark_unrecoverable()?,
+                body: FnBody::parse(lexer, alloc).mark_unrecoverable()?,
+            })
+        } else {
+            Ok(Self::Function {
+                name: FnName::parse(lexer, alloc).mark_unrecoverable()?,
+                body: FnBody::parse(lexer, alloc).mark_unrecoverable()?,
+            })
         }
     }
 }
@@ -85,26 +61,28 @@ mod tests {
             FnParams,
         },
         final_parser,
+        identifiers::Ident,
         list::{
             List,
             ListNode,
         },
         statement::fn_decl::FnDecl,
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
     pub fn parses_local_fn_def() -> anyhow::Result<()> {
         let src = "local function foo() end";
         let alloc = ASTAllocator::default();
+        let mut strings = StringTable::default();
 
-        let result = final_parser!(Span::new(src.as_bytes()) => FnDecl::parser(&alloc))?;
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnDecl::parse)?;
 
         assert_eq!(
             result,
             FnDecl::Local {
-                name: "foo".into(),
+                name: Ident(0),
                 body: FnBody {
                     params: FnParams {
                         named_params: Default::default(),
@@ -122,14 +100,15 @@ mod tests {
     pub fn parses_fn_def() -> anyhow::Result<()> {
         let src = "function foo() end";
         let alloc = ASTAllocator::default();
+        let mut strings = StringTable::default();
 
-        let result = final_parser!(Span::new(src.as_bytes())=> FnDecl::parser(&alloc))?;
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnDecl::parse)?;
 
         assert_eq!(
             result,
             FnDecl::Function {
                 name: FnName {
-                    path: List::new(&mut ListNode::new("foo".into())),
+                    path: List::new(&mut ListNode::new(Ident(0))),
                     method: None
                 },
                 body: FnBody {
@@ -149,18 +128,18 @@ mod tests {
     pub fn parses_method_fn_def() -> anyhow::Result<()> {
         let src = "function foo.bar:baz() end";
         let alloc = ASTAllocator::default();
+        let mut strings = StringTable::default();
 
-        let result = final_parser!(Span::new(src.as_bytes())=> FnDecl::parser(&alloc))?;
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnDecl::parse)?;
 
         assert_eq!(
             result,
             FnDecl::Function {
                 name: FnName {
-                    path: List::from_slice(&mut [
-                        ListNode::new("foo".into()),
-                        ListNode::new("bar".into()),
-                    ]),
-                    method: Some("baz".into())
+                    path: List::from_slice(
+                        &mut [ListNode::new(Ident(0)), ListNode::new(Ident(1)),]
+                    ),
+                    method: Some(Ident(2))
                 },
                 body: FnBody {
                     params: FnParams {

@@ -1,56 +1,36 @@
-use nom::{
-    branch::alt,
-    character::complete::char as token,
-    combinator::{
-        cut,
-        map,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-    },
-};
-use nom_supreme::tag::complete::tag;
-
 use crate::{
-    build_separated_list0,
-    build_separated_list1,
-    identifiers::keyword,
+    expressions::{
+        operator::Or,
+        strings::ConstantString,
+    },
+    lexer::{
+        LexedNumber,
+        Token,
+    },
     list::List,
-    lua_whitespace0,
+    parse_separated_list1,
     prefix_expression::{
         FnCallPrefixExpression,
         PrefixExpression,
         VarPrefixExpression,
     },
-    string::{
-        parse_string,
-        ConstantString,
-    },
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
-pub mod constants;
 pub mod function_defs;
 pub mod number;
 pub mod operator;
+pub mod strings;
 pub mod tables;
 
 use self::{
-    constants::{
-        parse_bool,
-        parse_nil,
-    },
     function_defs::FnBody,
-    number::{
-        parse_number,
-        Number,
-    },
+    number::Number,
     operator::{
-        parse_or_expr,
         BinaryOperator,
         UnaryOperator,
     },
@@ -80,70 +60,96 @@ pub enum Expression<'chunk> {
 }
 
 impl<'chunk> Expression<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Expression<'chunk>> {
-        // This is a hidden alt statement essentially.
+    ) -> Result<Self, ParseError> {
         // We start at the bottom of the precedence tree, and internally it'll
         // recursively move up the tree until it reaches the top.
         // After attempting to match an operator at the top of the tree, it'll move down
         // a layer, attempt to match the next operator, and if successful, move back up
         // the tree.
-        |input| parse_or_expr(input, alloc)
+        Or::parse(lexer, alloc)
     }
-}
 
-pub fn build_expression_list0<'chunk>(
-    alloc: &'chunk ASTAllocator,
-) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, Expression<'chunk>>> {
-    |input| {
-        build_separated_list0(
-            alloc,
-            Expression::parser(alloc),
-            delimited(lua_whitespace0, token(','), lua_whitespace0),
-        )(input)
+    pub(crate) fn parse_list1(
+        lexer: &mut PeekableLexer,
+        alloc: &'chunk ASTAllocator,
+    ) -> Result<List<'chunk, Self>, ParseError> {
+        parse_separated_list1(lexer, alloc, Self::parse, |token| *token == Token::Comma)
     }
-}
 
-pub fn build_expression_list1<'chunk>(
-    alloc: &'chunk ASTAllocator,
-) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, Expression<'chunk>>> {
-    |input| {
-        build_separated_list1(
-            alloc,
-            Expression::parser(alloc),
-            delimited(lua_whitespace0, token(','), lua_whitespace0),
-        )(input)
+    pub(crate) fn parse_list0(
+        lexer: &mut PeekableLexer,
+        alloc: &'chunk ASTAllocator,
+    ) -> Result<List<'chunk, Self>, ParseError> {
+        Self::parse_list1(lexer, alloc)
+            .recover()
+            .map(Option::unwrap_or_default)
     }
-}
 
-fn parse_non_op_expr<'src, 'chunk>(
-    input: Span<'src>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, Expression<'chunk>> {
-    alt((
-        map(parse_nil, Expression::Nil),
-        map(parse_bool, Expression::Bool),
-        map(parse_number, Expression::Number),
-        map(parse_string, Expression::String),
-        map(tag("..."), |_| Expression::VarArgs(VarArgs)),
-        map(
-            preceded(
-                pair(keyword("function"), lua_whitespace0),
-                cut(FnBody::parser(alloc)),
-            ),
-            |body| Expression::FnDef(alloc.alloc(body)),
-        ),
-        map(PrefixExpression::parser(alloc), |expr| match expr {
-            PrefixExpression::Variable(var) => Expression::Variable(alloc.alloc(var)),
-            PrefixExpression::FnCall(call) => Expression::FunctionCall(alloc.alloc(call)),
-            PrefixExpression::Parenthesized(expr) => Expression::Parenthesized(expr),
-        }),
-        map(
-            TableConstructor::parser(alloc),
-            Expression::TableConstructor,
-        ),
-    ))(input)
+    fn parse_leaf(
+        lexer: &mut PeekableLexer,
+        alloc: &'chunk ASTAllocator,
+    ) -> Result<Self, ParseError> {
+        ConstantString::parse(lexer, alloc)
+            .map(Self::String)
+            .recover_with(|| TableConstructor::parse(lexer, alloc).map(Self::TableConstructor))
+            .recover_with(|| {
+                PrefixExpression::parse(lexer, alloc).map(|prefix_expr| match prefix_expr {
+                    PrefixExpression::Variable(var) => Self::Variable(alloc.alloc(var)),
+                    PrefixExpression::FnCall(call) => Self::FunctionCall(alloc.alloc(call)),
+                    PrefixExpression::Parenthesized(expr) => Self::Parenthesized(expr),
+                })
+            })
+            .recover_with(|| {
+                let token = lexer
+                    .next_if(|token| {
+                        matches!(
+                            token.as_ref(),
+                            Token::Nil
+                                | Token::Boolean(_)
+                                | Token::HexInt(_)
+                                | Token::HexFloat(_)
+                                | Token::Int(_)
+                                | Token::Float(_)
+                                | Token::Ellipses
+                                | Token::KWfunction
+                        )
+                    })
+                    .ok_or_else(|| {
+                        ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedExpression)
+                    })?;
+
+                Ok(match token.into() {
+                    Token::Nil => Self::Nil(Nil),
+                    Token::Boolean(b) => Self::Bool(b),
+                    Token::Int(i) | Token::Float(i) | Token::HexFloat(i) | Token::HexInt(i) => {
+                        match i {
+                            LexedNumber::Float(f) => Self::Number(Number::Float(f)),
+                            LexedNumber::Int(i) => Self::Number(Number::Integer(i)),
+                            LexedNumber::MalformedNumber => {
+                                return Err(ParseError::unrecoverable_from_here(
+                                    lexer,
+                                    SyntaxError::MalformedNumber,
+                                ));
+                            }
+                        }
+                    }
+                    Token::Ellipses => Self::VarArgs(VarArgs),
+                    Token::KWfunction => {
+                        let body = FnBody::parse(lexer, alloc).ok_or_else(|| {
+                            ParseError::unrecoverable_from_here(
+                                lexer,
+                                SyntaxError::ExpectedFunctionDef,
+                            )
+                        })?;
+                        Self::FnDef(alloc.alloc(body))
+                    }
+                    _ => unreachable!(),
+                })
+            })
+    }
 }
 
 #[cfg(test)]
@@ -158,7 +164,7 @@ mod tests {
         },
         final_parser,
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -166,7 +172,8 @@ mod tests {
         let src = "...";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Expression::parse)?;
         assert_eq!(result, Expression::VarArgs(VarArgs));
 
         Ok(())
@@ -177,7 +184,8 @@ mod tests {
         let src = "{}";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => Expression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Expression::parse)?;
         assert_eq!(
             result,
             Expression::TableConstructor(TableConstructor {

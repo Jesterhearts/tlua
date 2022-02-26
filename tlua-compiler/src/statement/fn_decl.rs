@@ -1,6 +1,7 @@
 use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
+    Constant,
     OpError,
 };
 use tlua_parser::statement::fn_decl::FnDecl;
@@ -10,7 +11,6 @@ use crate::{
         HasVaArgs,
         InitRegister,
     },
-    constant::Constant,
     expressions::function_defs::emit_fn,
     CompileError,
     CompileStatement,

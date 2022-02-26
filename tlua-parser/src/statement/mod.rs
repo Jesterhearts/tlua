@@ -1,32 +1,7 @@
-use nom::{
-    branch::alt,
-    character::complete::char as token,
-    combinator::{
-        cut,
-        map,
-        peek,
-        value,
-        verify,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-        terminated,
-    },
-};
-use nom_supreme::tag::complete::tag;
-
 use crate::{
     block::Block,
-    expecting,
-    expressions::build_expression_list1,
-    identifiers::{
-        keyword,
-        Ident,
-    },
-    lua_whitespace0,
-    lua_whitespace1,
+    identifiers::Ident,
+    lexer::Token,
     prefix_expression::{
         FnCallPrefixExpression,
         PrefixExpression,
@@ -38,15 +13,14 @@ use crate::{
         foreach_loop::ForEachLoop,
         if_statement::If,
         repeat_loop::RepeatLoop,
-        variables::{
-            varlist1,
-            LocalVarList,
-        },
+        variables::LocalVarList,
         while_loop::WhileLoop,
     },
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 pub mod assignment;
@@ -61,14 +35,73 @@ pub mod while_loop;
 #[derive(Debug, PartialEq)]
 pub struct Empty;
 
+impl Empty {
+    pub(crate) fn parse(lexer: &mut PeekableLexer, _: &ASTAllocator) -> Result<Self, ParseError> {
+        lexer
+            .next_if_eq(Token::Semicolon)
+            .map(|_| Self)
+            .ok_or_else(|| {
+                ParseError::recoverable_from_here(
+                    lexer,
+                    SyntaxError::ExpectedToken(Token::Semicolon),
+                )
+            })
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Break;
+
+impl Break {
+    pub(crate) fn parse(lexer: &mut PeekableLexer, _: &ASTAllocator) -> Result<Self, ParseError> {
+        lexer
+            .next_if_eq(Token::KWbreak)
+            .map(|_| Self)
+            .ok_or_else(|| {
+                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWbreak))
+            })
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Label(pub Ident);
 
+impl Label {
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
+        alloc: &ASTAllocator,
+    ) -> Result<Self, ParseError> {
+        lexer.next_if_eq(Token::DoubleColon).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::DoubleColon))
+        })?;
+
+        let label = Ident::parse(lexer, alloc).mark_unrecoverable().map(Self)?;
+        lexer.next_if_eq(Token::DoubleColon).ok_or_else(|| {
+            ParseError::unrecoverable_from_here(
+                lexer,
+                SyntaxError::ExpectedToken(Token::DoubleColon),
+            )
+        })?;
+
+        Ok(label)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct Goto(pub Ident);
+
+impl Goto {
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
+        alloc: &ASTAllocator,
+    ) -> Result<Self, ParseError> {
+        lexer.next_if_eq(Token::KWgoto).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWgoto))
+        })?;
+
+        Ident::parse(lexer, alloc).mark_unrecoverable().map(Self)
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub enum Statement<'chunk> {
@@ -91,100 +124,63 @@ pub enum Statement<'chunk> {
 }
 
 impl<'chunk> Statement<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Statement<'chunk>> {
-        |input| {
-            alt((
-                map(token(';'), |_| Self::Empty(Empty)),
-                map(
-                    preceded(
-                        pair(expecting(tag("::"), "::"), lua_whitespace0),
-                        cut(terminated(
-                            Ident::parser(alloc),
-                            pair(lua_whitespace0, tag("::")),
-                        )),
-                    ),
-                    |ident| Self::Label(Label(ident)),
-                ),
-                map(keyword("break"), |_| Self::Break(Break)),
-                map(
-                    preceded(
-                        pair(keyword("goto"), lua_whitespace1),
-                        cut(Ident::parser(alloc)),
-                    ),
-                    |ident| Self::Goto(Goto(ident)),
-                ),
-                delimited(
-                    pair(keyword("do"), lua_whitespace0),
-                    map(Block::parser(alloc), |block| Self::Do(alloc.alloc(block))),
-                    pair(lua_whitespace0, keyword("end")),
-                ),
-                map(WhileLoop::parser(alloc), |stat| {
-                    Self::While(alloc.alloc(stat))
-                }),
-                map(RepeatLoop::parser(alloc), |stat| {
-                    Self::Repeat(alloc.alloc(stat))
-                }),
-                map(If::parser(alloc), |stat| Self::If(alloc.alloc(stat))),
-                preceded(
-                    peek(pair(keyword("for"), lua_whitespace1)),
-                    cut(alt((
-                        map(ForLoop::parser(alloc), |stat| Self::For(alloc.alloc(stat))),
-                        map(ForEachLoop::parser(alloc), |stat| {
-                            Self::ForEach(alloc.alloc(stat))
-                        }),
-                    ))),
-                ),
-                map(FnDecl::parser(alloc), |stat| {
-                    Self::FnDecl(alloc.alloc(stat))
-                }),
-                map(LocalVarList::parser(alloc), |stat| {
-                    Self::LocalVarList(alloc.alloc(stat))
-                }),
-                |input| parse_assignment_or_call(input, alloc),
-            ))(input)
-        }
+    ) -> Result<Self, ParseError> {
+        { Empty::parse(lexer, alloc).map(Self::Empty) }
+            .recover_with(|| Break::parse(lexer, alloc).map(Self::Break))
+            .recover_with(|| Label::parse(lexer, alloc).map(Self::Label))
+            .recover_with(|| Goto::parse(lexer, alloc).map(Self::Goto))
+            .recover_with(|| {
+                WhileLoop::parse(lexer, alloc).map(|stat| Self::While(alloc.alloc(stat)))
+            })
+            .recover_with(|| {
+                RepeatLoop::parse(lexer, alloc).map(|stat| Self::Repeat(alloc.alloc(stat)))
+            })
+            .recover_with(|| If::parse(lexer, alloc).map(|stat| Self::If(alloc.alloc(stat))))
+            .recover_with(|| {
+                FnDecl::parse(lexer, alloc).map(|stat| Self::FnDecl(alloc.alloc(stat)))
+            })
+            .recover_with(|| {
+                LocalVarList::parse(lexer, alloc).map(|stat| Self::LocalVarList(alloc.alloc(stat)))
+            })
+            .recover_with(|| ForLoop::parse(lexer, alloc).map(|stat| Self::For(alloc.alloc(stat))))
+            .recover_with(|| {
+                ForEachLoop::parse(lexer, alloc).map(|stat| Self::ForEach(alloc.alloc(stat)))
+            })
+            .recover_with(|| {
+                Block::parse_do(lexer, alloc).map(|block| Self::Do(alloc.alloc(block)))
+            })
+            .recover_with(|| parse_assignment_or_call(lexer, alloc))
+            .ok_or_else(|| ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedStatement))
     }
 }
 
-fn parse_assignment_or_call<'src, 'chunk>(
-    mut input: Span<'src>,
+fn parse_assignment_or_call<'chunk>(
+    lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, Statement<'chunk>> {
-    let (remain, expr) = expecting(
-        verify(PrefixExpression::parser(alloc), |expr| {
-            !matches!(expr, PrefixExpression::Parenthesized(_))
-        }),
-        "variable or function call",
-    )(input)?;
-    input = remain;
-
-    match expr {
-        PrefixExpression::FnCall(call) => Ok((remain, Statement::Call(alloc.alloc(call)))),
-        PrefixExpression::Variable(var) => {
-            let (input, varlist) = varlist1(input, var, alloc)?;
-
-            let (input, expressions) = cut(preceded(
-                value((), delimited(lua_whitespace0, token('='), lua_whitespace0)),
-                build_expression_list1(alloc),
-            ))(input)?;
-
-            Ok((
-                input,
-                Statement::Assignment(alloc.alloc(Assignment {
-                    varlist,
-                    expressions,
-                })),
-            ))
+) -> Result<Statement<'chunk>, ParseError> {
+    let prefix_expr = PrefixExpression::parse(lexer, alloc)?;
+    match prefix_expr {
+        PrefixExpression::FnCall(call) => Ok(Statement::Call(alloc.alloc(call))),
+        PrefixExpression::Variable(head) => {
+            let assign = Assignment::parse(head, lexer, alloc)?;
+            Ok(Statement::Assignment(alloc.alloc(assign)))
         }
-        PrefixExpression::Parenthesized(_) => unreachable!("Verified expr is not parenthesized"),
+        PrefixExpression::Parenthesized(_) => Err(ParseError::unrecoverable_from_here(
+            lexer,
+            SyntaxError::ExpectedVarOrCall,
+        )),
     }
 }
 
 #[cfg(test)]
 mod test {
-    use pretty_assertions::assert_eq;
+    use pretty_assertions::{
+        assert_eq,
+        Comparison,
+    };
 
     use super::Statement;
     use crate::{
@@ -194,6 +190,7 @@ mod test {
             Expression,
         },
         final_parser,
+        identifiers::Ident,
         list::{
             List,
             ListNode,
@@ -207,7 +204,7 @@ mod test {
             Label,
         },
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -215,7 +212,8 @@ mod test {
         let src = ";";
 
         let alloc = ASTAllocator::default();
-        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let stat = final_parser!((src.as_bytes(), &alloc, &mut strings) => Statement::parse)?;
 
         assert_eq!(stat, Statement::Empty(Empty));
 
@@ -227,7 +225,8 @@ mod test {
         let src = "break";
 
         let alloc = ASTAllocator::default();
-        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let stat = final_parser!((src.as_bytes(), &alloc, &mut strings) => Statement::parse)?;
 
         assert_eq!(stat, Statement::Break(Break));
 
@@ -239,9 +238,10 @@ mod test {
         let src = "::foo::";
 
         let alloc = ASTAllocator::default();
-        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let stat = final_parser!((src.as_bytes(), &alloc, &mut strings) => Statement::parse)?;
 
-        assert_eq!(stat, Statement::Label(Label("foo".into())));
+        assert_eq!(stat, Statement::Label(Label(Ident(0))));
 
         Ok(())
     }
@@ -251,9 +251,10 @@ mod test {
         let src = "goto foo";
 
         let alloc = ASTAllocator::default();
-        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let stat = final_parser!((src.as_bytes(), &alloc, &mut strings) => Statement::parse)?;
 
-        assert_eq!(stat, Statement::Goto(Goto("foo".into())));
+        assert_eq!(stat, Statement::Goto(Goto(Ident(0))));
 
         Ok(())
     }
@@ -263,9 +264,10 @@ mod test {
         let src = "goto gotofoo";
 
         let alloc = ASTAllocator::default();
-        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let stat = final_parser!((src.as_bytes(), &alloc, &mut strings) => Statement::parse)?;
 
-        assert_eq!(stat, Statement::Goto(Goto("gotofoo".into())));
+        assert_eq!(stat, Statement::Goto(Goto(Ident(0))));
 
         Ok(())
     }
@@ -275,7 +277,8 @@ mod test {
         let src = "do end";
 
         let alloc = ASTAllocator::default();
-        let stat = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let stat = final_parser!((src.as_bytes(), &alloc, &mut strings) => Statement::parse)?;
 
         assert_eq!(
             stat,
@@ -293,12 +296,13 @@ mod test {
         let src = "a = 10";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Statement::parse)?;
 
         assert_eq!(
             result,
             Statement::Assignment(&Assignment {
-                varlist: List::new(&mut ListNode::new(VarPrefixExpression::Name("a".into()))),
+                varlist: List::new(&mut ListNode::new(VarPrefixExpression::Name(Ident(0)))),
                 expressions: List::new(&mut ListNode::new(Expression::Number(Number::Integer(10)))),
             })
         );
@@ -311,16 +315,17 @@ mod test {
         let src = "a ,b, c , d = 10, 11, 12 , 13";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => Statement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Statement::parse)?;
 
         assert_eq!(
             result,
             Statement::Assignment(&Assignment {
                 varlist: List::from_slice(&mut [
-                    ListNode::new(VarPrefixExpression::Name("a".into())),
-                    ListNode::new(VarPrefixExpression::Name("b".into())),
-                    ListNode::new(VarPrefixExpression::Name("c".into())),
-                    ListNode::new(VarPrefixExpression::Name("d".into())),
+                    ListNode::new(VarPrefixExpression::Name(Ident(0))),
+                    ListNode::new(VarPrefixExpression::Name(Ident(1))),
+                    ListNode::new(VarPrefixExpression::Name(Ident(2))),
+                    ListNode::new(VarPrefixExpression::Name(Ident(3))),
                 ]),
                 expressions: List::from_slice(&mut [
                     ListNode::new(Expression::Number(Number::Integer(10))),
@@ -333,13 +338,6 @@ mod test {
 
         Ok(())
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use pretty_assertions::Comparison;
-
-    use super::Statement;
 
     #[test]
     fn sizeof_statement() {

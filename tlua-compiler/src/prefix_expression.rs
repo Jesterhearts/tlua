@@ -2,17 +2,20 @@ use either::Either;
 use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
+    Constant,
     ImmediateRegister,
     OpError,
 };
 use tlua_parser::{
-    expressions::Expression,
+    expressions::{
+        strings::ConstantString,
+        Expression,
+    },
     identifiers::Ident,
     prefix_expression::{
         function_calls::FnArgs,
         *,
     },
-    string::ConstantString,
 };
 
 use crate::{
@@ -20,7 +23,6 @@ use crate::{
         unasm::MappedLocalRegister,
         InitRegister,
     },
-    constant::Constant,
     expressions::tables,
     CompileError,
     CompileExpression,

@@ -24,6 +24,9 @@ path = "../tlua-bytecode"
 [dependencies.tlua-parser]
 path = "../tlua-parser"
 
+[dependencies.tlua-strings]
+path = "../tlua-strings"
+
 [dev-dependencies]
 anyhow = '1.0.53'
 pretty_assertions = '1.1.0'

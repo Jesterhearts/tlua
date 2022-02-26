@@ -31,7 +31,7 @@ pub(crate) fn emit_fn(
         let mut scope = scope.enter();
 
         if is_method {
-            scope.new_local("self".into())?.no_init_needed();
+            scope.new_local_self()?.no_init_needed();
         }
 
         for param in params {

@@ -1,39 +1,13 @@
-use nom::{
-    character::complete::char as token,
-    combinator::{
-        cut,
-        map,
-        map_res,
-        opt,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-        terminated,
-    },
-};
-
 use crate::{
-    build_separated_list1,
-    expressions::{
-        build_expression_list1,
-        Expression,
-    },
-    identifiers::{
-        keyword,
-        Ident,
-    },
+    expressions::Expression,
+    identifiers::Ident,
+    lexer::Token,
     list::List,
-    lua_whitespace0,
-    lua_whitespace1,
-    prefix_expression::{
-        PrefixExpression,
-        VarPrefixExpression,
-    },
+    parse_separated_list1,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
     SyntaxError,
 };
 
@@ -56,98 +30,66 @@ pub struct LocalVarList<'chunk> {
 }
 
 impl LocalVar {
-    pub(crate) fn parser(
-        alloc: &'_ ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, LocalVar> + '_ {
-        |input| {
-            map_res(
-                pair(
-                    terminated(Ident::parser(alloc), lua_whitespace0),
-                    opt(delimited(
-                        pair(token('<'), lua_whitespace0),
-                        Ident::parser(alloc),
-                        pair(lua_whitespace0, token('>')),
-                    )),
-                ),
-                |(name, attribute)| {
-                    let attribute = match attribute {
-                        None => None,
-                        Some(attribute) => Some(match &*attribute {
-                            b"const" => Attribute::Const,
-                            b"close" => Attribute::Close,
-                            _ => return Err(SyntaxError::InvalidAttribute),
-                        }),
-                    };
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
+        alloc: &ASTAllocator,
+    ) -> Result<Self, ParseError> {
+        let name = Ident::parse(lexer, alloc)?;
+        let attribute = if lexer.next_if_eq(Token::LeftAngle).is_some() {
+            let ident = lexer.next_if_eq(Token::Ident).ok_or_else(|| {
+                ParseError::unrecoverable_from_here(lexer, SyntaxError::InvalidAttribute)
+            })?;
+            let attrib = match ident.src {
+                b"const" => Attribute::Const,
+                b"close" => Attribute::Close,
+                _ => {
+                    return Err(ParseError::unrecoverable_from_here(
+                        lexer,
+                        SyntaxError::InvalidAttribute,
+                    ));
+                }
+            };
+            lexer.next_if_eq(Token::RightAngle).ok_or_else(|| {
+                ParseError::unrecoverable_from_here(
+                    lexer,
+                    SyntaxError::ExpectedToken(Token::RightAngle),
+                )
+            })?;
+            Some(attrib)
+        } else {
+            None
+        };
 
-                    Ok(Self { name, attribute })
-                },
-            )(input)
-        }
+        Ok(Self { name, attribute })
     }
 }
 
 impl<'chunk> LocalVarList<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, LocalVarList<'chunk>> {
-        |input| {
-            map(
-                preceded(
-                    pair(keyword("local"), lua_whitespace1),
-                    pair(
-                        build_local_varlist1(alloc),
-                        opt(preceded(
-                            delimited(lua_whitespace0, token('='), lua_whitespace0),
-                            cut(build_expression_list1(alloc)),
-                        )),
-                    ),
-                ),
-                |(vars, initializers)| Self {
-                    vars,
-                    initializers: initializers.unwrap_or_default(),
-                },
-            )(input)
-        }
-    }
-}
+    ) -> Result<Self, ParseError> {
+        let local_token = lexer.next_if_eq(Token::KWlocal).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWlocal))
+        })?;
 
-pub(crate) fn build_local_varlist1<'chunk>(
-    alloc: &'chunk ASTAllocator,
-) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, List<'chunk, LocalVar>> {
-    |input| {
-        build_separated_list1(
-            alloc,
-            LocalVar::parser(alloc),
-            delimited(lua_whitespace0, token(','), lua_whitespace0),
-        )(input)
-    }
-}
-
-pub(crate) fn varlist1<'src, 'chunk>(
-    mut input: Span<'src>,
-    head: VarPrefixExpression<'chunk>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, List<'chunk, VarPrefixExpression<'chunk>>> {
-    let mut list = List::default();
-    let mut current = list.cursor_mut().alloc_insert_advance(alloc, head);
-
-    loop {
-        let (remain, maybe_next) = opt(preceded(
-            delimited(lua_whitespace0, token(','), lua_whitespace0),
-            map_res(PrefixExpression::parser(alloc), |expr| match expr {
-                PrefixExpression::Variable(var) => Ok(var),
-                PrefixExpression::FnCall(_) | PrefixExpression::Parenthesized(_) => {
-                    Err(SyntaxError::ExpectedVariable)
-                }
-            }),
-        ))(input)?;
-        input = remain;
-
-        current = if let Some(next) = maybe_next {
-            current.alloc_insert_advance(alloc, next)
-        } else {
-            return Ok((input, list));
+        let vars = match parse_separated_list1(lexer, alloc, LocalVar::parse, |token| {
+            *token == Token::Comma
+        }) {
+            Ok(vars) => vars,
+            Err(e) => {
+                lexer.reset(local_token);
+                return Err(e);
+            }
         };
+
+        let initializers = if lexer.next_if_eq(Token::Equals).is_some() {
+            Expression::parse_list1(lexer, alloc).mark_unrecoverable()?
+        } else {
+            Default::default()
+        };
+
+        Ok(Self { vars, initializers })
     }
 }
 
@@ -161,6 +103,7 @@ mod tests {
             Expression,
         },
         final_parser,
+        identifiers::Ident,
         list::{
             List,
             ListNode,
@@ -170,8 +113,8 @@ mod tests {
             Attribute,
             LocalVar,
             LocalVarList,
-            Span,
         },
+        StringTable,
     };
 
     #[test]
@@ -179,13 +122,14 @@ mod tests {
         let local = "local foo";
 
         let alloc = ASTAllocator::default();
-        let decl = final_parser!(Span::new(local.as_bytes())=>LocalVarList::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let decl = final_parser!((local.as_bytes(), &alloc, &mut strings) => LocalVarList::parse)?;
 
         assert_eq!(
             decl,
             LocalVarList {
                 vars: List::new(&mut ListNode::new(LocalVar {
-                    name: "foo".into(),
+                    name: Ident(0),
                     attribute: None
                 })),
                 initializers: Default::default(),
@@ -200,18 +144,19 @@ mod tests {
         let local = "local foo,bar";
 
         let alloc = ASTAllocator::default();
-        let decl = final_parser!(Span::new(local.as_bytes())=>LocalVarList::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let decl = final_parser!((local.as_bytes(), &alloc, &mut strings) => LocalVarList::parse)?;
 
         assert_eq!(
             decl,
             LocalVarList {
                 vars: List::from_slice(&mut [
                     ListNode::new(LocalVar {
-                        name: "foo".into(),
+                        name: Ident(0),
                         attribute: None
                     }),
                     ListNode::new(LocalVar {
-                        name: "bar".into(),
+                        name: Ident(1),
                         attribute: None
                     })
                 ]),
@@ -227,18 +172,19 @@ mod tests {
         let local = "local foo<const>, bar<close>";
 
         let alloc = ASTAllocator::default();
-        let decl = final_parser!(Span::new(local.as_bytes())=>LocalVarList::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let decl = final_parser!((local.as_bytes(), &alloc, &mut strings) => LocalVarList::parse)?;
 
         assert_eq!(
             decl,
             LocalVarList {
                 vars: List::from_slice(&mut [
                     ListNode::new(LocalVar {
-                        name: "foo".into(),
+                        name: Ident(0),
                         attribute: Some(Attribute::Const)
                     }),
                     ListNode::new(LocalVar {
-                        name: "bar".into(),
+                        name: Ident(1),
                         attribute: Some(Attribute::Close)
                     }),
                 ]),
@@ -254,18 +200,19 @@ mod tests {
         let local = "local foo,bar = 10";
 
         let alloc = ASTAllocator::default();
-        let decl = final_parser!(Span::new(local.as_bytes())=>LocalVarList::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let decl = final_parser!((local.as_bytes(), &alloc, &mut strings) => LocalVarList::parse)?;
 
         assert_eq!(
             decl,
             LocalVarList {
                 vars: List::from_slice(&mut [
                     ListNode::new(LocalVar {
-                        name: "foo".into(),
+                        name: Ident(0),
                         attribute: None
                     }),
                     ListNode::new(LocalVar {
-                        name: "bar".into(),
+                        name: Ident(0),
                         attribute: None
                     })
                 ]),

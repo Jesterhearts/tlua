@@ -1,5 +1,6 @@
+use tlua_strings::LuaString;
+
 use crate::{
-    LuaString,
     NumLike,
     Number,
     OpError,

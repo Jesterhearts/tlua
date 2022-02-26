@@ -1,25 +1,13 @@
-use nom::{
-    branch::alt,
-    combinator::{
-        eof,
-        map,
-        opt,
-    },
-    sequence::{
-        pair,
-        terminated,
-    },
-};
-
 use crate::{
-    build_list0,
-    build_list1,
+    lexer::Token,
     list::List,
-    lua_whitespace0,
+    parse_list0,
     statement::Statement,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 pub mod retstat;
@@ -32,39 +20,29 @@ pub struct Block<'chunk> {
 }
 
 impl<'chunk> Block<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Block<'chunk>> {
-        |input| {
-            map(
-                pair(
-                    build_list0(alloc, terminated(Statement::parser(alloc), lua_whitespace0)),
-                    opt(RetStatement::parser(alloc)),
-                ),
-                |(statements, ret)| Block { statements, ret },
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        let statements = parse_list0(lexer, alloc, Statement::parse)?;
+        let ret = RetStatement::parse(lexer, alloc).recover()?;
+
+        Ok(Self { statements, ret })
     }
 
-    pub(crate) fn main_parser(
+    pub(crate) fn parse_do(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Block<'chunk>> {
-        |input| {
-            alt((
-                map(eof, |_| Self::default()),
-                map(
-                    pair(
-                        build_list1(alloc, terminated(Statement::parser(alloc), lua_whitespace0)),
-                        opt(RetStatement::parser(alloc)),
-                    ),
-                    |(statements, ret)| Block { statements, ret },
-                ),
-                map(RetStatement::parser(alloc), |ret| Block {
-                    statements: Default::default(),
-                    ret: Some(ret),
-                }),
-            ))(input)
-        }
+    ) -> Result<Self, ParseError> {
+        lexer.next_if_eq(Token::KWdo).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWdo))
+        })?;
+        let body = Self::parse(lexer, alloc).mark_unrecoverable()?;
+        lexer.next_if_eq(Token::KWend).ok_or_else(|| {
+            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWend))
+        })?;
+
+        Ok(body)
     }
 }
 
@@ -85,7 +63,7 @@ mod tests {
             ListNode,
         },
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -93,7 +71,8 @@ mod tests {
         let src = "";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => Block::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Block::parse)?;
 
         assert_eq!(
             result,
@@ -111,7 +90,8 @@ mod tests {
         let src = "return 10";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => Block::parser( &alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Block::parse)?;
 
         assert_eq!(
             result,

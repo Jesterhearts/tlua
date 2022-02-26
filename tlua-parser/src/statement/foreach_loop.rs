@@ -1,33 +1,14 @@
-use nom::{
-    combinator::{
-        cut,
-        map,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-        terminated,
-    },
-};
-
 use crate::{
     block::Block,
-    expressions::{
-        build_expression_list1,
-        Expression,
-    },
-    identifiers::{
-        build_identifier_list1,
-        keyword,
-        Ident,
-    },
+    expressions::Expression,
+    identifiers::Ident,
+    lexer::Token,
     list::List,
-    lua_whitespace0,
-    lua_whitespace1,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -38,37 +19,36 @@ pub struct ForEachLoop<'chunk> {
 }
 
 impl<'chunk> ForEachLoop<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, ForEachLoop<'chunk>> {
-        |input| {
-            preceded(
-                pair(keyword("for"), lua_whitespace1),
-                map(
-                    pair(
-                        terminated(
-                            build_identifier_list1(alloc),
-                            delimited(lua_whitespace0, keyword("in"), lua_whitespace1),
-                        ),
-                        cut(pair(
-                            terminated(
-                                build_expression_list1(alloc),
-                                delimited(lua_whitespace0, keyword("do"), lua_whitespace1),
-                            ),
-                            terminated(
-                                Block::parser(alloc),
-                                preceded(lua_whitespace0, keyword("end")),
-                            ),
-                        )),
-                    ),
-                    |(vars, (expressions, body))| Self {
-                        vars,
-                        expressions,
-                        body,
-                    },
-                ),
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        let for_kw = lexer.next_if_eq(Token::KWfor).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWfor))
+        })?;
+
+        let vars = match Ident::parse_list1(lexer, alloc) {
+            Ok(idents) => idents,
+            Err(e) => {
+                lexer.reset(for_kw);
+                return Err(e);
+            }
+        };
+
+        lexer.next_if_eq(Token::KWin).ok_or_else(|| {
+            lexer.reset(for_kw);
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWin))
+        })?;
+
+        let expressions = Expression::parse_list1(lexer, alloc).mark_unrecoverable()?;
+
+        let body = Block::parse_do(lexer, alloc).mark_unrecoverable()?;
+
+        Ok(Self {
+            vars,
+            expressions,
+            body,
+        })
     }
 }
 
@@ -83,12 +63,13 @@ mod tests {
             Expression,
         },
         final_parser,
+        identifiers::Ident,
         list::{
             List,
             ListNode,
         },
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -96,16 +77,17 @@ mod tests {
         let src = "for a,b,c,d in 1,2,3,4 do end";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => ForEachLoop::parser( &alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => ForEachLoop::parse)?;
 
         assert_eq!(
             result,
             ForEachLoop {
                 vars: List::from_slice(&mut [
-                    ListNode::new("a".into()),
-                    ListNode::new("b".into()),
-                    ListNode::new("c".into()),
-                    ListNode::new("d".into()),
+                    ListNode::new(Ident(0)),
+                    ListNode::new(Ident(1)),
+                    ListNode::new(Ident(2)),
+                    ListNode::new(Ident(3)),
                 ]),
                 expressions: List::from_slice(&mut [
                     ListNode::new(Expression::Number(Number::Integer(1))),

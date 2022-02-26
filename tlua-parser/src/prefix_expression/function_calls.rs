@@ -1,31 +1,16 @@
-use nom::{
-    branch::alt,
-    character::complete::{char as token},
-    combinator::{
-        map,
-        opt,
-    },
-    sequence::{
-        delimited,
-        pair,
-    },
-};
-
 use crate::{
     expressions::{
-        build_expression_list1,
+        strings::ConstantString,
         tables::TableConstructor,
         Expression,
     },
+    lexer::Token,
     list::List,
-    lua_whitespace0,
-    string::{
-        parse_string,
-        ConstantString,
-    },
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -36,23 +21,31 @@ pub enum FnArgs<'chunk> {
 }
 
 impl<'chunk> FnArgs<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnArgs<'chunk>> {
-        |input| {
-            alt((
-                map(
-                    delimited(
-                        pair(token('('), lua_whitespace0),
-                        opt(build_expression_list1(alloc)),
-                        pair(lua_whitespace0, token(')')),
-                    ),
-                    |exprs| Self::Expressions(exprs.unwrap_or_default()),
-                ),
-                map(TableConstructor::parser(alloc), Self::TableConstructor),
-                map(parse_string, Self::String),
-            ))(input)
-        }
+    ) -> Result<Self, ParseError> {
+        ConstantString::parse(lexer, alloc)
+            .map(Self::String)
+            .recover_with(|| TableConstructor::parse(lexer, alloc).map(Self::TableConstructor))
+            .recover_with(|| {
+                lexer.next_if_eq(Token::LParen).ok_or_else(|| {
+                    ParseError::recoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::LParen),
+                    )
+                })?;
+                let exprs = Expression::parse_list0(lexer, alloc)?;
+                lexer.next_if_eq(Token::RParen).ok_or_else(|| {
+                    ParseError::unrecoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::RParen),
+                    )
+                })?;
+
+                Ok(Self::Expressions(exprs))
+            })
+            .ok_or_else(|| ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedFnArgs))
     }
 }
 
@@ -63,6 +56,7 @@ mod tests {
     use super::FnArgs;
     use crate::{
         expressions::{
+            strings::ConstantString,
             tables::TableConstructor,
             Expression,
             Nil,
@@ -73,7 +67,7 @@ mod tests {
             ListNode,
         },
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -81,7 +75,8 @@ mod tests {
         let src = "()";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => FnArgs::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnArgs::parse)?;
 
         assert_eq!(result, FnArgs::Expressions(Default::default()));
 
@@ -93,7 +88,8 @@ mod tests {
         let src = "(nil, nil, nil)";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => FnArgs::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnArgs::parse)?;
 
         assert_eq!(
             result,
@@ -112,7 +108,8 @@ mod tests {
         let src = "{}";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => FnArgs::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnArgs::parse)?;
 
         assert_eq!(
             result,
@@ -129,9 +126,10 @@ mod tests {
         let src = "\"arg\"";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => FnArgs::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnArgs::parse)?;
 
-        assert_eq!(result, FnArgs::String("arg".into()));
+        assert_eq!(result, FnArgs::String(ConstantString(0)));
 
         Ok(())
     }

@@ -1,20 +1,18 @@
 use atoi::atoi;
-use bstr::{
-    BStr,
-    BString,
+use bstr::BString;
+use derive_more::{
+    AsRef,
+    Deref,
+    From,
 };
 use hexf_parse::parse_hexf64;
-use indexmap::IndexSet;
 use logos::{
     Lexer,
     Logos,
 };
 use nom::Offset;
 
-use crate::ErrorSpan;
-
-mod multiline_strings;
-mod strings;
+use crate::SourceSpan;
 
 #[cfg(test)]
 mod tests;
@@ -25,16 +23,6 @@ pub(crate) enum MultilineComment {
     Unclosed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LexedString {
-    Valid { id: usize },
-    Unclosed,
-    DecimalEscapeTooLarge { relative_span: ErrorSpan },
-    Utf8ValueTooLarge { relative_span: ErrorSpan },
-    UnknownEscapeSequence { relative_span: ErrorSpan },
-    UnclosedUnicodeSequence { relative_span: ErrorSpan },
-}
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum LexedNumber {
     Float(f64),
@@ -42,43 +30,51 @@ pub(crate) enum LexedNumber {
     MalformedNumber,
 }
 
-#[derive(Debug, Default)]
-pub struct StringTable {
-    idents: IndexSet<BString>,
-    strings: IndexSet<BString>,
+#[derive(Debug, Clone, Copy, PartialEq, Deref, AsRef, From)]
+pub(crate) struct SpannedToken<'src> {
+    #[deref]
+    pub(crate) token: Token,
+    pub(crate) span: SourceSpan,
+    pub(crate) src: &'src [u8],
 }
 
-impl StringTable {
-    fn add_ident<'s>(&mut self, ident: impl Into<&'s BStr> + Copy) -> usize {
-        if let Some(id) = self.idents.get_index_of(ident.into()) {
-            id
-        } else {
-            self.idents.insert_full(ident.into().to_owned()).0
-        }
-    }
-
-    fn add_string(&mut self, string: BString) -> usize {
-        self.strings.insert_full(string).0
+impl SpannedToken<'_> {
+    pub(crate) fn into_span(self) -> SourceSpan {
+        self.span
     }
 }
 
-#[derive(Logos, Debug, PartialEq)]
-pub(crate) enum StringToken {
-    #[error]
-    Error,
+impl From<SpannedToken<'_>> for Token {
+    fn from(
+        SpannedToken {
+            token,
+            span: _,
+            src: _,
+        }: SpannedToken,
+    ) -> Self {
+        token
+    }
 }
 
-#[derive(Logos, Debug, PartialEq)]
-#[logos(extras = StringTable)]
+impl PartialEq<Token> for SpannedToken<'_> {
+    fn eq(&self, other: &Token) -> bool {
+        self.token == *other
+    }
+}
+
+#[derive(Logos, Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Token {
-    #[regex(br#"[_A-Za-z]\w*"#, |lex| lex.extras.add_ident(lex.slice()))]
-    Ident(usize),
+    #[regex(br#"[_A-Za-z]\w*"#)]
+    Ident,
 
-    #[regex(br#"["']"#, parse_string)]
-    String(LexedString),
+    #[regex(br#"'"#)]
+    SingleQuotedStringStart,
 
-    #[regex(br#"\[=*\["#, parse_multiline_string)]
-    MultilineString(LexedString),
+    #[regex(br#"""#)]
+    DoubleQuotedStringStart,
+
+    #[regex(br#"\[=*\["#, |lex| lex.slice().len() - 2)]
+    MultilineStringStart(usize),
 
     /// Either:
     /// [-] 0x<hex digits>.<hex digits?><power>
@@ -238,6 +234,23 @@ pub(crate) enum Token {
     Error,
 }
 
+impl Token {
+    pub(crate) fn is_whitespace(&self) -> bool {
+        matches!(
+            self,
+            Self::Whitespace
+                | Self::SinglelineComment
+                | Self::MultilineComment(MultilineComment::Valid)
+        )
+    }
+}
+
+impl PartialEq<SpannedToken<'_>> for Token {
+    fn eq(&self, other: &SpannedToken) -> bool {
+        *self == other.token
+    }
+}
+
 #[derive(Logos, Debug, PartialEq)]
 enum MultilineCommentToken {
     #[error]
@@ -281,23 +294,6 @@ fn bump_to_end_of_multiline_comment(
     }
 
     MultilineComment::Unclosed
-}
-
-fn parse_multiline_string(lexer: &mut Lexer<Token>) -> LexedString {
-    // len([[) == 2, ignoring any equals tag in between the [[.
-    let end_tag_len = lexer.slice().len() - 2;
-    multiline_strings::parse_string(lexer, end_tag_len)
-}
-
-fn parse_string(lexer: &mut Lexer<Token>) -> LexedString {
-    strings::parse_string(
-        lexer,
-        match lexer.slice()[0] {
-            b'\'' => strings::Delim::SingleQuote,
-            b'\"' => strings::Delim::DoubleQuote,
-            _ => unreachable!(),
-        },
-    )
 }
 
 fn parse_float(lexer: &mut Lexer<Token>) -> LexedNumber {

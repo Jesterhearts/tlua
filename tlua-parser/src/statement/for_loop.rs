@@ -1,31 +1,13 @@
-use nom::{
-    character::complete::char as token,
-    combinator::{
-        cut,
-        map,
-        opt,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-        terminated,
-        tuple,
-    },
-};
-
 use crate::{
     block::Block,
     expressions::Expression,
-    identifiers::{
-        keyword,
-        Ident,
-    },
-    lua_whitespace0,
-    lua_whitespace1,
+    identifiers::Ident,
+    lexer::Token,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -38,45 +20,50 @@ pub struct ForLoop<'chunk> {
 }
 
 impl<'chunk> ForLoop<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, ForLoop<'chunk>> {
-        |input| {
-            preceded(
-                pair(keyword("for"), lua_whitespace1),
-                map(
-                    pair(
-                        terminated(
-                            Ident::parser(alloc),
-                            delimited(lua_whitespace0, token('='), lua_whitespace0),
-                        ),
-                        cut(tuple((
-                            terminated(
-                                Expression::parser(alloc),
-                                delimited(lua_whitespace0, token(','), lua_whitespace0),
-                            ),
-                            Expression::parser(alloc),
-                            opt(preceded(
-                                delimited(lua_whitespace0, token(','), lua_whitespace0),
-                                Expression::parser(alloc),
-                            )),
-                            delimited(
-                                delimited(lua_whitespace0, keyword("do"), lua_whitespace1),
-                                Block::parser(alloc),
-                                preceded(lua_whitespace0, keyword("end")),
-                            ),
-                        ))),
-                    ),
-                    |(var, (init, condition, increment, body))| Self {
-                        var,
-                        init,
-                        condition,
-                        increment,
-                        body,
-                    },
-                ),
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        let for_kw = lexer.next_if_eq(Token::KWfor).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWfor))
+        })?;
+
+        let var = match Ident::parse(lexer, alloc) {
+            Ok(ident) => ident,
+            Err(e) => {
+                lexer.reset(for_kw);
+                return Err(e);
+            }
+        };
+
+        lexer.next_if_eq(Token::Equals).ok_or_else(|| {
+            lexer.reset(for_kw);
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Equals))
+        })?;
+
+        let init = Expression::parse(lexer, alloc).mark_unrecoverable()?;
+        lexer.next_if_eq(Token::Comma).ok_or_else(|| {
+            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Equals))
+        })?;
+        let condition = Expression::parse(lexer, alloc).mark_unrecoverable()?;
+
+        let increment = lexer
+            .next_if_eq(Token::Comma)
+            .ok_or_else(|| {
+                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Comma))
+            })
+            .and_then(|_| Expression::parse(lexer, alloc))
+            .recover()?;
+
+        let body = Block::parse_do(lexer, alloc).mark_unrecoverable()?;
+
+        Ok(Self {
+            var,
+            init,
+            condition,
+            increment,
+            body,
+        })
     }
 }
 
@@ -91,8 +78,9 @@ mod tests {
             Expression,
         },
         final_parser,
+        identifiers::Ident,
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -100,12 +88,13 @@ mod tests {
         let src = "for a = 0, 10 do end";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes())=> ForLoop::parser( &alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => ForLoop::parse)?;
 
         assert_eq!(
             result,
             ForLoop {
-                var: "a".into(),
+                var: Ident(0),
                 init: Expression::Number(Number::Integer(0)),
                 condition: Expression::Number(Number::Integer(10)),
                 increment: None,

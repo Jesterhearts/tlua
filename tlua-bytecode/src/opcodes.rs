@@ -1,5 +1,5 @@
 use derive_more::From;
-use tlua_parser::string::ConstantString;
+use tlua_parser::expressions::strings::ConstantString;
 
 pub use crate::binop::*;
 use crate::{
@@ -8,8 +8,10 @@ use crate::{
         MappedRegister,
         Register,
     },
+    NumLike,
     Number,
     OpError,
+    Truthy,
     TypeId,
 };
 
@@ -20,6 +22,44 @@ pub enum Constant {
     Float(f64),
     Integer(i64),
     String(ConstantString),
+}
+
+impl Truthy for Constant {
+    fn as_bool(&self) -> bool {
+        match self {
+            Constant::Nil => false,
+            Constant::Bool(b) => *b,
+            _ => true,
+        }
+    }
+}
+
+impl NumLike for Constant {
+    fn as_float(&self) -> Option<f64> {
+        match self {
+            Constant::Float(f) => Some(*f),
+            Constant::Integer(i) => Some(*i as f64),
+            _ => None,
+        }
+    }
+
+    fn as_int(&self) -> Option<i64> {
+        match self {
+            Constant::Integer(i) => Some(*i),
+            _ => None,
+        }
+    }
+}
+
+impl Constant {
+    pub fn short_type_name(&self) -> &'static str {
+        match self {
+            Constant::Nil => "nil",
+            Constant::Bool(_) => "bool",
+            Constant::Float(_) | Constant::Integer(_) => "number",
+            Constant::String(_) => "string",
+        }
+    }
 }
 
 impl std::fmt::Debug for Constant {

@@ -1,33 +1,17 @@
-use nom::{
-    branch::alt,
-    character::complete::{
-        char as token,
-        one_of,
-    },
-    combinator::{
-        cut,
-        fail,
-        map,
-        opt,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-        terminated,
-        tuple,
-    },
-};
-
 use crate::{
-    build_separated_list0,
     expressions::Expression,
     identifiers::Ident,
+    lexer::{
+        SpannedToken,
+        Token,
+    },
     list::List,
-    lua_whitespace0,
+    parse_separated_list0,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 /// Field values for a field list ordered in ascending order of precedence.
@@ -64,67 +48,77 @@ pub struct TableConstructor<'chunk> {
 }
 
 impl<'chunk> Field<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, Field<'chunk>> {
-        |input| {
-            alt((
-                map(
-                    pair(
-                        preceded(
-                            pair(token('['), lua_whitespace0),
-                            cut(terminated(
-                                Expression::parser(alloc),
-                                pair(lua_whitespace0, token(']')),
-                            )),
-                        ),
-                        cut(preceded(
-                            delimited(lua_whitespace0, token('='), lua_whitespace0),
-                            Expression::parser(alloc),
-                        )),
-                    ),
-                    |(index, expression)| Self::Indexed { index, expression },
-                ),
-                map(
-                    pair(
-                        Ident::parser(alloc),
-                        preceded(
-                            delimited(lua_whitespace0, token('='), lua_whitespace0),
-                            cut(Expression::parser(alloc)),
-                        ),
-                    ),
-                    |(name, expression)| Self::Named { name, expression },
-                ),
-                map(
-                    preceded(lua_whitespace0, Expression::parser(alloc)),
-                    |expression| Self::Arraylike { expression },
-                ),
-                fail,
-            ))(input)
-        }
+    ) -> Result<Self, ParseError> {
+        Ident::parse(lexer, alloc)
+            .and_then(|name| {
+                lexer.next_if_eq(Token::Equals).ok_or_else(|| {
+                    ParseError::unrecoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::Equals),
+                    )
+                })?;
+
+                let expression = Expression::parse(lexer, alloc)?;
+                Ok(Self::Named { name, expression })
+            })
+            .recover_with(|| {
+                lexer.next_if_eq(Token::LBracket).ok_or_else(|| {
+                    ParseError::recoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::LBracket),
+                    )
+                })?;
+                let index = Expression::parse(lexer, alloc)?;
+
+                lexer.next_if_eq(Token::RBracket).ok_or_else(|| {
+                    ParseError::unrecoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::RBracket),
+                    )
+                })?;
+
+                lexer.next_if_eq(Token::Equals).ok_or_else(|| {
+                    ParseError::unrecoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::Equals),
+                    )
+                })?;
+
+                let expression = Expression::parse(lexer, alloc)?;
+
+                Ok(Self::Indexed { index, expression })
+            })
+            .recover_with(|| {
+                Expression::parse(lexer, alloc).map(|expression| Self::Arraylike { expression })
+            })
+            .ok_or_else(|| {
+                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedTableField)
+            })
     }
 }
 
 impl<'chunk> TableConstructor<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, TableConstructor<'chunk>> {
-        |input| {
-            map(
-                preceded(
-                    pair(token('{'), lua_whitespace0),
-                    cut(terminated(
-                        build_separated_list0(
-                            alloc,
-                            Field::parser(alloc),
-                            delimited(lua_whitespace0, one_of(",;"), lua_whitespace0),
-                        ),
-                        tuple((opt(one_of(",;")), lua_whitespace0, token('}'))),
-                    )),
-                ),
-                |fields| TableConstructor { fields },
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        lexer.next_if_eq(Token::LBrace).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::LBrace))
+        })?;
+
+        let match_sep =
+            |token: &SpannedToken| matches!(token.as_ref(), Token::Comma | Token::Semicolon);
+        let fields = parse_separated_list0(lexer, alloc, Field::parse, match_sep)?;
+        lexer.next_if(match_sep);
+
+        lexer.next_if_eq(Token::RBrace).ok_or_else(|| {
+            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::RBrace))
+        })?;
+
+        Ok(Self { fields })
     }
 }
 
@@ -140,12 +134,13 @@ mod tests {
             Expression,
         },
         final_parser,
+        identifiers::Ident,
         list::{
             List,
             ListNode,
         },
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -153,7 +148,9 @@ mod tests {
         let src = "{}";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => TableConstructor::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::parse)?;
 
         assert_eq!(
             result,
@@ -170,7 +167,9 @@ mod tests {
         let src = "{;}";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => TableConstructor::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::parse)?;
 
         assert_eq!(
             result,
@@ -186,7 +185,8 @@ mod tests {
         let src = "10";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => Field::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Field::parse)?;
 
         assert_eq!(
             result,
@@ -203,12 +203,13 @@ mod tests {
         let src = "a = 10";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => Field::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Field::parse)?;
 
         assert_eq!(
             result,
             Field::Named {
-                name: "a".into(),
+                name: Ident(0),
                 expression: Expression::Number(Number::Integer(10))
             }
         );
@@ -221,7 +222,8 @@ mod tests {
         let src = "[11] = 10";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => Field::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Field::parse)?;
 
         assert_eq!(
             result,
@@ -239,7 +241,9 @@ mod tests {
         let src = "{10, [11] = 12, a = 13; 14}";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => TableConstructor::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::parse)?;
 
         assert_eq!(
             result,
@@ -253,7 +257,7 @@ mod tests {
                         expression: Expression::Number(Number::Integer(12)),
                     }),
                     ListNode::new(Field::Named {
-                        name: "a".into(),
+                        name: Ident(0),
                         expression: Expression::Number(Number::Integer(13)),
                     }),
                     ListNode::new(Field::Arraylike {

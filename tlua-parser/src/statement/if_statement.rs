@@ -1,29 +1,14 @@
-use nom::{
-    combinator::{
-        cut,
-        map,
-        opt,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-        terminated,
-        tuple,
-    },
-};
-
 use crate::{
     block::Block,
-    build_list0,
     expressions::Expression,
-    identifiers::keyword,
+    lexer::Token,
     list::List,
-    lua_whitespace0,
-    lua_whitespace1,
+    parse_list0,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -41,54 +26,54 @@ pub struct ElseIf<'chunk> {
 }
 
 impl<'chunk> If<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, If<'chunk>> {
-        |input| {
-            delimited(
-                pair(keyword("if"), lua_whitespace1),
-                map(
-                    cut(tuple((
-                        |input| parse_cond_then_body(input, alloc),
-                        build_list0(
-                            alloc,
-                            map(
-                                preceded(
-                                    delimited(lua_whitespace0, keyword("elseif"), lua_whitespace1),
-                                    |input| parse_cond_then_body(input, alloc),
-                                ),
-                                |(cond, body)| ElseIf { cond, body },
-                            ),
-                        ),
-                        opt(preceded(
-                            delimited(lua_whitespace0, keyword("else"), lua_whitespace1),
-                            Block::parser(alloc),
-                        )),
-                    ))),
-                    |((cond, body), elif, else_final)| Self {
-                        cond,
-                        body,
-                        elif,
-                        else_final,
-                    },
-                ),
-                pair(lua_whitespace0, keyword("end")),
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        lexer.next_if_eq(Token::KWif).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWif))
+        })?;
+
+        let (cond, body) = parse_cond_then_body(lexer, alloc).mark_unrecoverable()?;
+
+        let elif = parse_list0(lexer, alloc, |lexer, alloc| {
+            lexer.next_if_eq(Token::KWelseif).ok_or_else(|| {
+                ParseError::recoverable_from_here(
+                    lexer,
+                    SyntaxError::ExpectedToken(Token::KWelseif),
+                )
+            })?;
+            parse_cond_then_body(lexer, alloc).map(|(cond, body)| ElseIf { cond, body })
+        })?;
+
+        let else_final = lexer
+            .next_if_eq(Token::KWelse)
+            .ok_or_else(|| {
+                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWelse))
+            })
+            .and_then(|_| Block::parse(lexer, alloc))
+            .recover()?;
+
+        Ok(Self {
+            cond,
+            body,
+            elif,
+            else_final,
+        })
     }
 }
 
-fn parse_cond_then_body<'src, 'chunk>(
-    input: Span<'src>,
+fn parse_cond_then_body<'chunk>(
+    lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, (Expression<'chunk>, Block<'chunk>)> {
-    pair(
-        terminated(
-            Expression::parser(alloc),
-            delimited(lua_whitespace0, keyword("then"), lua_whitespace0),
-        ),
-        Block::parser(alloc),
-    )(input)
+) -> Result<(Expression<'chunk>, Block<'chunk>), ParseError> {
+    let cond = Expression::parse(lexer, alloc).mark_unrecoverable()?;
+    lexer.next_if_eq(Token::KWthen).ok_or_else(|| {
+        ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWthen))
+    })?;
+    let body = Block::parse(lexer, alloc).mark_unrecoverable()?;
+
+    Ok((cond, body))
 }
 
 #[cfg(test)]
@@ -105,7 +90,7 @@ mod tests {
         },
         statement::if_statement::ElseIf,
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -113,7 +98,8 @@ mod tests {
         let src = "if true then end";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => If::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => If::parse)?;
 
         assert_eq!(
             result,
@@ -133,7 +119,8 @@ mod tests {
         let src = "if true then else end";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => If::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => If::parse)?;
 
         assert_eq!(
             result,
@@ -153,7 +140,8 @@ mod tests {
         let src = "if true then elseif true then else end";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => If::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => If::parse)?;
 
         assert_eq!(
             result,

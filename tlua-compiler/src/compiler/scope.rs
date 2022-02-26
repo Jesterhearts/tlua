@@ -17,7 +17,10 @@ use tlua_bytecode::{
     ImmediateRegister,
     OpError,
 };
-use tlua_parser::identifiers::Ident;
+use tlua_parser::{
+    identifiers::Ident,
+    StringTable,
+};
 
 use crate::{
     compiler::{
@@ -43,6 +46,8 @@ const GLOBAL_SCOPE: u16 = 0;
 /// scope.
 #[derive(Debug, Default)]
 pub(super) struct RootScope {
+    strings: StringTable,
+
     /// Globals - tracked separately since the runtime may need to perform
     /// initialization or provide access to client code.
     globals: HashMap<Ident, OffsetRegister>,
@@ -67,6 +72,7 @@ impl RootScope {
 
     pub(super) fn into_chunk(self, main: UnasmFunction) -> Chunk {
         Chunk {
+            strings: self.strings,
             globals_map: self
                 .globals
                 .into_iter()
@@ -395,6 +401,10 @@ pub(crate) struct Scope<'scope, 'block, 'function> {
 }
 
 impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
+    pub(crate) fn string_table(&self) -> &StringTable {
+        &self.block_scope.function_scope.root_scope.strings
+    }
+
     /// Check if varargs are available in scope
     pub(crate) fn check_varargs(&self) -> Result<(), CompileError> {
         match self.block_scope.function_scope.has_va_args {
@@ -536,6 +546,19 @@ impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
     /// Overwrite the instruction at location.
     pub(crate) fn overwrite(&mut self, location: usize, opcode: impl Into<UnasmOp>) {
         self.block_scope.overwrite(location, opcode)
+    }
+
+    pub(crate) fn new_local_self(
+        &mut self,
+    ) -> Result<UninitRegister<MappedLocalRegister>, CompileError> {
+        let ident = self
+            .block_scope
+            .function_scope
+            .root_scope
+            .strings
+            .add_ident("self".as_bytes());
+
+        self.new_local(ident)
     }
 
     /// Map a new register for a local variable.

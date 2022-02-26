@@ -9,22 +9,20 @@ use tlua_bytecode::{
         },
         *,
     },
-    opcodes::traits::{
-        ConcatBinop,
-        OpName,
-    },
+    Constant,
     ImmediateRegister,
-    LuaString,
     OpError,
 };
-use tlua_parser::expressions::{
-    operator,
-    Expression,
+use tlua_parser::{
+    expressions::{
+        operator,
+        Expression,
+    },
+    StringTable,
 };
 
 use crate::{
     compiler::unasm::UnasmOp,
-    constant::Constant,
     CompileError,
     CompileExpression,
     NodeOutput,
@@ -41,20 +39,18 @@ where
     Op: From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
     Lhs: CompileExpression,
     Rhs: CompileExpression,
-    ConstEval: FnOnce(Constant, Constant) -> Result<Constant, OpError>,
+    ConstEval: FnOnce(&StringTable, Constant, Constant) -> Result<Constant, OpError>,
 {
     let lhs = lhs.compile(scope)?;
     let rhs = rhs.compile(scope)?;
 
-    // TODO(compiler-opt): Technically, more efficient use could be made of
-    // registers here by checking if the operation is commutative and
-    // swapping constants to the right or existing immediate registers to
-    // the left.
     match (lhs, rhs) {
-        (NodeOutput::Constant(lhs), NodeOutput::Constant(rhs)) => match consteval(lhs, rhs) {
-            Ok(constant) => Ok(NodeOutput::Constant(constant)),
-            Err(err) => Ok(NodeOutput::Err(scope.write_raise(err))),
-        },
+        (NodeOutput::Constant(lhs), NodeOutput::Constant(rhs)) => {
+            match consteval(scope.string_table(), lhs, rhs) {
+                Ok(constant) => Ok(NodeOutput::Constant(constant)),
+                Err(err) => Ok(NodeOutput::Err(scope.write_raise(err))),
+            }
+        }
         (lhs, rhs) => {
             let lhs = lhs.into_register(scope);
 
@@ -75,7 +71,7 @@ fn write_numeric_binop<Op>(
 where
     Op: NumericOpEval + From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
 {
-    write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| {
+    write_binop::<Op, _, _, _>(scope, lhs, rhs, |_, lhs, rhs| {
         Op::evaluate(lhs, rhs).map(|num| num.into())
     })
 }
@@ -88,7 +84,7 @@ fn write_cmp_binop<Op>(
 where
     Op: ComparisonOpEval + From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
 {
-    write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| match (lhs, rhs) {
+    write_binop::<Op, _, _, _>(scope, lhs, rhs, |strings, lhs, rhs| match (lhs, rhs) {
         (Constant::Nil, Constant::Nil) => Op::apply_nils().map(Constant::from),
         (Constant::Bool(lhs), Constant::Bool(rhs)) => Op::apply_bools(lhs, rhs).map(Constant::from),
         (Constant::Float(lhs), Constant::Float(rhs)) => {
@@ -103,7 +99,11 @@ where
         (Constant::Integer(lhs), Constant::Float(rhs)) => {
             Ok(Op::apply_numbers(lhs.into(), rhs.into()).into())
         }
-        (Constant::String(lhs), Constant::String(rhs)) => Ok(Op::apply_strings(&lhs, &rhs).into()),
+        (Constant::String(lhs), Constant::String(rhs)) => Ok(Op::apply_strings(
+            strings.get_string(lhs).expect("Valid string id"),
+            strings.get_string(rhs).expect("Valid string id"),
+        )
+        .into()),
         // TODO(lang-5.4): This should be truthy for eq/ne.
         (lhs, rhs) => Err(OpError::CmpErr {
             lhs: lhs.short_type_name(),
@@ -120,7 +120,7 @@ fn write_boolean_binop<Op>(
 where
     Op: BooleanOpEval + From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
 {
-    write_binop::<Op, _, _, _>(scope, lhs, rhs, |lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
+    write_binop::<Op, _, _, _>(scope, lhs, rhs, |_, lhs, rhs| Ok(Op::evaluate(lhs, rhs)))
 }
 
 impl CompileExpression for operator::Plus<'_> {
@@ -197,34 +197,16 @@ impl CompileExpression for operator::ShiftRight<'_> {
 
 impl CompileExpression for operator::Concat<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        write_binop::<Concat, _, _, _>(scope, self.lhs, self.rhs, |lhs, rhs| match (lhs, rhs) {
-            (Constant::Float(lhs), Constant::Float(rhs)) => {
-                Ok(Concat::evaluate(LuaString::from(lhs), LuaString::from(rhs)))
-            }
-            (Constant::Float(lhs), Constant::Integer(rhs)) => {
-                Ok(Concat::evaluate(LuaString::from(lhs), LuaString::from(rhs)))
-            }
-            (Constant::Float(lhs), Constant::String(rhs)) => {
-                Ok(Concat::evaluate(LuaString::from(lhs), rhs))
-            }
-            (Constant::Integer(lhs), Constant::Float(rhs)) => {
-                Ok(Concat::evaluate(LuaString::from(lhs), LuaString::from(rhs)))
-            }
-            (Constant::Integer(lhs), Constant::Integer(rhs)) => {
-                Ok(Concat::evaluate(LuaString::from(lhs), LuaString::from(rhs)))
-            }
-            (Constant::Integer(lhs), Constant::String(rhs)) => {
-                Ok(Concat::evaluate(LuaString::from(lhs), rhs))
-            }
-            (Constant::String(lhs), Constant::Float(rhs)) => {
-                Ok(Concat::evaluate(lhs, LuaString::from(rhs)))
-            }
-            (Constant::String(lhs), Constant::Integer(rhs)) => {
-                Ok(Concat::evaluate(lhs, LuaString::from(rhs)))
-            }
-            (Constant::String(lhs), Constant::String(rhs)) => Ok(Concat::evaluate(lhs, rhs)),
-            _ => Err(OpError::InvalidType { op: Concat::NAME }),
-        })
+        let lhs = self.lhs.compile(scope)?;
+        let rhs = self.rhs.compile(scope)?;
+
+        let lhs = lhs.into_register(scope);
+
+        let rhs = rhs.into_register(scope);
+        let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(rhs));
+        scope.emit(Concat::from((lhs, rhs)));
+
+        Ok(NodeOutput::Immediate(lhs))
     }
 }
 

@@ -11,11 +11,10 @@ use std::{
 use derive_more::From;
 pub use tlua_bytecode::Number;
 use tlua_bytecode::{
-    Constant,
-    LuaString,
     NumLike,
     Truthy,
 };
+use tlua_strings::LuaString;
 use tracing_rc::{
     rc::Gc,
     Trace,
@@ -37,18 +36,6 @@ pub enum Value {
     String(Rc<RefCell<LuaString>>),
     Table(#[trace] Gc<Table>),
     Function(#[trace] Gc<Function>),
-}
-
-impl From<Constant> for Value {
-    fn from(c: Constant) -> Self {
-        match c {
-            Constant::Nil => Self::Nil,
-            Constant::Bool(b) => Self::Bool(b),
-            Constant::Float(f) => Self::Number(Number::Float(f)),
-            Constant::Integer(i) => Self::Number(Number::Integer(i)),
-            Constant::String(s) => Self::String(Rc::new(RefCell::new(s.into()))),
-        }
-    }
 }
 
 impl Value {

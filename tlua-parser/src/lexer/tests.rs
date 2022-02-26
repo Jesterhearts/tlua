@@ -36,7 +36,7 @@ fn test() {
 }
 
 #[test]
-pub fn lexes_empty_short_comment() {
+fn lexes_empty_short_comment() {
     let src = "--";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -45,7 +45,7 @@ pub fn lexes_empty_short_comment() {
 }
 
 #[test]
-pub fn lexes_short_comment() {
+fn lexes_short_comment() {
     let src = "--abcdef";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -54,7 +54,7 @@ pub fn lexes_short_comment() {
 }
 
 #[test]
-pub fn lexes_short_comments() {
+fn lexes_short_comments() {
     let src = r#"--abcdef
     --jky"#;
 
@@ -66,7 +66,7 @@ pub fn lexes_short_comments() {
 }
 
 #[test]
-pub fn lexes_empty_long_comment() {
+fn lexes_empty_long_comment() {
     let src = "--[[]]";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -78,7 +78,7 @@ pub fn lexes_empty_long_comment() {
 }
 
 #[test]
-pub fn lexes_long_comment() {
+fn lexes_long_comment() {
     let src = "--[[abc
             def
         ghi]]";
@@ -92,7 +92,7 @@ pub fn lexes_long_comment() {
 }
 
 #[test]
-pub fn lexes_long_comment_invalid() {
+fn lexes_long_comment_invalid() {
     let src = "--[[abc
             def
         ghi]";
@@ -106,7 +106,7 @@ pub fn lexes_long_comment_invalid() {
 }
 
 #[test]
-pub fn lexes_long_comment_tagged() {
+fn lexes_long_comment_tagged() {
     let src = "--[==[abc
             def
         ghi]==]";
@@ -120,7 +120,7 @@ pub fn lexes_long_comment_tagged() {
 }
 
 #[test]
-pub fn lexes_long_comment_tagged_invalid_short() {
+fn lexes_long_comment_tagged_invalid_short() {
     let src = "--[==[abc
             def
         ghi]=]";
@@ -134,7 +134,7 @@ pub fn lexes_long_comment_tagged_invalid_short() {
 }
 
 #[test]
-pub fn lexes_long_comment_tagged_invalid_long() {
+fn lexes_long_comment_tagged_invalid_long() {
     let src = "--[==[abc
             def
         ghi]===]";
@@ -148,7 +148,7 @@ pub fn lexes_long_comment_tagged_invalid_long() {
 }
 
 #[test]
-pub fn lexes_long_comment_tagged_unbalanced_internal() {
+fn lexes_long_comment_tagged_unbalanced_internal() {
     let src = "--[==[abc
             def
         ghi]===]==]";
@@ -162,7 +162,7 @@ pub fn lexes_long_comment_tagged_unbalanced_internal() {
 }
 
 #[test]
-pub fn lexes_float_constant() {
+fn lexes_float_constant() {
     let src = "1.";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -173,7 +173,7 @@ pub fn lexes_float_constant() {
 }
 
 #[test]
-pub fn lexes_float_constant_decimals() {
+fn lexes_float_constant_decimals() {
     let src = "1.00";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -184,7 +184,7 @@ pub fn lexes_float_constant_decimals() {
 }
 
 #[test]
-pub fn lexes_float_constant_exponent() {
+fn lexes_float_constant_exponent() {
     let src = "1.e10";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -196,7 +196,7 @@ pub fn lexes_float_constant_exponent() {
 
 #[test]
 #[allow(non_snake_case)]
-pub fn lexes_float_constant_Exponent() {
+fn lexes_float_constant_Exponent() {
     let src = "1.E10";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -207,7 +207,7 @@ pub fn lexes_float_constant_Exponent() {
 }
 
 #[test]
-pub fn lexes_float_constant_neg_exponent() {
+fn lexes_float_constant_neg_exponent() {
     let src = "1.e-10";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -222,7 +222,7 @@ pub fn lexes_float_constant_neg_exponent() {
 
 #[test]
 #[allow(non_snake_case)]
-pub fn lexes_float_constant_neg_Exponent() {
+fn lexes_float_constant_neg_Exponent() {
     let src = "1.E-10";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -236,7 +236,7 @@ pub fn lexes_float_constant_neg_Exponent() {
 }
 
 #[test]
-pub fn lexes_hex_float_constant() {
+fn lexes_hex_float_constant() {
     let src = "0x1F.0p-1";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -250,7 +250,7 @@ pub fn lexes_hex_float_constant() {
 }
 
 #[test]
-pub fn lexes_integer_constant() {
+fn lexes_integer_constant() {
     let src = "9007199254740993";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -264,7 +264,7 @@ pub fn lexes_integer_constant() {
 }
 
 #[test]
-pub fn lexes_hex_constant_wrapping() {
+fn lexes_hex_constant_wrapping() {
     let src = "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFFFFFFFFFFF";
 
     let mut lexer = Lexer::new(src.as_bytes());
@@ -278,12 +278,78 @@ pub fn lexes_hex_constant_wrapping() {
 }
 
 #[test]
-pub fn lexes_hex_constant_wrapping_2() {
+fn lexes_hex_constant_wrapping_2() {
     let src = "0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF";
 
     let mut lexer = Lexer::new(src.as_bytes());
 
     assert_eq!(lexer.next(), Some(Token::HexInt(LexedNumber::Int(-1))));
 
+    assert_eq!(lexer.next(), None);
+}
+
+#[test]
+fn parses_nil() {
+    let src = "nil";
+
+    let mut lexer = Lexer::new(src.as_bytes());
+
+    assert_eq!(lexer.next(), Some(Token::Nil));
+
+    assert_eq!(lexer.next(), None);
+}
+
+#[test]
+fn parses_true() {
+    let src = "true";
+
+    let mut lexer = Lexer::new(src.as_bytes());
+
+    assert_eq!(lexer.next(), Some(Token::Boolean(true)));
+
+    assert_eq!(lexer.next(), None);
+}
+
+#[test]
+fn parses_false() {
+    let src = "false";
+
+    let mut lexer = Lexer::new(src.as_bytes());
+
+    assert_eq!(lexer.next(), Some(Token::Boolean(false)));
+
+    assert_eq!(lexer.next(), None);
+}
+
+#[test]
+fn parses_ident() {
+    let src = "_";
+
+    let mut lexer = Lexer::new(src.as_bytes());
+
+    assert_eq!(lexer.next(), Some(Token::Ident));
+    assert_eq!(lexer.slice(), b"_");
+    assert_eq!(lexer.next(), None);
+}
+
+#[test]
+fn parses_ident_alpha_start() {
+    let src = "a";
+
+    let mut lexer = Lexer::new(src.as_bytes());
+
+    assert_eq!(lexer.next(), Some(Token::Ident));
+    assert_eq!(lexer.slice(), b"a");
+    assert_eq!(lexer.next(), None);
+}
+
+#[test]
+fn parses_ident_alphanum() {
+    let src = "_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_";
+
+    let mut lexer = Lexer::new(src.as_bytes());
+
+    assert_eq!(lexer.next(), Some(Token::Ident));
+    assert_eq!(lexer.slice(), src.as_bytes());
     assert_eq!(lexer.next(), None);
 }

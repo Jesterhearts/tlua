@@ -1,4 +1,5 @@
 use derive_more::From;
+use tlua_strings::LuaString;
 
 use crate::{
     binop::{
@@ -7,7 +8,6 @@ use crate::{
         OpName,
     },
     ImmediateRegister,
-    LuaString,
     StringLike,
 };
 

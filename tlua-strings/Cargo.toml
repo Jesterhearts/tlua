@@ -1,5 +1,5 @@
 [package]
-name = "tlua-bytecode"
+name = "tlua-strings"
 version = "0.1.0"
 edition = "2021"
 publish = false
@@ -9,11 +9,3 @@ publish = false
 [dependencies]
 bstr = '0.2.17'
 derive_more = '0.99.17'
-paste = '1.0.6'
-thiserror = '1.0.30'
-
-[dependencies.tlua-parser]
-path = "../tlua-parser"
-
-[dependencies.tlua-strings]
-path = "../tlua-strings"

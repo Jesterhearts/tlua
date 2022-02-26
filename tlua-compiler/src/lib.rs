@@ -12,6 +12,7 @@ use scopeguard::guard_on_success;
 use thiserror::Error;
 use tlua_bytecode::{
     opcodes::Instruction,
+    Constant,
     ImmediateRegister,
     OpError,
     TypeId,
@@ -23,23 +24,20 @@ use tlua_parser::{
     statement::Statement,
     ASTAllocator,
     ChunkParseError,
+    StringTable,
 };
 
 mod block;
 mod compiler;
-mod constant;
 mod expressions;
 mod prefix_expression;
 mod statement;
 
 use self::compiler::Scope;
-use crate::{
-    compiler::{
-        unasm::MappedLocalRegister,
-        Compiler,
-        InitRegister,
-    },
-    constant::Constant,
+use crate::compiler::{
+    unasm::MappedLocalRegister,
+    Compiler,
+    InitRegister,
 };
 
 #[derive(Debug)]
@@ -237,6 +235,7 @@ pub struct Function {
 
 #[derive(Debug, Clone)]
 pub struct Chunk {
+    pub strings: StringTable,
     pub globals_map: HashMap<Ident, usize>,
     pub functions: Vec<Function>,
     pub main: Function,
@@ -244,8 +243,9 @@ pub struct Chunk {
 
 pub fn compile(src: &str) -> Result<Chunk, CompileError> {
     let alloc = ASTAllocator::default();
+    let mut strings = StringTable::default();
 
-    let ast = parse_chunk(src, &alloc).map_err(CompileError::ParseError)?;
+    let ast = parse_chunk(src, &alloc, &mut strings).map_err(CompileError::ParseError)?;
 
     Compiler::default().compile_ast(ast)
 }

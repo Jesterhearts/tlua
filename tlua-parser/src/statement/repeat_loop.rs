@@ -1,26 +1,12 @@
-use nom::{
-    combinator::{
-        cut,
-        map,
-        value,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-        tuple,
-    },
-};
-
 use crate::{
     block::Block,
     expressions::Expression,
-    identifiers::keyword,
-    lua_whitespace0,
-    lua_whitespace1,
+    lexer::Token,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -30,25 +16,22 @@ pub struct RepeatLoop<'chunk> {
 }
 
 impl<'chunk> RepeatLoop<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, RepeatLoop<'chunk>> {
-        |input| {
-            preceded(
-                pair(keyword("repeat"), lua_whitespace1),
-                map(
-                    cut(tuple((
-                        Block::parser(alloc),
-                        value(
-                            (),
-                            delimited(lua_whitespace0, keyword("until"), lua_whitespace0),
-                        ),
-                        Expression::parser(alloc),
-                    ))),
-                    |(body, _, terminator)| Self { body, terminator },
-                ),
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        lexer.next_if_eq(Token::KWrepeat).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWrepeat))
+        })?;
+
+        let body = Block::parse(lexer, alloc).mark_unrecoverable()?;
+        lexer.next_if_eq(Token::KWuntil).ok_or_else(|| {
+            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWuntil))
+        })?;
+
+        let terminator = Expression::parse(lexer, alloc).mark_unrecoverable()?;
+
+        Ok(Self { body, terminator })
     }
 }
 
@@ -61,7 +44,7 @@ mod tests {
         expressions::Expression,
         final_parser,
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -69,7 +52,8 @@ mod tests {
         let src = "repeat until true";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes())=> RepeatLoop::parser( &alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RepeatLoop::parse)?;
 
         assert_eq!(
             result,

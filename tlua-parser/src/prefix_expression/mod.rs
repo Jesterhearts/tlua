@@ -1,27 +1,14 @@
-use nom::{
-    branch::alt,
-    character::complete::char as token,
-    combinator::{
-        cut,
-        map,
-        opt,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-        terminated,
-    },
-};
-
 use crate::{
     expressions::Expression,
     identifiers::Ident,
+    lexer::Token,
     list::List,
-    lua_whitespace0,
+    parse_list0_split_tail,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 pub mod function_calls;
@@ -31,6 +18,28 @@ use self::function_calls::FnArgs;
 pub enum HeadAtom<'chunk> {
     Name(Ident),
     Parenthesized(&'chunk Expression<'chunk>),
+}
+
+impl<'chunk> HeadAtom<'chunk> {
+    fn parse(lexer: &mut PeekableLexer, alloc: &'chunk ASTAllocator) -> Result<Self, ParseError> {
+        Ident::parse(lexer, alloc).map(Self::Name).recover_with(|| {
+            lexer.next_if_eq(Token::LParen).ok_or_else(|| {
+                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::LParen))
+            })?;
+
+            Expression::parse(lexer, alloc)
+                .mark_unrecoverable()
+                .and_then(|expr| {
+                    lexer.next_if_eq(Token::RParen).ok_or_else(|| {
+                        ParseError::unrecoverable_from_here(
+                            lexer,
+                            SyntaxError::ExpectedToken(Token::RParen),
+                        )
+                    })?;
+                    Ok(Self::Parenthesized(alloc.alloc(expr)))
+                })
+        })
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -49,6 +58,63 @@ pub enum FunctionAtom<'chunk> {
 pub enum PrefixAtom<'chunk> {
     Var(VarAtom<'chunk>),
     Function(FunctionAtom<'chunk>),
+}
+
+impl<'chunk> PrefixAtom<'chunk> {
+    fn parse(lexer: &mut PeekableLexer, alloc: &'chunk ASTAllocator) -> Result<Self, ParseError> {
+        lexer
+            .next_if_eq(Token::LBracket)
+            .ok_or_else(|| {
+                ParseError::recoverable_from_here(
+                    lexer,
+                    SyntaxError::ExpectedToken(Token::LBracket),
+                )
+            })
+            .and_then(|_| {
+                Expression::parse(lexer, alloc)
+                    .mark_unrecoverable()
+                    .and_then(|expr| {
+                        lexer.next_if_eq(Token::RBracket).ok_or_else(|| {
+                            ParseError::unrecoverable_from_here(
+                                lexer,
+                                SyntaxError::ExpectedToken(Token::RBracket),
+                            )
+                        })?;
+                        Ok(Self::Var(VarAtom::IndexOp(expr)))
+                    })
+            })
+            .recover_with(|| {
+                lexer.next_if_eq(Token::Period).ok_or_else(|| {
+                    ParseError::recoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::Period),
+                    )
+                })?;
+
+                Ident::parse(lexer, alloc)
+                    .mark_unrecoverable()
+                    .map(|ident| Self::Var(VarAtom::Name(ident)))
+            })
+            .recover_with(|| {
+                lexer.next_if_eq(Token::Colon).ok_or_else(|| {
+                    ParseError::recoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::Colon),
+                    )
+                })?;
+
+                let name = Ident::parse(lexer, alloc).mark_unrecoverable()?;
+                FnArgs::parse(lexer, alloc)
+                    .mark_unrecoverable()
+                    .map(|args| Self::Function(FunctionAtom::MethodCall { name, args }))
+            })
+            .recover_with(|| {
+                FnArgs::parse(lexer, alloc).map(|args| Self::Function(FunctionAtom::Call(args)))
+            })
+            .ok_or_else(|| {
+                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedPrefixExpression)
+            })
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -82,170 +148,36 @@ pub enum PrefixExpression<'chunk> {
 }
 
 impl<'chunk> PrefixExpression<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, PrefixExpression<'chunk>> {
-        |input| {
-            // Prefix expressions must start with either a Name or a parenthesized
-            // expresssion - all other forms of prefix expressions require a preceding
-            // prefix expression.
-            let (mut input, head) = alt((
-                map(Ident::parser(alloc), HeadAtom::Name),
-                map(
-                    preceded(
-                        pair(token('('), lua_whitespace0),
-                        cut(terminated(
-                            Expression::parser(alloc),
-                            pair(lua_whitespace0, token(')')),
-                        )),
-                    ),
-                    |expr| HeadAtom::Parenthesized(alloc.alloc(expr)),
-                ),
-            ))(input)?;
+    ) -> Result<Self, ParseError> {
+        let head = HeadAtom::parse(lexer, alloc)?;
 
-            // See if there is another expression after our head atom.
-            let (remain, next) = parse_impl(input, alloc)?;
-            input = remain;
+        let (middle, tail) = parse_list0_split_tail(lexer, alloc, PrefixAtom::parse)?;
 
-            let current = if let Some(next) = next {
-                next
-            } else {
-                return Ok((
-                    input,
-                    match head {
-                        HeadAtom::Name(ident) => Self::Variable(VarPrefixExpression::Name(ident)),
-                        HeadAtom::Parenthesized(expr) => Self::Parenthesized(expr),
-                    },
-                ));
-            };
+        if let Some(tail) = tail {
+            Ok(match tail {
+                PrefixAtom::Var(var) => Self::Variable(VarPrefixExpression::TableAccess {
+                    head,
+                    middle,
+                    last: alloc.alloc(var),
+                }),
+                PrefixAtom::Function(f) => Self::FnCall(FnCallPrefixExpression::CallPath {
+                    head,
+                    middle,
+                    last: f,
+                }),
+            })
+        } else {
+            debug_assert!(middle.is_empty());
 
-            // See if this is a greater than length 2 prefix expression.
-            let (remain, next) = parse_impl(input, alloc)?;
-            input = remain;
-
-            let mut middle = List::default();
-
-            let (mut previous, mut current) = if let Some(next) = next {
-                // We have at least 3 prefix expressions so we will fill out both the head,
-                // body, and tail of the expression.
-                (
-                    middle.cursor_mut().alloc_insert_advance(alloc, current),
-                    next,
-                )
-            } else {
-                // This is a length 2 prefix expression and we want to
-                // populate just the head and tail portions of the list. We divide out
-                // these cases so we don't have to handle e.g. a function expression
-                // with a possible var expression terminating it when processing the AST
-                // as that would be obviously impossible.
-                return Ok((
-                    input,
-                    match current {
-                        PrefixAtom::Var(v) => Self::Variable(VarPrefixExpression::TableAccess {
-                            head,
-                            middle,
-                            last: alloc.alloc(v),
-                        }),
-                        PrefixAtom::Function(f) => {
-                            Self::FnCall(FnCallPrefixExpression::Call { head, args: f })
-                        }
-                    },
-                ));
-            };
-
-            loop {
-                let (remain, maybe_next) = parse_impl(input, alloc)?;
-                input = remain;
-
-                current = if let Some(next) = maybe_next {
-                    previous = previous.alloc_insert_advance(alloc, current);
-                    next
-                } else {
-                    return Ok((
-                        input,
-                        match current {
-                            PrefixAtom::Var(var) => {
-                                Self::Variable(VarPrefixExpression::TableAccess {
-                                    head,
-                                    middle,
-                                    last: alloc.alloc(var),
-                                })
-                            }
-                            PrefixAtom::Function(f) => {
-                                Self::FnCall(FnCallPrefixExpression::CallPath {
-                                    head,
-                                    middle,
-                                    last: f,
-                                })
-                            }
-                        },
-                    ));
-                }
-            }
+            Ok(match head {
+                HeadAtom::Name(name) => Self::Variable(VarPrefixExpression::Name(name)),
+                HeadAtom::Parenthesized(expr) => Self::Parenthesized(expr),
+            })
         }
     }
-}
-
-fn parse_impl<'src, 'chunk>(
-    input: Span<'src>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, Option<PrefixAtom<'chunk>>> {
-    opt(preceded(
-        lua_whitespace0,
-        alt((
-            |input| parse_index_op(input, alloc),
-            |input| parse_dot_name(input, alloc),
-            |input| parse_method_call(input, alloc),
-            |input| parse_call(input, alloc),
-        )),
-    ))(input)
-}
-
-fn parse_index_op<'src, 'chunk>(
-    input: Span<'src>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, PrefixAtom<'chunk>> {
-    delimited(
-        pair(token('['), lua_whitespace0),
-        map(Expression::parser(alloc), |expr| {
-            PrefixAtom::Var(VarAtom::IndexOp(expr))
-        }),
-        pair(lua_whitespace0, token(']')),
-    )(input)
-}
-
-fn parse_dot_name<'src, 'chunk>(
-    input: Span<'src>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, PrefixAtom<'chunk>> {
-    preceded(
-        pair(token('.'), lua_whitespace0),
-        map(Ident::parser(alloc), |ident| {
-            PrefixAtom::Var(VarAtom::Name(ident))
-        }),
-    )(input)
-}
-
-fn parse_call<'src, 'chunk>(
-    input: Span<'src>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, PrefixAtom<'chunk>> {
-    map(FnArgs::parser(alloc), |args| {
-        PrefixAtom::Function(FunctionAtom::Call(args))
-    })(input)
-}
-
-fn parse_method_call<'src, 'chunk>(
-    input: Span<'src>,
-    alloc: &'chunk ASTAllocator,
-) -> ParseResult<'src, PrefixAtom<'chunk>> {
-    preceded(
-        token(':'),
-        map(
-            pair(Ident::parser(alloc), FnArgs::parser(alloc)),
-            |(ident, args)| PrefixAtom::Function(FunctionAtom::MethodCall { name: ident, args }),
-        ),
-    )(input)
 }
 
 #[cfg(test)]
@@ -255,10 +187,12 @@ mod tests {
     use super::PrefixExpression;
     use crate::{
         expressions::{
+            strings::ConstantString,
             tables::TableConstructor,
             Expression,
         },
         final_parser,
+        identifiers::Ident,
         list::{
             List,
             ListNode,
@@ -273,7 +207,7 @@ mod tests {
             VarPrefixExpression,
         },
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -281,16 +215,16 @@ mod tests {
         let src = "a.b.c";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::Variable(VarPrefixExpression::TableAccess {
-                head: HeadAtom::Name("a".into()),
-                middle: List::new(&mut ListNode::new(PrefixAtom::Var(VarAtom::Name(
-                    "b".into()
-                )))),
-                last: &VarAtom::Name("c".into())
+                head: HeadAtom::Name(Ident(0)),
+                middle: List::new(&mut ListNode::new(PrefixAtom::Var(VarAtom::Name(Ident(1))))),
+                last: &VarAtom::Name(Ident(2))
             })
         );
 
@@ -302,18 +236,18 @@ mod tests {
         let src = "a[b][c]";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::Variable(VarPrefixExpression::TableAccess {
-                head: HeadAtom::Name("a".into()),
+                head: HeadAtom::Name(Ident(0)),
                 middle: List::new(&mut ListNode::new(PrefixAtom::Var(VarAtom::IndexOp(
-                    Expression::Variable(&VarPrefixExpression::Name("b".into()))
+                    Expression::Variable(&VarPrefixExpression::Name(Ident(1)))
                 ))),),
-                last: &VarAtom::IndexOp(Expression::Variable(&VarPrefixExpression::Name(
-                    "c".into()
-                ))),
+                last: &VarAtom::IndexOp(Expression::Variable(&VarPrefixExpression::Name(Ident(2)))),
             })
         );
 
@@ -325,21 +259,21 @@ mod tests {
         let src = "a[b].c[d]";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::Variable(VarPrefixExpression::TableAccess {
-                head: HeadAtom::Name("a".into()),
+                head: HeadAtom::Name(Ident(0)),
                 middle: List::from_slice(&mut [
                     ListNode::new(PrefixAtom::Var(VarAtom::IndexOp(Expression::Variable(
-                        &VarPrefixExpression::Name("b".into())
+                        &VarPrefixExpression::Name(Ident(1))
                     )))),
-                    ListNode::new(PrefixAtom::Var(VarAtom::Name("c".into()))),
+                    ListNode::new(PrefixAtom::Var(VarAtom::Name(Ident(2)))),
                 ]),
-                last: &VarAtom::IndexOp(Expression::Variable(&VarPrefixExpression::Name(
-                    "d".into()
-                ))),
+                last: &VarAtom::IndexOp(Expression::Variable(&VarPrefixExpression::Name(Ident(3)))),
             })
         );
 
@@ -351,12 +285,14 @@ mod tests {
         let src = "(a)";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::Parenthesized(&Expression::Variable(&VarPrefixExpression::Name(
-                "a".into()
+                Ident(0)
             )))
         );
 
@@ -368,16 +304,18 @@ mod tests {
         let src = "(a).b";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::Variable(VarPrefixExpression::TableAccess {
                 head: HeadAtom::Parenthesized(&Expression::Variable(&VarPrefixExpression::Name(
-                    "a".into()
+                    Ident(0)
                 ))),
                 middle: List::default(),
-                last: &VarAtom::Name("b".into()),
+                last: &VarAtom::Name(Ident(1)),
             })
         );
 
@@ -389,18 +327,18 @@ mod tests {
         let src = "(a)[b]";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::Variable(VarPrefixExpression::TableAccess {
                 head: HeadAtom::Parenthesized(&Expression::Variable(&VarPrefixExpression::Name(
-                    "a".into()
+                    Ident(0)
                 ))),
                 middle: List::default(),
-                last: &VarAtom::IndexOp(Expression::Variable(&VarPrefixExpression::Name(
-                    "b".into()
-                ))),
+                last: &VarAtom::IndexOp(Expression::Variable(&VarPrefixExpression::Name(Ident(1)))),
             })
         );
 
@@ -412,12 +350,14 @@ mod tests {
         let src = "a()";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::FnCall(FnCallPrefixExpression::Call {
-                head: HeadAtom::Name("a".into()),
+                head: HeadAtom::Name(Ident(0)),
                 args: FunctionAtom::Call(FnArgs::Expressions(Default::default()))
             })
         );
@@ -430,12 +370,14 @@ mod tests {
         let src = "a{}";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::FnCall(FnCallPrefixExpression::Call {
-                head: HeadAtom::Name("a".into()),
+                head: HeadAtom::Name(Ident(0)),
                 args: FunctionAtom::Call(FnArgs::TableConstructor(TableConstructor {
                     fields: Default::default(),
                 }))
@@ -450,13 +392,15 @@ mod tests {
         let src = "a\"b\"";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::FnCall(FnCallPrefixExpression::Call {
-                head: HeadAtom::Name("a".into()),
-                args: FunctionAtom::Call(FnArgs::String("b".into()))
+                head: HeadAtom::Name(Ident(0)),
+                args: FunctionAtom::Call(FnArgs::String(ConstantString(0)))
             })
         );
 
@@ -468,14 +412,16 @@ mod tests {
         let src = "a:foo()";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::FnCall(FnCallPrefixExpression::Call {
-                head: HeadAtom::Name("a".into()),
+                head: HeadAtom::Name(Ident(0)),
                 args: FunctionAtom::MethodCall {
-                    name: "foo".into(),
+                    name: Ident(1),
                     args: FnArgs::Expressions(Default::default())
                 }
             })
@@ -489,14 +435,16 @@ mod tests {
         let src = "a:foo{}";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::FnCall(FnCallPrefixExpression::Call {
-                head: HeadAtom::Name("a".into()),
+                head: HeadAtom::Name(Ident(0)),
                 args: FunctionAtom::MethodCall {
-                    name: "foo".into(),
+                    name: Ident(1),
                     args: FnArgs::TableConstructor(TableConstructor {
                         fields: Default::default(),
                     })
@@ -512,15 +460,17 @@ mod tests {
         let src = "a:foo\"b\"";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => PrefixExpression::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => PrefixExpression::parse)?;
 
         assert_eq!(
             result,
             PrefixExpression::FnCall(FnCallPrefixExpression::Call {
-                head: HeadAtom::Name("a".into()),
+                head: HeadAtom::Name(Ident(0)),
                 args: FunctionAtom::MethodCall {
-                    name: "foo".into(),
-                    args: FnArgs::String("b".into())
+                    name: Ident(1),
+                    args: FnArgs::String(ConstantString(0))
                 }
             })
         );

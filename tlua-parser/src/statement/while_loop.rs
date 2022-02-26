@@ -1,25 +1,12 @@
-use nom::{
-    combinator::{
-        cut,
-        map,
-        value,
-    },
-    sequence::{
-        delimited,
-        pair,
-        tuple,
-    },
-};
-
 use crate::{
     block::Block,
     expressions::Expression,
-    identifiers::keyword,
-    lua_whitespace0,
-    lua_whitespace1,
+    lexer::Token,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    ParseErrorExt,
+    PeekableLexer,
+    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -29,26 +16,18 @@ pub struct WhileLoop<'chunk> {
 }
 
 impl<'chunk> WhileLoop<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, WhileLoop<'chunk>> {
-        |input| {
-            delimited(
-                pair(keyword("while"), lua_whitespace0),
-                map(
-                    cut(tuple((
-                        Expression::parser(alloc),
-                        value(
-                            (),
-                            delimited(lua_whitespace0, keyword("do"), lua_whitespace1),
-                        ),
-                        Block::parser(alloc),
-                    ))),
-                    |(cond, _, body)| Self { cond, body },
-                ),
-                pair(lua_whitespace0, keyword("end")),
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        lexer.next_if_eq(Token::KWwhile).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWwhile))
+        })?;
+
+        let cond = Expression::parse(lexer, alloc).mark_unrecoverable()?;
+        let body = Block::parse_do(lexer, alloc).mark_unrecoverable()?;
+
+        Ok(Self { cond, body })
     }
 }
 
@@ -61,7 +40,7 @@ mod tests {
         expressions::Expression,
         final_parser,
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -69,7 +48,8 @@ mod tests {
         let src = "while true do end";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => WhileLoop::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => WhileLoop::parse)?;
 
         assert_eq!(
             result,

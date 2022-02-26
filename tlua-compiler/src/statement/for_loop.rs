@@ -1,6 +1,7 @@
 use scopeguard::guard_on_success;
 use tlua_bytecode::{
     opcodes,
+    Constant,
     ImmediateRegister,
     OpError,
     PrimitiveType,
@@ -13,7 +14,6 @@ use crate::{
         InitRegister,
         JumpTemplate,
     },
-    constant::Constant,
     CompileError,
     CompileExpression,
     CompileStatement,

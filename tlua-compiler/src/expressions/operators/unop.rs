@@ -5,15 +5,18 @@ use tlua_bytecode::{
         UnaryBitNot,
         UnaryMinus,
     },
+    Constant,
     ImmediateRegister,
     OpError,
     Truthy,
 };
-use tlua_parser::expressions::operator::*;
+use tlua_parser::{
+    expressions::operator::*,
+    StringTable,
+};
 
 use crate::{
     compiler::unasm::UnasmOp,
-    constant::Constant,
     CompileError,
     CompileExpression,
     NodeOutput,
@@ -28,10 +31,10 @@ pub(crate) fn write_unary_op<Op, Operand, ConstEval>(
 where
     Op: From<(ImmediateRegister, ImmediateRegister)> + Into<UnasmOp>,
     Operand: CompileExpression,
-    ConstEval: FnOnce(Constant) -> Result<Constant, OpError>,
+    ConstEval: FnOnce(&StringTable, Constant) -> Result<Constant, OpError>,
 {
     match operand.compile(scope)? {
-        NodeOutput::Constant(c) => match consteval(c) {
+        NodeOutput::Constant(c) => match consteval(scope.string_table(), c) {
             Ok(val) => Ok(NodeOutput::Constant(val)),
             Err(err) => Ok(NodeOutput::Err(scope.write_raise(err))),
         },
@@ -46,7 +49,7 @@ where
 
 impl CompileExpression for Negation<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        write_unary_op::<UnaryMinus, _, _>(scope, &self.0, |v| match v {
+        write_unary_op::<UnaryMinus, _, _>(scope, &self.0, |_, v| match v {
             Constant::Float(f) => Ok((-f).into()),
             Constant::Integer(i) => Ok((-i).into()),
             _ => Err(tlua_bytecode::OpError::InvalidType { op: "negation" }),
@@ -56,7 +59,7 @@ impl CompileExpression for Negation<'_> {
 
 impl CompileExpression for BitNot<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        write_unary_op::<UnaryBitNot, _, _>(scope, &self.0, |v| match v {
+        write_unary_op::<UnaryBitNot, _, _>(scope, &self.0, |_, v| match v {
             Constant::Float(f) => f64inbounds(f).map(|i| (!i).into()),
             Constant::Integer(i) => Ok((!i).into()),
             _ => Err(tlua_bytecode::OpError::InvalidType { op: "bitwise not" }),
@@ -66,16 +69,19 @@ impl CompileExpression for BitNot<'_> {
 
 impl CompileExpression for Not<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        write_unary_op::<opcodes::Not, _, _>(scope, &self.0, |v| Ok((!v.as_bool()).into()))
+        write_unary_op::<opcodes::Not, _, _>(scope, &self.0, |_, v| Ok((!v.as_bool()).into()))
     }
 }
 
 impl CompileExpression for Length<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        write_unary_op::<opcodes::Length, _, _>(scope, &self.0, |v| match v {
-            Constant::String(s) => i64::try_from(s.len())
-                .map(Constant::from)
-                .map_err(|_| tlua_bytecode::OpError::StringLengthOutOfBounds),
+        write_unary_op::<opcodes::Length, _, _>(scope, &self.0, |strings, v| match v {
+            Constant::String(s) => {
+                let s = strings.get_string(s).expect("Valid string id");
+                i64::try_from(s.len())
+                    .map(Constant::from)
+                    .map_err(|_| tlua_bytecode::OpError::StringLengthOutOfBounds)
+            }
             _ => Err(tlua_bytecode::OpError::InvalidType { op: "length" }),
         })
     }

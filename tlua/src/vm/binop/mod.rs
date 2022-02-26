@@ -14,9 +14,9 @@ use tlua_bytecode::{
         Concat,
     },
     ImmediateRegister,
-    LuaString,
     OpError,
 };
+use tlua_strings::LuaString;
 
 use crate::vm::runtime::{
     execution_context::Immediates,

@@ -1,34 +1,13 @@
-use nom::{
-    branch::alt,
-    character::complete::char as token,
-    combinator::{
-        map,
-        opt,
-        success,
-        value,
-    },
-    sequence::{
-        delimited,
-        pair,
-        preceded,
-        terminated,
-    },
-};
-use nom_supreme::tag::complete::tag;
-
 use crate::{
     block::Block,
-    build_separated_list1,
-    identifiers::{
-        build_identifier_list1,
-        keyword,
-        Ident,
-    },
+    identifiers::Ident,
+    lexer::Token,
     list::List,
-    lua_whitespace0,
+    parse_separated_list1,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    PeekableLexer,
+    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -53,90 +32,68 @@ pub struct FnName<'chunk> {
 }
 
 impl<'chunk> FnParams<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnParams<'chunk>> {
-        |input| {
-            delimited(
-                pair(token('('), lua_whitespace0),
-                map(
-                    opt(alt((
-                        map(
-                            pair(
-                                build_identifier_list1(alloc),
-                                alt((
-                                    value(
-                                        true,
-                                        pair(
-                                            preceded(lua_whitespace0, token(',')),
-                                            preceded(lua_whitespace0, tag("...")),
-                                        ),
-                                    ),
-                                    success(false),
-                                )),
-                            ),
-                            |(named_params, varargs)| Self {
-                                named_params,
-                                varargs,
-                            },
-                        ),
-                        map(value((), tag("...")), |_| Self {
-                            named_params: Default::default(),
-                            varargs: true,
-                        }),
-                    ))),
-                    |maybe_params| {
-                        maybe_params.unwrap_or_else(|| Self {
-                            named_params: Default::default(),
-                            varargs: false,
-                        })
-                    },
-                ),
-                pair(lua_whitespace0, token(')')),
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        lexer.next_if_eq(Token::LParen).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::LParen))
+        })?;
+
+        let named_params =
+            parse_separated_list1(lexer, alloc, Ident::parse, |token| *token == Token::Comma)?;
+
+        let varargs = if lexer.next_if_eq(Token::Comma).is_some() {
+            lexer.next_if_eq(Token::Ellipses).ok_or_else(|| {
+                ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedIdentOrVaArgs)
+            })?;
+            true
+        } else {
+            false
+        };
+
+        lexer.next_if_eq(Token::RParen).ok_or_else(|| {
+            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::RParen))
+        })?;
+
+        Ok(Self {
+            named_params,
+            varargs,
+        })
     }
 }
 
 impl<'chunk> FnBody<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnBody<'chunk>> {
-        |input| {
-            map(
-                terminated(
-                    pair(
-                        FnParams::parser(alloc),
-                        preceded(lua_whitespace0, Block::parser(alloc)),
-                    ),
-                    pair(lua_whitespace0, keyword("end")),
-                ),
-                |(params, body)| Self { params, body },
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        let params = FnParams::parse(lexer, alloc)?;
+
+        let body = Block::parse(lexer, alloc)?;
+        lexer.next_if_eq(Token::KWend).ok_or_else(|| {
+            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWend))
+        })?;
+
+        Ok(Self { params, body })
     }
 }
 
 impl<'chunk> FnName<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, FnName<'chunk>> {
-        |input| {
-            map(
-                pair(
-                    build_separated_list1(
-                        alloc,
-                        Ident::parser(alloc),
-                        delimited(lua_whitespace0, token('.'), lua_whitespace0),
-                    ),
-                    opt(preceded(
-                        pair(lua_whitespace0, token(':')),
-                        Ident::parser(alloc),
-                    )),
-                ),
-                |(path, method)| Self { path, method },
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        let path =
+            parse_separated_list1(lexer, alloc, Ident::parse, |token| *token == Token::Period)?;
+
+        let method = if lexer.next_if_eq(Token::Colon).is_some() {
+            Some(Ident::parse(lexer, alloc)?)
+        } else {
+            None
+        };
+
+        Ok(Self { path, method })
     }
 }
 
@@ -158,12 +115,13 @@ mod tests {
             Expression,
         },
         final_parser,
+        identifiers::Ident,
         list::{
             List,
             ListNode,
         },
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -171,7 +129,8 @@ mod tests {
         let src = "()";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => FnParams::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnParams::parse)?;
 
         assert_eq!(
             result,
@@ -189,12 +148,13 @@ mod tests {
         let src = "(a)";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => FnParams::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnParams::parse)?;
 
         assert_eq!(
             result,
             FnParams {
-                named_params: List::new(&mut ListNode::new("a".into())),
+                named_params: List::new(&mut ListNode::new(Ident(0))),
                 varargs: false,
             }
         );
@@ -207,7 +167,8 @@ mod tests {
         let src = "(...)";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => FnParams::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnParams::parse)?;
 
         assert_eq!(
             result,
@@ -225,15 +186,16 @@ mod tests {
         let src = "(a,b, c, ...)";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => FnParams::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnParams::parse)?;
 
         assert_eq!(
             result,
             FnParams {
                 named_params: List::from_slice(&mut [
-                    ListNode::new("a".into()),
-                    ListNode::new("b".into()),
-                    ListNode::new("c".into())
+                    ListNode::new(Ident(0)),
+                    ListNode::new(Ident(1)),
+                    ListNode::new(Ident(2))
                 ]),
                 varargs: true,
             }
@@ -247,7 +209,8 @@ mod tests {
         let src = "() return 10 end";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => FnBody::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => FnBody::parse)?;
 
         assert_eq!(
             result,

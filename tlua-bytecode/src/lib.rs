@@ -18,8 +18,6 @@ pub use register::{
     MappedRegister,
     Register,
 };
-pub use string::LuaString;
-use tlua_parser::string::ConstantString;
 
 #[derive(Debug, Clone, Copy, PartialEq, Error)]
 pub enum ByteCodeError {
@@ -90,12 +88,6 @@ pub trait NumLike {
 
 pub trait Truthy {
     fn as_bool(&self) -> bool;
-}
-
-impl StringLike for ConstantString {
-    fn as_lua_string_bytes(&self) -> &[u8] {
-        self.data().as_slice()
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

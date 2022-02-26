@@ -1,23 +1,11 @@
-use nom::{
-    character::complete::char as token,
-    combinator::{
-        map,
-        opt,
-    },
-    sequence::delimited,
-};
-
 use crate::{
-    expressions::{
-        build_expression_list0,
-        Expression,
-    },
-    identifiers::keyword,
+    expressions::Expression,
+    lexer::Token,
     list::List,
-    lua_whitespace0,
     ASTAllocator,
-    ParseResult,
-    Span,
+    ParseError,
+    PeekableLexer,
+    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -26,23 +14,18 @@ pub struct RetStatement<'chunk> {
 }
 
 impl<'chunk> RetStatement<'chunk> {
-    pub(crate) fn parser(
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> impl for<'src> FnMut(Span<'src>) -> ParseResult<'src, RetStatement<'chunk>> {
-        |input| {
-            map(
-                delimited(
-                    keyword("return"),
-                    delimited(
-                        lua_whitespace0,
-                        build_expression_list0(alloc),
-                        lua_whitespace0,
-                    ),
-                    opt(token(';')),
-                ),
-                |expressions| Self { expressions },
-            )(input)
-        }
+    ) -> Result<Self, ParseError> {
+        lexer.next_if_eq(Token::KWreturn).ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWreturn))
+        })?;
+
+        let expressions = Expression::parse_list0(lexer, alloc)?;
+        lexer.next_if_eq(Token::Semicolon);
+
+        Ok(Self { expressions })
     }
 }
 
@@ -62,7 +45,7 @@ mod tests {
             ListNode,
         },
         ASTAllocator,
-        Span,
+        StringTable,
     };
 
     #[test]
@@ -70,13 +53,14 @@ mod tests {
         let src = "return";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => RetStatement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
 
         assert_eq!(
             result,
-            RetStatement {
+            (RetStatement {
                 expressions: Default::default()
-            }
+            })
         );
 
         Ok(())
@@ -87,13 +71,14 @@ mod tests {
         let src = "return;";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => RetStatement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
 
         assert_eq!(
             result,
-            RetStatement {
+            (RetStatement {
                 expressions: Default::default()
-            }
+            })
         );
 
         Ok(())
@@ -104,13 +89,14 @@ mod tests {
         let src = "return 10";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => RetStatement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
 
         assert_eq!(
             result,
-            RetStatement {
+            (RetStatement {
                 expressions: List::new(&mut ListNode::new(Expression::Number(Number::Integer(10))))
-            }
+            })
         );
 
         Ok(())
@@ -121,13 +107,14 @@ mod tests {
         let src = "return 10;";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => RetStatement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
 
         assert_eq!(
             result,
-            RetStatement {
+            (RetStatement {
                 expressions: List::new(&mut ListNode::new(Expression::Number(Number::Integer(10))))
-            }
+            })
         );
 
         Ok(())
@@ -138,16 +125,17 @@ mod tests {
         let src = "return 10, 11";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => RetStatement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
 
         assert_eq!(
             result,
-            RetStatement {
+            (RetStatement {
                 expressions: List::from_slice(&mut [
                     ListNode::new(Expression::Number(Number::Integer(10))),
                     ListNode::new(Expression::Number(Number::Integer(11)))
                 ])
-            }
+            })
         );
 
         Ok(())
@@ -158,15 +146,16 @@ mod tests {
         let src = "return(10)";
 
         let alloc = ASTAllocator::default();
-        let result = final_parser!(Span::new(src.as_bytes()) => RetStatement::parser(&alloc))?;
+        let mut strings = StringTable::default();
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
 
         assert_eq!(
             result,
-            RetStatement {
+            (RetStatement {
                 expressions: List::from_slice(&mut [ListNode::new(Expression::Parenthesized(
                     &Expression::Number(Number::Integer(10))
                 )),])
-            }
+            })
         );
 
         Ok(())

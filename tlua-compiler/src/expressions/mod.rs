@@ -1,14 +1,12 @@
-use tlua_parser::{
-    expressions::{
-        number::Number,
-        Nil,
-        VarArgs,
-    },
-    string::ConstantString,
+use tlua_bytecode::Constant;
+use tlua_parser::expressions::{
+    number::Number,
+    strings::ConstantString,
+    Nil,
+    VarArgs,
 };
 
 use crate::{
-    constant::Constant,
     CompileExpression,
     NodeOutput,
     Scope,

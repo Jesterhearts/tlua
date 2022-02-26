@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use tlua_compiler::Chunk;
-use tlua_parser::identifiers::Ident;
+use tlua_strings::LuaString;
 use tracing_rc::rc::collect_full;
 
 use crate::{
@@ -25,7 +25,7 @@ pub use self::value::{
 
 #[derive(Debug, Default)]
 pub struct Runtime {
-    globals: HashMap<Ident, Value>,
+    globals: HashMap<LuaString, Value>,
 }
 
 impl Runtime {
@@ -37,7 +37,7 @@ impl Runtime {
 
     /// Reads the value associated with a global variable.
     pub fn load_global(&self, name: &str) -> Option<&Value> {
-        self.globals.get(&name.into())
+        self.globals.get(name)
     }
 
     /// Execute the provided chunk & run it until it completes or returns an
@@ -46,7 +46,11 @@ impl Runtime {
         let global_scope = Scope::new(chunk.globals_map.len());
 
         for (ident, value) in self.globals.iter() {
-            if let Some(register) = chunk.globals_map.get(ident) {
+            if let Some(register) = chunk
+                .strings
+                .lookup_ident(ident)
+                .and_then(|ident| chunk.globals_map.get(&ident))
+            {
                 global_scope.registers[*register].replace(value.clone());
             }
         }
@@ -63,7 +67,10 @@ impl Runtime {
         // ordered (e.g. with indexmap).
         let values = global_scope.into_values();
         for (&ident, &idx) in chunk.globals_map.iter() {
-            self.globals.insert(ident, values[idx].borrow().clone());
+            self.globals.insert(
+                chunk.strings.get_ident(ident).expect("Valid ident").clone(),
+                values[idx].borrow().clone(),
+            );
         }
 
         collect_full();

@@ -4,12 +4,12 @@ use tlua_bytecode::{
     ImmediateRegister,
     OpError,
 };
-use tlua_parser::{
-    expressions::tables::{
+use tlua_parser::expressions::{
+    strings::ConstantString,
+    tables::{
         Field,
         TableConstructor,
     },
-    string::ConstantString,
 };
 
 use crate::{

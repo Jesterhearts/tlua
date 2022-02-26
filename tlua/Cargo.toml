@@ -21,6 +21,9 @@ path = "../tlua-compiler"
 [dependencies.tlua-parser]
 path = "../tlua-parser"
 
+[dependencies.tlua-strings]
+path = "../tlua-strings"
+
 [dev-dependencies]
 anyhow = '1.0.53'
 indoc = '1.0.3'
