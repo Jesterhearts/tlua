@@ -26,7 +26,13 @@ impl ::std::fmt::Display for LuaString {
 
 impl ::std::borrow::Borrow<bstr::BStr> for LuaString {
     fn borrow(&self) -> &bstr::BStr {
-        self.0.borrow()
+        self.0.as_bstr()
+    }
+}
+
+impl ::std::borrow::Borrow<[u8]> for LuaString {
+    fn borrow(&self) -> &[u8] {
+        self.0.as_bytes()
     }
 }
 

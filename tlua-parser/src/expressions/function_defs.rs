@@ -88,11 +88,7 @@ impl<'chunk> FnBody<'chunk> {
     ) -> Result<Self, ParseError> {
         let params = FnParams::parse(lexer, alloc)?;
 
-        let body = Block::parse(lexer, alloc)?;
-        lexer.next_if_eq(Token::KWend).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWend))
-        })?;
-
+        let body = Block::parse_with_end(lexer, alloc).mark_unrecoverable()?;
         Ok(Self { params, body })
     }
 }

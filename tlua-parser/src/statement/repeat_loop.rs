@@ -24,14 +24,24 @@ impl<'chunk> RepeatLoop<'chunk> {
             ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWrepeat))
         })?;
 
-        let body = Block::parse(lexer, alloc).mark_unrecoverable()?;
-        lexer.next_if_eq(Token::KWuntil).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWuntil))
+        let (body, _) = Block::parse(lexer, alloc).alt_chain(|| {
+            lexer
+                .next_if_eq(Token::KWuntil)
+                .ok_or_else(|| {
+                    ParseError::unrecoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::KWuntil),
+                    )
+                })
+                .map(|_| ())
         })?;
 
         let terminator = Expression::parse(lexer, alloc).mark_unrecoverable()?;
 
-        Ok(Self { body, terminator })
+        Ok(Self {
+            body: body.unwrap_or_default(),
+            terminator,
+        })
     }
 }
 

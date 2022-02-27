@@ -247,5 +247,5 @@ pub fn compile(src: &str) -> Result<Chunk, CompileError> {
 
     let ast = parse_chunk(src, &alloc, &mut strings).map_err(CompileError::ParseError)?;
 
-    Compiler::default().compile_ast(ast)
+    Compiler::new(strings).compile_ast(ast)
 }

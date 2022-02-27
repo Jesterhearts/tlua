@@ -13,6 +13,7 @@ use tlua_bytecode::{
 use tlua_parser::{
     block::Block,
     identifiers::Ident,
+    StringTable,
 };
 
 use crate::{
@@ -46,12 +47,18 @@ pub(crate) enum LabelId {
     Loop { id: usize },
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Compiler {
     root: RootScope,
 }
 
 impl Compiler {
+    pub(crate) fn new(strings: StringTable) -> Self {
+        Self {
+            root: RootScope::new(strings),
+        }
+    }
+
     pub(crate) fn compile_ast(mut self, ast: Block) -> Result<Chunk, CompileError> {
         let main = {
             let mut main = self.root.start_main();

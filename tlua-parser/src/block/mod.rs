@@ -1,7 +1,7 @@
 use crate::{
     lexer::Token,
     list::List,
-    parse_list0,
+    parse_list1,
     statement::Statement,
     ASTAllocator,
     ParseError,
@@ -24,10 +24,18 @@ impl<'chunk> Block<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        let statements = parse_list0(lexer, alloc, Statement::parse)?;
-        let ret = RetStatement::parse(lexer, alloc).recover()?;
-
-        Ok(Self { statements, ret })
+        parse_list1(lexer, alloc, Statement::parse)
+            .and_then(|statements| {
+                RetStatement::parse(lexer, alloc)
+                    .recover()
+                    .map(|ret| Self { statements, ret })
+            })
+            .recover_with(|| {
+                RetStatement::parse(lexer, alloc).map(|ret| Self {
+                    statements: Default::default(),
+                    ret: Some(ret),
+                })
+            })
     }
 
     pub(crate) fn parse_do(
@@ -37,12 +45,24 @@ impl<'chunk> Block<'chunk> {
         lexer.next_if_eq(Token::KWdo).ok_or_else(|| {
             ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWdo))
         })?;
-        let body = Self::parse(lexer, alloc).mark_unrecoverable()?;
-        lexer.next_if_eq(Token::KWend).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWend))
-        })?;
 
-        Ok(body)
+        Self::parse_with_end(lexer, alloc)
+    }
+
+    pub(crate) fn parse_with_end(
+        lexer: &mut PeekableLexer,
+        alloc: &'chunk ASTAllocator,
+    ) -> Result<Self, ParseError> {
+        Self::parse(lexer, alloc)
+            .alt_chain(|| {
+                lexer.next_if_eq(Token::KWend).ok_or_else(|| {
+                    ParseError::unrecoverable_from_here(
+                        lexer,
+                        SyntaxError::ExpectedToken(Token::KWend),
+                    )
+                })
+            })
+            .map(|(block, _)| block.unwrap_or_default())
     }
 }
 
@@ -68,11 +88,11 @@ mod tests {
 
     #[test]
     pub fn parses_empty_body() -> anyhow::Result<()> {
-        let src = "";
+        let src = "do end";
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Block::parse)?;
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Block::parse_do)?;
 
         assert_eq!(
             result,

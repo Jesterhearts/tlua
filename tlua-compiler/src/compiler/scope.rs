@@ -44,7 +44,7 @@ const GLOBAL_SCOPE: u16 = 0;
 
 /// Manages tracking the maping from identifier to register for a particular
 /// scope.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct RootScope {
     strings: StringTable,
 
@@ -64,6 +64,16 @@ pub(super) struct RootScope {
 }
 
 impl RootScope {
+    pub(super) fn new(strings: StringTable) -> Self {
+        Self {
+            strings,
+            globals: Default::default(),
+            all_locals: Default::default(),
+            current_scope_id: 0,
+            functions: Default::default(),
+        }
+    }
+
     pub(super) fn start_main(&mut self) -> FunctionScope {
         let scope_id = self.next_scope_id();
         let scope_depth = NonZeroUsize::new(usize::from(GLOBAL_SCOPE + 1)).unwrap();

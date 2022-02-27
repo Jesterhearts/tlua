@@ -62,7 +62,7 @@ impl ConstantString {
                  recoverable,
              }| ParseError {
                 error,
-                location: location.map(|loc| loc.translate(token.span)),
+                location: location.translate(token.span),
                 recoverable,
             },
         )?;
@@ -145,7 +145,7 @@ fn internal_parse(
             StringToken::Error | StringToken::EndOfLine => {
                 return Err(ParseError {
                     error: SyntaxError::UnclosedString,
-                    location: Some(string_lexer.span().into()),
+                    location: string_lexer.span().into(),
                     recoverable: false,
                 });
             }
@@ -186,7 +186,7 @@ fn internal_parse(
                         Err(_) => {
                             return Err(ParseError {
                                 error: SyntaxError::DecimalEscapeTooLarge,
-                                location: Some(string_lexer.span().into()),
+                                location: string_lexer.span().into(),
                                 recoverable: false,
                             });
                         }
@@ -198,7 +198,7 @@ fn internal_parse(
             StringToken::UnclosedUnicodeEscape => {
                 return Err(ParseError {
                     error: SyntaxError::UnclosedUnicodeEscapeSequence,
-                    location: Some(string_lexer.span().into()),
+                    location: string_lexer.span().into(),
                     recoverable: false,
                 });
             }
@@ -211,7 +211,7 @@ fn internal_parse(
                     Err(_) => {
                         return Err(ParseError {
                             error: SyntaxError::Utf8ValueTooLarge,
-                            location: Some(string_lexer.span().into()),
+                            location: string_lexer.span().into(),
                             recoverable: false,
                         });
                     }
@@ -223,7 +223,7 @@ fn internal_parse(
             StringToken::UnknownEscapeSequence => {
                 return Err(ParseError {
                     error: SyntaxError::InvalidEscapeSequence,
-                    location: Some(string_lexer.span().into()),
+                    location: string_lexer.span().into(),
                     recoverable: false,
                 });
             }
@@ -263,7 +263,7 @@ fn internal_parse(
 
     Err(ParseError {
         error: SyntaxError::UnclosedString,
-        location: Some(string_lexer.span().into()),
+        location: string_lexer.span().into(),
         recoverable: false,
     })
 }

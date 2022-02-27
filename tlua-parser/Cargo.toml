@@ -28,6 +28,10 @@ thiserror = '1.0.30'
 version = '3.9.1'
 features = [ "collections" ]
 
+[dependencies.strum]
+version = '0.24.0'
+features = [ "derive" ]
+
 [dependencies.ariadne]
 version = '0.1.3'
 optional = true

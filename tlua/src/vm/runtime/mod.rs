@@ -37,7 +37,7 @@ impl Runtime {
 
     /// Reads the value associated with a global variable.
     pub fn load_global(&self, name: &str) -> Option<&Value> {
-        self.globals.get(name)
+        self.globals.get(name.as_bytes())
     }
 
     /// Execute the provided chunk & run it until it completes or returns an

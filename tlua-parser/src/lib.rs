@@ -6,7 +6,6 @@ use bumpalo::Bump;
 use indexmap::IndexSet;
 use logos::Lexer;
 use nom::Offset;
-use nom_supreme::error::ErrorTree;
 use thiserror::Error;
 use tlua_strings::LuaString;
 
@@ -30,9 +29,15 @@ use crate::{
 };
 
 #[derive(Debug, Error)]
-#[error("Errors parsing chunk: {errors:#}")]
+#[error("Errors parsing chunk: {error:#}")]
 pub struct ChunkParseError {
-    pub errors: ErrorTree<SourceSpan>,
+    pub error: ParseError,
+}
+
+impl From<ParseError> for ChunkParseError {
+    fn from(error: ParseError) -> Self {
+        ChunkParseError { error }
+    }
 }
 
 #[cfg(feature = "rendered-errors")]
@@ -43,54 +48,13 @@ impl ChunkParseError {
             Report,
             ReportKind,
         };
-        use indexmap::indexset;
 
-        let mut labels = indexset! {};
-        Self::build_tree(&mut labels, &self.errors);
+        let (range, label) = (self.error.location, self.error.error);
 
-        let mut builder = Report::build(
-            ReportKind::Error,
-            (),
-            labels.first().map(|(span, _)| span.start).unwrap_or(0),
-        )
-        .with_message("Failed to parse LUA");
-
-        for (range, label) in labels {
-            builder = builder.with_label(Label::new(range.start..range.end).with_message(label));
-        }
-
-        builder.finish()
-    }
-
-    fn build_tree(
-        tree: &mut indexmap::IndexSet<(SourceSpan, String)>,
-        err: &ErrorTree<SourceSpan>,
-    ) {
-        use nom_supreme::error::BaseErrorKind;
-
-        match err {
-            ErrorTree::Base { location, kind } => {
-                let label = match kind {
-                    BaseErrorKind::External(e) => e.to_string(),
-                    k => k.to_string(),
-                };
-                tree.insert((*location, label));
-            }
-            ErrorTree::Stack { base, contexts } => {
-                tree.extend(
-                    contexts
-                        .iter()
-                        .rev()
-                        .map(|(span, context)| (*span, context.to_string())),
-                );
-                Self::build_tree(tree, base);
-            }
-            ErrorTree::Alt(cases) => {
-                for case in cases {
-                    Self::build_tree(tree, case);
-                }
-            }
-        }
+        Report::build(ReportKind::Error, (), range.start)
+            .with_message("Failed to parse LUA")
+            .with_label(Label::new(range.start..range.end).with_message(label))
+            .finish()
     }
 }
 
@@ -133,17 +97,13 @@ impl SourceSpan {
 #[derive(Debug, Clone, Copy, Error, PartialEq)]
 pub struct ParseError {
     error: SyntaxError,
-    location: Option<SourceSpan>,
+    location: SourceSpan,
     recoverable: bool,
 }
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(location) = self.location {
-            f.write_fmt(format_args!("Error: {} at {}", self.error, location))
-        } else {
-            f.write_fmt(format_args!("Error: {} at eof", self.error))
-        }
+        f.write_fmt(format_args!("Error: {} at {}", self.error, self.location))
     }
 }
 
@@ -151,7 +111,7 @@ impl ParseError {
     pub(crate) fn recoverable_from_here(lexer: &mut PeekableLexer, err: SyntaxError) -> Self {
         Self {
             error: err,
-            location: lexer.peek().map(SpannedToken::into_span),
+            location: lexer.current_span(),
             recoverable: true,
         }
     }
@@ -159,8 +119,34 @@ impl ParseError {
     pub(crate) fn unrecoverable_from_here(lexer: &mut PeekableLexer, err: SyntaxError) -> Self {
         Self {
             error: err,
-            location: lexer.peek().map(SpannedToken::into_span),
+            location: lexer.current_span(),
             recoverable: false,
+        }
+    }
+
+    pub(crate) fn recover_with<T, F: FnOnce() -> Result<T, Self>>(
+        self,
+        recover: F,
+    ) -> Result<T, Self> {
+        if self.recoverable {
+            let res = recover();
+            res.map_err(|e_new| {
+                if !e_new.recoverable || e_new.location.end > self.location.end {
+                    e_new
+                } else {
+                    self
+                }
+            })
+        } else {
+            Err(self)
+        }
+    }
+
+    pub(crate) fn map_recoverable_err<F: FnOnce() -> Self>(self, err: F) -> Self {
+        if self.recoverable {
+            err()
+        } else {
+            self
         }
     }
 }
@@ -186,8 +172,8 @@ impl SpannedTokenStream<'_, '_> {
         SpannedTokenStream {
             src,
             lexer: Lexer::new(src),
-            strings,
             peeked: None,
+            strings,
         }
     }
 }
@@ -206,6 +192,15 @@ impl<'src> SpannedTokenStream<'src, '_> {
             }
             None
         })
+    }
+
+    fn current_span(&mut self) -> SourceSpan {
+        self.peek()
+            .map(|tok| tok.span)
+            .unwrap_or_else(|| SourceSpan {
+                start: self.src.len(),
+                end: self.src.len(),
+            })
     }
 
     fn peek(&mut self) -> Option<SpannedToken<'src>> {
@@ -244,7 +239,8 @@ impl<'src> SpannedTokenStream<'src, '_> {
     fn reset(&mut self, token: SpannedToken<'src>) {
         self.peeked = Some(token);
         self.lexer = Lexer::new(self.src);
-        self.lexer.bump(token.span.end + 1);
+        self.lexer
+            .bump(self.src.offset(token.src) + token.src.len());
     }
 
     fn set_source_loc(&mut self, src: &'src [u8]) {
@@ -291,9 +287,9 @@ pub(crate) enum SyntaxError {
     ExpectedIdentOrVaArgs,
     #[error("invalid attribute - expected <const> or <close>")]
     InvalidAttribute,
-    #[error("Expected end of file, found: {0:?}")]
+    #[error("Expected end of file, found: {0:}")]
     ExpectedEOF(Token),
-    #[error("Expected {0:?}")]
+    #[error("Expected {0:}")]
     ExpectedToken(Token),
     #[error("Expected a string")]
     ExpectedString,
@@ -311,9 +307,13 @@ pub(crate) trait ParseErrorExt: Sized {
         recover: F,
     ) -> Result<Self::Data, Self::Error>;
 
-    fn ok_or_else<F: FnOnce() -> Self::Error>(self, err: F) -> Result<Self::Data, Self::Error> {
-        self.recover()?.ok_or_else(err)
-    }
+    #[allow(clippy::type_complexity)]
+    fn alt_chain<D, F: FnOnce() -> Result<D, Self::Error>>(
+        self,
+        next: F,
+    ) -> Result<(Option<Self::Data>, D), Self::Error>;
+
+    fn ok_or_else<F: FnOnce() -> Self::Error>(self, err: F) -> Result<Self::Data, Self::Error>;
 }
 
 impl<T> ParseErrorExt for Result<T, ParseError> {
@@ -332,13 +332,7 @@ impl<T> ParseErrorExt for Result<T, ParseError> {
     fn recover(self) -> Result<Option<Self::Data>, Self::Error> {
         match self {
             Ok(data) => Ok(Some(data)),
-            Err(e) => {
-                if e.recoverable {
-                    Ok(None)
-                } else {
-                    Err(e)
-                }
-            }
+            Err(e) => e.recover_with(|| Ok(None)),
         }
     }
 
@@ -348,14 +342,28 @@ impl<T> ParseErrorExt for Result<T, ParseError> {
         recover: F,
     ) -> Result<Self::Data, Self::Error> {
         match self {
-            Ok(data) => Ok(data),
-            Err(e) => {
-                if e.recoverable {
-                    recover()
-                } else {
-                    Err(e)
-                }
-            }
+            ok @ Ok(_) => ok,
+            Err(e) => e.recover_with(recover),
+        }
+    }
+
+    fn alt_chain<D, F: FnOnce() -> Result<D, Self::Error>>(
+        self,
+        next: F,
+    ) -> Result<(Option<Self::Data>, D), Self::Error> {
+        match self {
+            Ok(v) => match next() {
+                Ok(d) => Ok((Some(v), d)),
+                Err(e) => Err(e),
+            },
+            Err(e) => e.recover_with(next).map(|d| (None, d)),
+        }
+    }
+
+    fn ok_or_else<F: FnOnce() -> Self::Error>(self, err: F) -> Result<Self::Data, Self::Error> {
+        match self {
+            ok @ Ok(_) => ok,
+            Err(e) => Err(e.map_recoverable_err(err)),
         }
     }
 }
@@ -367,7 +375,7 @@ macro_rules! final_parser {
             None => Ok(val),
             Some(token) => Err($crate::ParseError {
                 error: $crate::SyntaxError::ExpectedEOF(token.token),
-                location: Some(token.span),
+                location: token.span,
                 recoverable: false,
             }),
         });
@@ -403,23 +411,6 @@ where
     }
 }
 
-pub(crate) fn parse_list0_split_tail<'chunk, 'src, P, O>(
-    lexer: &mut PeekableLexer,
-    alloc: &'chunk ASTAllocator,
-    parser: P,
-) -> Result<(List<'chunk, O>, Option<O>), ParseError>
-where
-    P: Fn(&mut PeekableLexer, &'chunk ASTAllocator) -> Result<O, ParseError>,
-    O: 'chunk,
-{
-    parse_list1_split_tail(lexer, alloc, parser)
-        .recover()
-        .map(|maybe_list| match maybe_list {
-            Some((list, tail)) => (list, Some(tail)),
-            None => (Default::default(), None),
-        })
-}
-
 pub(crate) fn parse_list_with_head<'chunk, 'src, P, O>(
     head: O,
     lexer: &mut PeekableLexer,
@@ -452,20 +443,6 @@ where
 {
     let head = parser(lexer, alloc)?;
     parse_list_with_head(head, lexer, alloc, parser)
-}
-
-pub(crate) fn parse_list0<'chunk, 'src, P, O>(
-    lexer: &mut PeekableLexer,
-    alloc: &'chunk ASTAllocator,
-    parser: P,
-) -> Result<List<'chunk, O>, ParseError>
-where
-    P: Fn(&mut PeekableLexer, &'chunk ASTAllocator) -> Result<O, ParseError>,
-    O: 'chunk,
-{
-    parse_list1(lexer, alloc, parser)
-        .recover()
-        .map(Option::unwrap_or_default)
 }
 
 pub(crate) fn parse_separated_list1<'chunk, 'src, P, M, O>(
@@ -518,19 +495,22 @@ pub fn parse_chunk<'src, 'strings, 'chunk>(
     alloc: &'chunk ASTAllocator,
     strings: &'strings mut StringTable,
 ) -> Result<Block<'chunk>, ChunkParseError> {
-    let _block = final_parser!((input.as_bytes(), alloc, strings) => Block::parse);
-    todo!()
+    if input.is_empty() {
+        Ok(Block::default())
+    } else {
+        final_parser!((input.as_bytes(), alloc, strings) => Block::parse)
+            .map_err(ChunkParseError::from)
+    }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct StringTable {
-    idents: IndexSet<LuaString>,
     strings: IndexSet<LuaString>,
 }
 
 impl StringTable {
     pub fn get_ident(&self, ident: Ident) -> Option<&LuaString> {
-        self.idents.get_index(ident.0)
+        self.strings.get_index(ident.0)
     }
 
     pub fn get_string(&self, string: ConstantString) -> Option<&LuaString> {
@@ -538,14 +518,14 @@ impl StringTable {
     }
 
     pub fn lookup_ident<'s>(&self, ident: impl Into<&'s BStr>) -> Option<Ident> {
-        self.idents.get_index_of(ident.into()).map(Ident)
+        self.strings.get_index_of(ident.into()).map(Ident)
     }
 
     pub fn add_ident<'s>(&mut self, ident: impl Into<&'s BStr> + Copy) -> Ident {
-        if let Some(id) = self.idents.get_index_of(ident.into()) {
+        if let Some(id) = self.strings.get_index_of(ident.into()) {
             Ident(id)
         } else {
-            Ident(self.idents.insert_full(ident.into().to_owned().into()).0)
+            Ident(self.strings.insert_full(ident.into().to_owned().into()).0)
         }
     }
 
@@ -576,6 +556,32 @@ impl Default for ASTAllocator {
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        block::Block,
+        parse_chunk,
+        ASTAllocator,
+        StringTable,
+    };
+
+    #[test]
+    pub fn parses_empty_chunk() -> anyhow::Result<()> {
+        let src = "";
+
+        let alloc = ASTAllocator::default();
+        let mut strings = StringTable::default();
+        let result = parse_chunk(src, &alloc, &mut strings)?;
+
+        assert_eq!(
+            result,
+            Block {
+                statements: Default::default(),
+                ret: None
+            }
+        );
+
+        Ok(())
+    }
+
     #[cfg(feature = "rendered-errors")]
     #[test]
     #[ignore = "just for interacting with error output"]
@@ -588,7 +594,7 @@ mod tests {
             StringTable,
         };
 
-        let src = "if true then 10";
+        let src = "if true then a ";
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let err = parse_chunk(src, &alloc, &mut strings);

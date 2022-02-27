@@ -52,17 +52,25 @@ impl<'chunk> Field<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        Ident::parse(lexer, alloc)
-            .and_then(|name| {
-                lexer.next_if_eq(Token::Equals).ok_or_else(|| {
-                    ParseError::unrecoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::Equals),
-                    )
-                })?;
+        lexer
+            .peek()
+            .filter(|token| *token == Token::Ident)
+            .ok_or_else(|| {
+                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Ident))
+            })
+            .and_then(|token| {
+                Ident::parse(lexer, alloc).and_then(|name| {
+                    lexer.next_if_eq(Token::Equals).ok_or_else(|| {
+                        lexer.reset(token);
+                        ParseError::recoverable_from_here(
+                            lexer,
+                            SyntaxError::ExpectedToken(Token::Equals),
+                        )
+                    })?;
 
-                let expression = Expression::parse(lexer, alloc)?;
-                Ok(Self::Named { name, expression })
+                    let expression = Expression::parse(lexer, alloc)?;
+                    Ok(Self::Named { name, expression })
+                })
             })
             .recover_with(|| {
                 lexer.next_if_eq(Token::LBracket).ok_or_else(|| {
@@ -139,12 +147,18 @@ mod tests {
             List,
             ListNode,
         },
+        prefix_expression::{
+            function_calls::FnArgs,
+            FnCallPrefixExpression,
+            FunctionAtom,
+            HeadAtom,
+        },
         ASTAllocator,
         StringTable,
     };
 
     #[test]
-    pub fn parses_empty_table() -> anyhow::Result<()> {
+    fn parses_empty_table() -> anyhow::Result<()> {
         let src = "{}";
 
         let alloc = ASTAllocator::default();
@@ -163,7 +177,31 @@ mod tests {
     }
 
     #[test]
-    pub fn parses_empty_table_semicolon() -> anyhow::Result<()> {
+    fn arraylike_field_prefix_expr() -> anyhow::Result<()> {
+        let src = "{ foo() }";
+
+        let alloc = ASTAllocator::default();
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::parse)?;
+
+        assert_eq!(
+            result,
+            TableConstructor {
+                fields: List::new(&mut ListNode::new(Field::Arraylike {
+                    expression: Expression::FunctionCall(&FnCallPrefixExpression::Call {
+                        head: HeadAtom::Name(Ident(0)),
+                        args: FunctionAtom::Call(FnArgs::Expressions(Default::default()))
+                    })
+                })),
+            }
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn parses_empty_table_semicolon() -> anyhow::Result<()> {
         let src = "{;}";
 
         let alloc = ASTAllocator::default();
@@ -181,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    pub fn parses_arraylike_field() -> anyhow::Result<()> {
+    fn parses_arraylike_field() -> anyhow::Result<()> {
         let src = "10";
 
         let alloc = ASTAllocator::default();
@@ -199,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    pub fn parses_named_field() -> anyhow::Result<()> {
+    fn parses_named_field() -> anyhow::Result<()> {
         let src = "a = 10";
 
         let alloc = ASTAllocator::default();
@@ -218,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    pub fn parses_index_field() -> anyhow::Result<()> {
+    fn parses_index_field() -> anyhow::Result<()> {
         let src = "[11] = 10";
 
         let alloc = ASTAllocator::default();
@@ -237,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    pub fn parses_parses_table_mixed() -> anyhow::Result<()> {
+    fn parses_parses_table_mixed() -> anyhow::Result<()> {
         let src = "{10, [11] = 12, a = 13; 14}";
 
         let alloc = ASTAllocator::default();

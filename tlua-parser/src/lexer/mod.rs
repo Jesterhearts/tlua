@@ -11,15 +11,18 @@ use logos::{
     Logos,
 };
 use nom::Offset;
+use strum::Display;
 
 use crate::SourceSpan;
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MultilineComment {
+    #[strum(to_string = "multiline comment")]
     Valid,
+    #[strum(to_string = "unclosed multiline comment")]
     Unclosed,
 }
 
@@ -36,12 +39,6 @@ pub(crate) struct SpannedToken<'src> {
     pub(crate) token: Token,
     pub(crate) span: SourceSpan,
     pub(crate) src: &'src [u8],
-}
-
-impl SpannedToken<'_> {
-    pub(crate) fn into_span(self) -> SourceSpan {
-        self.span
-    }
 }
 
 impl From<SpannedToken<'_>> for Token {
@@ -62,23 +59,28 @@ impl PartialEq<Token> for SpannedToken<'_> {
     }
 }
 
-#[derive(Logos, Debug, Clone, Copy, PartialEq)]
+#[derive(Logos, Debug, Display, Clone, Copy, PartialEq)]
 pub(crate) enum Token {
+    #[strum(to_string = "ident")]
     #[regex(br#"[_A-Za-z]\w*"#)]
     Ident,
 
+    #[strum(to_string = "'")]
     #[regex(br#"'"#)]
     SingleQuotedStringStart,
 
+    #[strum(to_string = "\"")]
     #[regex(br#"""#)]
     DoubleQuotedStringStart,
 
+    #[strum(to_string = "multiline string start")]
     #[regex(br#"\[=*\["#, |lex| lex.slice().len() - 2)]
     MultilineStringStart(usize),
 
     /// Either:
     /// [-] 0x<hex digits>.<hex digits?><power>
     /// [-] 0x<hex digits><power>
+    #[strum(to_string = "hexidecimal float")]
     #[regex(
         br#"0[xX][0-9A-Fa-f]+(:?\.[0-9A-Fa-f]*)?[pP][-+]?[0-9A-Fa-f]+"#,
         parse_hex_float
@@ -87,20 +89,25 @@ pub(crate) enum Token {
 
     /// Exactly:
     /// [-] 0x<hex digits>.<hex digits?>
+    #[strum(to_string = "hexidecimal float")]
     #[regex(br#"0[xX][0-9A-Fa-f]+\.[0-9A-Fa-f]*"#, parse_hex_float_no_power)]
     HexFloatNoPower(LexedNumber),
 
     /// Exactly
     /// [-] 0x<hex digits>
+    #[strum(to_string = "hexidecimal integer")]
     #[regex(br#"0[xX][0-9A-Fa-f]+"#, parse_hex_int)]
     HexInt(LexedNumber),
 
+    #[strum(to_string = "float")]
     #[regex(br#"\d+(:?\.\d*(:?[eE][-+]?\d+)?|[eE][-+]?\d+)"#, parse_float)]
     Float(LexedNumber),
 
+    #[strum(to_string = "integer")]
     #[regex(br#"\d+"#, parse_int)]
     Int(LexedNumber),
 
+    #[strum(to_string = "boolean")]
     #[regex(br#"true|false"#, |lex| match lex.slice() {
         b"true" => true,
         b"false" => false,
@@ -108,12 +115,15 @@ pub(crate) enum Token {
     })]
     Boolean(bool),
 
+    #[strum(to_string = "nil")]
     #[token(b"nil")]
     Nil,
 
+    #[strum(to_string = "whitespace")]
     #[regex(br#"[[:space:]]+"#)]
     Whitespace,
 
+    #[strum(to_string = "comment")]
     #[regex(br#"--(:?\[=*[^\[\r\n]*|[^\[\r\n]*)"#)]
     SinglelineComment,
 
@@ -121,115 +131,168 @@ pub(crate) enum Token {
     #[regex(br#"--\[=*\["#, parse_multiline_comment)]
     MultilineComment(MultilineComment),
 
+    #[strum(to_string = "and")]
     #[token(b"and")]
     KWand,
+    #[strum(to_string = "break")]
     #[token(b"break")]
     KWbreak,
+    #[strum(to_string = "do")]
     #[token(b"do")]
     KWdo,
+    #[strum(to_string = "else")]
     #[token(b"else")]
     KWelse,
+    #[strum(to_string = "elseif")]
     #[token(b"elseif")]
     KWelseif,
+    #[strum(to_string = "end")]
     #[token(b"end")]
     KWend,
+    #[strum(to_string = "for")]
     #[token(b"for")]
     KWfor,
+    #[strum(to_string = "function")]
     #[token(b"function")]
     KWfunction,
+    #[strum(to_string = "goto")]
     #[token(b"goto")]
     KWgoto,
+    #[strum(to_string = "if")]
     #[token(b"if")]
     KWif,
+    #[strum(to_string = "in")]
     #[token(b"in")]
     KWin,
+    #[strum(to_string = "local")]
     #[token(b"local")]
     KWlocal,
+    #[strum(to_string = "not")]
     #[token(b"not")]
     KWnot,
+    #[strum(to_string = "or")]
     #[token(b"or")]
     KWor,
+    #[strum(to_string = "repeat")]
     #[token(b"repeat")]
     KWrepeat,
+    #[strum(to_string = "return")]
     #[token(b"return")]
     KWreturn,
+    #[strum(to_string = "then")]
     #[token(b"then")]
     KWthen,
+    #[strum(to_string = "until")]
     #[token(b"until")]
     KWuntil,
+    #[strum(to_string = "while")]
     #[token(b"while")]
     KWwhile,
 
+    #[strum(to_string = "[")]
     #[token(b"[")]
     LBracket,
+    #[strum(to_string = "]")]
     #[token(b"]")]
     RBracket,
 
+    #[strum(to_string = "{")]
     #[token(b"{")]
     LBrace,
+    #[strum(to_string = "}")]
     #[token(b"}")]
     RBrace,
 
+    #[strum(to_string = "(")]
     #[token(b"(")]
     LParen,
+    #[strum(to_string = ")")]
     #[token(b")")]
     RParen,
 
+    #[strum(to_string = ":")]
     #[token(b":")]
     Colon,
+    #[strum(to_string = "::")]
     #[token(b"::")]
     DoubleColon,
+    #[strum(to_string = "+")]
     #[token(b"+")]
     Plus,
+    #[strum(to_string = "-")]
     #[token(b"-")]
     Minus,
+    #[strum(to_string = "*")]
     #[token(b"*")]
     Star,
+    #[strum(to_string = "/")]
     #[token(b"/")]
     Slash,
+    #[strum(to_string = "//")]
     #[token(b"//")]
     DoubleSlash,
+    #[strum(to_string = "^")]
     #[token(b"^")]
     Caret,
+    #[strum(to_string = "%")]
     #[token(b"%")]
     Percent,
+    #[strum(to_string = "&")]
     #[token(b"&")]
     Ampersand,
+    #[strum(to_string = "~")]
     #[token(b"~")]
     Tilde,
+    #[strum(to_string = "|")]
     #[token(b"|")]
     Pipe,
+    #[strum(to_string = "<<")]
     #[token(b"<<")]
     DoubleLeftAngle,
+    #[strum(to_string = ">>")]
     #[token(b">>")]
     DoubleRightAngle,
+    #[strum(to_string = ".")]
     #[token(b".")]
     Period,
+    #[strum(to_string = "..")]
     #[token(b"..")]
     DoublePeriod,
+    #[strum(to_string = "...")]
     #[token(b"...")]
     Ellipses,
+    #[strum(to_string = "<")]
     #[token(b"<")]
     LeftAngle,
+    #[strum(to_string = ">")]
     #[token(b">")]
     RightAngle,
+    #[strum(to_string = "<=")]
     #[token(b"<=")]
     LeftAngleEquals,
+    #[strum(to_string = ">=")]
     #[token(b">=")]
     RightAngleEquals,
+    #[strum(to_string = "~=")]
     #[token(b"~=")]
     TildeEquals,
+    #[strum(to_string = "#")]
     #[token(b"#")]
     Hashtag,
+    #[strum(to_string = ";")]
     #[token(b";")]
     Semicolon,
+    #[strum(to_string = ",")]
     #[token(b",")]
     Comma,
+    #[strum(to_string = "=")]
     #[token(b"=")]
     Equals,
+    #[strum(to_string = "==")]
     #[token(b"==")]
     DoubleEquals,
 
+    #[strum(to_string = "unknown token")]
     #[error]
     Error,
 }

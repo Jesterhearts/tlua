@@ -3,7 +3,7 @@ use crate::{
     expressions::Expression,
     lexer::Token,
     list::List,
-    parse_list0,
+    parse_list1,
     ASTAllocator,
     ParseError,
     ParseErrorExt,
@@ -34,29 +34,28 @@ impl<'chunk> If<'chunk> {
             ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWif))
         })?;
 
-        let (cond, body) = parse_cond_then_body(lexer, alloc).mark_unrecoverable()?;
+        let cond = parse_cond_then(lexer, alloc)?;
 
-        let elif = parse_list0(lexer, alloc, |lexer, alloc| {
-            lexer.next_if_eq(Token::KWelseif).ok_or_else(|| {
-                ParseError::recoverable_from_here(
-                    lexer,
-                    SyntaxError::ExpectedToken(Token::KWelseif),
-                )
-            })?;
-            parse_cond_then_body(lexer, alloc).map(|(cond, body)| ElseIf { cond, body })
-        })?;
-
-        let else_final = lexer
-            .next_if_eq(Token::KWelse)
-            .ok_or_else(|| {
-                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWelse))
+        let (body, (elif, else_final)) = Block::parse(lexer, alloc)
+            .alt_chain(|| {
+                ElseIf::parse_list1(lexer, alloc)
+                    .alt_chain(|| {
+                        parse_else(lexer, alloc).map(Some).recover_with(|| {
+                            lexer
+                                .next_if_eq(Token::KWend)
+                                .ok_or_else(|| {
+                                    ParseError::recoverable_from_here(
+                                        lexer,
+                                        SyntaxError::ExpectedToken(Token::KWend),
+                                    )
+                                })
+                                .map(|_| None)
+                        })
+                    })
+                    .map(|(elifs, else_final)| (elifs.unwrap_or_default(), else_final))
             })
-            .and_then(|_| Block::parse(lexer, alloc))
-            .recover()?;
-
-        lexer.next_if_eq(Token::KWend).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWend))
-        })?;
+            .map(|(body, rest)| (body.unwrap_or_default(), rest))
+            .mark_unrecoverable()?;
 
         Ok(Self {
             cond,
@@ -67,17 +66,49 @@ impl<'chunk> If<'chunk> {
     }
 }
 
-fn parse_cond_then_body<'chunk>(
+impl<'chunk> ElseIf<'chunk> {
+    fn parse_list1(
+        lexer: &mut PeekableLexer,
+        alloc: &'chunk ASTAllocator,
+    ) -> Result<List<'chunk, Self>, ParseError> {
+        parse_list1(lexer, alloc, |lexer, alloc| {
+            lexer.next_if_eq(Token::KWelseif).ok_or_else(|| {
+                ParseError::recoverable_from_here(
+                    lexer,
+                    SyntaxError::ExpectedToken(Token::KWelseif),
+                )
+            })?;
+            parse_cond_then(lexer, alloc).and_then(|cond| {
+                Block::parse(lexer, alloc).recover().map(|body| ElseIf {
+                    cond,
+                    body: body.unwrap_or_default(),
+                })
+            })
+        })
+    }
+}
+
+fn parse_else<'chunk>(
     lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
-) -> Result<(Expression<'chunk>, Block<'chunk>), ParseError> {
+) -> Result<Block<'chunk>, ParseError> {
+    lexer
+        .next_if_eq(Token::KWelse)
+        .ok_or_else(|| {
+            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWelse))
+        })
+        .and_then(|_| Block::parse_with_end(lexer, alloc))
+}
+
+fn parse_cond_then<'chunk>(
+    lexer: &mut PeekableLexer,
+    alloc: &'chunk ASTAllocator,
+) -> Result<Expression<'chunk>, ParseError> {
     let cond = Expression::parse(lexer, alloc).mark_unrecoverable()?;
     lexer.next_if_eq(Token::KWthen).ok_or_else(|| {
         ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWthen))
     })?;
-    let body = Block::parse(lexer, alloc).mark_unrecoverable()?;
-
-    Ok((cond, body))
+    Ok(cond)
 }
 
 #[cfg(test)]

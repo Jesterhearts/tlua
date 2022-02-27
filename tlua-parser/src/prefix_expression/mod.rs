@@ -3,7 +3,7 @@ use crate::{
     identifiers::Ident,
     lexer::Token,
     list::List,
-    parse_list0_split_tail,
+    parse_list1_split_tail,
     ASTAllocator,
     ParseError,
     ParseErrorExt,
@@ -153,10 +153,9 @@ impl<'chunk> PrefixExpression<'chunk> {
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
         let head = HeadAtom::parse(lexer, alloc)?;
+        let rest = parse_list1_split_tail(lexer, alloc, PrefixAtom::parse).recover()?;
 
-        let (middle, tail) = parse_list0_split_tail(lexer, alloc, PrefixAtom::parse)?;
-
-        if let Some(tail) = tail {
+        if let Some((middle, tail)) = rest {
             Ok(match tail {
                 PrefixAtom::Var(var) => Self::Variable(VarPrefixExpression::TableAccess {
                     head,
@@ -176,8 +175,6 @@ impl<'chunk> PrefixExpression<'chunk> {
                 }
             })
         } else {
-            debug_assert!(middle.is_empty());
-
             Ok(match head {
                 HeadAtom::Name(name) => Self::Variable(VarPrefixExpression::Name(name)),
                 HeadAtom::Parenthesized(expr) => Self::Parenthesized(expr),
@@ -406,7 +403,7 @@ mod tests {
             result,
             PrefixExpression::FnCall(FnCallPrefixExpression::Call {
                 head: HeadAtom::Name(Ident(0)),
-                args: FunctionAtom::Call(FnArgs::String(ConstantString(0)))
+                args: FunctionAtom::Call(FnArgs::String(ConstantString(1)))
             })
         );
 
@@ -476,7 +473,7 @@ mod tests {
                 head: HeadAtom::Name(Ident(0)),
                 args: FunctionAtom::MethodCall {
                     name: Ident(1),
-                    args: FnArgs::String(ConstantString(0))
+                    args: FnArgs::String(ConstantString(2))
                 }
             })
         );

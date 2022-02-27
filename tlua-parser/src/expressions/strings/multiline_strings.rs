@@ -56,7 +56,7 @@ pub(crate) fn parse_string(lexer: &mut PeekableLexer) -> Result<ConstantString, 
              recoverable,
          }| ParseError {
             error,
-            location: location.map(|loc| loc.translate(base_span)),
+            location: location.translate(base_span),
             recoverable,
         },
     )?;
@@ -77,7 +77,7 @@ fn internal_parse(
             StringToken::Error => {
                 return Err(ParseError {
                     error: SyntaxError::UnclosedString,
-                    location: Some(string_lexer.span().into()),
+                    location: string_lexer.span().into(),
                     recoverable: false,
                 });
             }
@@ -105,7 +105,7 @@ fn internal_parse(
 
     Err(ParseError {
         error: SyntaxError::UnclosedString,
-        location: Some(string_lexer.span().into()),
+        location: string_lexer.span().into(),
         recoverable: false,
     })
 }
