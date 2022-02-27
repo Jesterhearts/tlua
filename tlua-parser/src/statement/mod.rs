@@ -37,15 +37,7 @@ pub struct Empty;
 
 impl Empty {
     pub(crate) fn parse(lexer: &mut PeekableLexer, _: &ASTAllocator) -> Result<Self, ParseError> {
-        lexer
-            .next_if_eq(Token::Semicolon)
-            .map(|_| Self)
-            .ok_or_else(|| {
-                ParseError::recoverable_from_here(
-                    lexer,
-                    SyntaxError::ExpectedToken(Token::Semicolon),
-                )
-            })
+        lexer.expecting_token(Token::Semicolon).map(|_| Self)
     }
 }
 
@@ -54,12 +46,7 @@ pub struct Break;
 
 impl Break {
     pub(crate) fn parse(lexer: &mut PeekableLexer, _: &ASTAllocator) -> Result<Self, ParseError> {
-        lexer
-            .next_if_eq(Token::KWbreak)
-            .map(|_| Self)
-            .ok_or_else(|| {
-                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWbreak))
-            })
+        lexer.expecting_token(Token::KWbreak).map(|_| Self)
     }
 }
 
@@ -71,17 +58,12 @@ impl Label {
         lexer: &mut PeekableLexer,
         alloc: &ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.next_if_eq(Token::DoubleColon).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::DoubleColon))
-        })?;
+        lexer.expecting_token(Token::DoubleColon)?;
 
         let label = Ident::parse(lexer, alloc).mark_unrecoverable().map(Self)?;
-        lexer.next_if_eq(Token::DoubleColon).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(
-                lexer,
-                SyntaxError::ExpectedToken(Token::DoubleColon),
-            )
-        })?;
+        lexer
+            .expecting_token(Token::DoubleColon)
+            .mark_unrecoverable()?;
 
         Ok(label)
     }
@@ -95,9 +77,7 @@ impl Goto {
         lexer: &mut PeekableLexer,
         alloc: &ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.next_if_eq(Token::KWgoto).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWgoto))
-        })?;
+        lexer.expecting_token(Token::KWgoto)?;
 
         Ident::parse(lexer, alloc).mark_unrecoverable().map(Self)
     }

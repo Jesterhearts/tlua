@@ -36,9 +36,8 @@ impl LocalVar {
     ) -> Result<Self, ParseError> {
         let name = Ident::parse(lexer, alloc)?;
         let attribute = if lexer.next_if_eq(Token::LeftAngle).is_some() {
-            let ident = lexer.next_if_eq(Token::Ident).ok_or_else(|| {
-                ParseError::unrecoverable_from_here(lexer, SyntaxError::InvalidAttribute)
-            })?;
+            let ident = lexer.expecting_token(Token::Ident).mark_unrecoverable()?;
+
             let attrib = match ident.src {
                 b"const" => Attribute::Const,
                 b"close" => Attribute::Close,
@@ -49,12 +48,9 @@ impl LocalVar {
                     ));
                 }
             };
-            lexer.next_if_eq(Token::RightAngle).ok_or_else(|| {
-                ParseError::unrecoverable_from_here(
-                    lexer,
-                    SyntaxError::ExpectedToken(Token::RightAngle),
-                )
-            })?;
+            lexer
+                .expecting_token(Token::RightAngle)
+                .mark_unrecoverable()?;
             Some(attrib)
         } else {
             None
@@ -69,19 +65,12 @@ impl<'chunk> LocalVarList<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        let local_token = lexer.next_if_eq(Token::KWlocal).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWlocal))
-        })?;
+        let local_token = lexer.expecting_token(Token::KWlocal)?;
 
-        let vars = match parse_separated_list1(lexer, alloc, LocalVar::parse, |token| {
+        let vars = parse_separated_list1(lexer, alloc, LocalVar::parse, |token| {
             *token == Token::Comma
-        }) {
-            Ok(vars) => vars,
-            Err(e) => {
-                lexer.reset(local_token);
-                return Err(e);
-            }
-        };
+        })
+        .reset_on_err(lexer, local_token)?;
 
         let initializers = if lexer.next_if_eq(Token::Equals).is_some() {
             Expression::parse_list1(lexer, alloc).mark_unrecoverable()?

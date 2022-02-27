@@ -37,19 +37,13 @@ impl<'chunk> FnParams<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.next_if_eq(Token::LParen).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::LParen))
-        })?;
+        lexer.expecting_token(Token::LParen)?;
 
         parse_separated_list1(lexer, alloc, Ident::parse, |token| *token == Token::Comma)
             .and_then(|named_params| {
                 let varargs = if lexer.next_if_eq(Token::Comma).is_some() {
-                    lexer.next_if_eq(Token::Ellipses).ok_or_else(|| {
-                        ParseError::unrecoverable_from_here(
-                            lexer,
-                            SyntaxError::ExpectedIdentOrVaArgs,
-                        )
-                    })?;
+                    lexer
+                        .expecting_token_or(Token::Ellipses, SyntaxError::ExpectedIdentOrVaArgs)?;
                     true
                 } else {
                     false
@@ -68,15 +62,8 @@ impl<'chunk> FnParams<'chunk> {
                 })
             })
             .and_then(|params| {
-                lexer
-                    .next_if_eq(Token::RParen)
-                    .ok_or_else(|| {
-                        ParseError::unrecoverable_from_here(
-                            lexer,
-                            SyntaxError::ExpectedToken(Token::RParen),
-                        )
-                    })
-                    .map(|_| params)
+                lexer.expecting_token(Token::RParen).mark_unrecoverable()?;
+                Ok(params)
             })
     }
 }

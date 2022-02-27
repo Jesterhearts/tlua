@@ -7,7 +7,6 @@ use crate::{
     ParseError,
     ParseErrorExt,
     PeekableLexer,
-    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -24,9 +23,7 @@ impl<'chunk> ForLoop<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        let for_kw = lexer.next_if_eq(Token::KWfor).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWfor))
-        })?;
+        let for_kw = lexer.expecting_token(Token::KWfor)?;
 
         let var = match Ident::parse(lexer, alloc) {
             Ok(ident) => ident,
@@ -36,22 +33,17 @@ impl<'chunk> ForLoop<'chunk> {
             }
         };
 
-        lexer.next_if_eq(Token::Equals).ok_or_else(|| {
-            lexer.reset(for_kw);
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Equals))
-        })?;
+        lexer
+            .expecting_token(Token::Equals)
+            .reset_on_err(lexer, for_kw)?;
 
         let init = Expression::parse(lexer, alloc).mark_unrecoverable()?;
-        lexer.next_if_eq(Token::Comma).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Equals))
-        })?;
+        lexer.expecting_token(Token::Comma).mark_unrecoverable()?;
+
         let condition = Expression::parse(lexer, alloc).mark_unrecoverable()?;
 
         let increment = lexer
-            .next_if_eq(Token::Comma)
-            .ok_or_else(|| {
-                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Comma))
-            })
+            .expecting_token(Token::Comma)
             .and_then(|_| Expression::parse(lexer, alloc))
             .recover()?;
 

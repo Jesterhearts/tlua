@@ -27,9 +27,7 @@ impl<'chunk> Assignment<'chunk> {
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
         let varlist = parse_list_with_head(head, lexer, alloc, |lexer, alloc| {
-            lexer.next_if_eq(Token::Comma).ok_or_else(|| {
-                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Comma))
-            })?;
+            lexer.expecting_token(Token::Comma)?;
             match PrefixExpression::parse(lexer, alloc).mark_unrecoverable()? {
                 PrefixExpression::Variable(var) => Ok(var),
                 _ => Err(ParseError::unrecoverable_from_here(
@@ -40,9 +38,7 @@ impl<'chunk> Assignment<'chunk> {
         })
         .mark_unrecoverable()?;
 
-        lexer.next_if_eq(Token::Equals).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Equals))
-        })?;
+        lexer.expecting_token(Token::Equals).mark_unrecoverable()?;
 
         let expressions = Expression::parse_list1(lexer, alloc).mark_unrecoverable()?;
 

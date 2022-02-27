@@ -7,7 +7,6 @@ use crate::{
     ParseError,
     ParseErrorExt,
     PeekableLexer,
-    SyntaxError,
 };
 
 pub mod retstat;
@@ -42,9 +41,7 @@ impl<'chunk> Block<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.next_if_eq(Token::KWdo).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWdo))
-        })?;
+        lexer.expecting_token(Token::KWdo)?;
 
         Self::parse_with_end(lexer, alloc)
     }
@@ -54,14 +51,7 @@ impl<'chunk> Block<'chunk> {
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
         Self::parse(lexer, alloc)
-            .chain_or_recover_with(|| {
-                lexer.next_if_eq(Token::KWend).ok_or_else(|| {
-                    ParseError::unrecoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::KWend),
-                    )
-                })
-            })
+            .chain_or_recover_with(|| lexer.expecting_token(Token::KWend).mark_unrecoverable())
             .map(|(block, _)| block.unwrap_or_default())
     }
 }

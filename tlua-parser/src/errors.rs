@@ -1,7 +1,10 @@
 use thiserror::Error;
 
 use crate::{
-    lexer::Token,
+    lexer::{
+        SpannedToken,
+        Token,
+    },
     PeekableLexer,
     SourceSpan,
 };
@@ -114,6 +117,12 @@ pub(crate) trait ParseErrorExt: Sized {
     type Data;
     type Error;
 
+    fn reset_on_err<'src>(
+        self,
+        lexer: &mut PeekableLexer<'src, '_>,
+        to: SpannedToken<'src>,
+    ) -> Result<Self::Data, Self::Error>;
+
     fn mark_unrecoverable(self) -> Result<Self::Data, Self::Error>;
 
     fn recover(self) -> Result<Option<Self::Data>, Self::Error>;
@@ -134,6 +143,20 @@ pub(crate) trait ParseErrorExt: Sized {
 impl<T> ParseErrorExt for Result<T, ParseError> {
     type Data = T;
     type Error = ParseError;
+
+    #[inline]
+    fn reset_on_err<'src>(
+        self,
+        lexer: &mut PeekableLexer<'src, '_>,
+        to: SpannedToken<'src>,
+    ) -> Result<Self::Data, Self::Error> {
+        self.map_err(|e| {
+            if e.recoverable {
+                lexer.reset(to);
+            }
+            e
+        })
+    }
 
     #[inline]
     fn mark_unrecoverable(self) -> Result<Self::Data, Self::Error> {

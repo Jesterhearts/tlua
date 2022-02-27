@@ -9,7 +9,6 @@ use crate::{
     ParseError,
     ParseErrorExt,
     PeekableLexer,
-    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -31,11 +30,11 @@ impl<'chunk> FnDecl<'chunk> {
     ) -> Result<Self, ParseError> {
         let is_local = lexer.next_if_eq(Token::KWlocal);
 
-        lexer.next_if_eq(Token::KWfunction).ok_or_else(|| {
-            if let Some(token) = is_local {
-                lexer.reset(token)
-            }
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWfunction))
+        lexer.expecting_token(Token::KWfunction).map_err(|e| {
+            if let Some(is_local) = is_local {
+                lexer.reset(is_local)
+            };
+            e
         })?;
 
         if is_local.is_some() {

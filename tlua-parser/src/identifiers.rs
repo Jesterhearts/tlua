@@ -5,7 +5,6 @@ use crate::{
     ASTAllocator,
     ParseError,
     PeekableLexer,
-    SyntaxError,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -14,10 +13,7 @@ pub struct Ident(pub(crate) usize);
 impl Ident {
     pub(crate) fn parse(lexer: &mut PeekableLexer, _: &ASTAllocator) -> Result<Self, ParseError> {
         lexer
-            .next_if_eq(Token::Ident)
-            .ok_or_else(|| {
-                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Ident))
-            })
+            .expecting_token(Token::Ident)
             .map(|ident| lexer.strings.add_ident(ident.src))
     }
 

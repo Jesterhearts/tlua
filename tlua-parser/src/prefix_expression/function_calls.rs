@@ -29,19 +29,11 @@ impl<'chunk> FnArgs<'chunk> {
             .map(Self::String)
             .recover_with(|| TableConstructor::parse(lexer, alloc).map(Self::TableConstructor))
             .recover_with(|| {
-                lexer.next_if_eq(Token::LParen).ok_or_else(|| {
-                    ParseError::recoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::LParen),
-                    )
-                })?;
+                lexer.expecting_token(Token::LParen)?;
+
                 let exprs = Expression::parse_list0(lexer, alloc)?;
-                lexer.next_if_eq(Token::RParen).ok_or_else(|| {
-                    ParseError::unrecoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::RParen),
-                    )
-                })?;
+
+                lexer.expecting_token(Token::RParen).mark_unrecoverable()?;
 
                 Ok(Self::Expressions(exprs))
             })

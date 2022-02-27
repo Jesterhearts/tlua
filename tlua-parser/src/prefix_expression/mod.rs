@@ -23,19 +23,12 @@ pub enum HeadAtom<'chunk> {
 impl<'chunk> HeadAtom<'chunk> {
     fn parse(lexer: &mut PeekableLexer, alloc: &'chunk ASTAllocator) -> Result<Self, ParseError> {
         Ident::parse(lexer, alloc).map(Self::Name).recover_with(|| {
-            lexer.next_if_eq(Token::LParen).ok_or_else(|| {
-                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::LParen))
-            })?;
+            lexer.expecting_token(Token::LParen)?;
 
             Expression::parse(lexer, alloc)
                 .mark_unrecoverable()
                 .and_then(|expr| {
-                    lexer.next_if_eq(Token::RParen).ok_or_else(|| {
-                        ParseError::unrecoverable_from_here(
-                            lexer,
-                            SyntaxError::ExpectedToken(Token::RParen),
-                        )
-                    })?;
+                    lexer.expecting_token(Token::RParen).mark_unrecoverable()?;
                     Ok(Self::Parenthesized(alloc.alloc(expr)))
                 })
         })
@@ -63,45 +56,26 @@ pub enum PrefixAtom<'chunk> {
 impl<'chunk> PrefixAtom<'chunk> {
     fn parse(lexer: &mut PeekableLexer, alloc: &'chunk ASTAllocator) -> Result<Self, ParseError> {
         lexer
-            .next_if_eq(Token::LBracket)
-            .ok_or_else(|| {
-                ParseError::recoverable_from_here(
-                    lexer,
-                    SyntaxError::ExpectedToken(Token::LBracket),
-                )
-            })
+            .expecting_token(Token::LBracket)
             .and_then(|_| {
                 Expression::parse(lexer, alloc)
                     .mark_unrecoverable()
                     .and_then(|expr| {
-                        lexer.next_if_eq(Token::RBracket).ok_or_else(|| {
-                            ParseError::unrecoverable_from_here(
-                                lexer,
-                                SyntaxError::ExpectedToken(Token::RBracket),
-                            )
-                        })?;
+                        lexer
+                            .expecting_token(Token::RBracket)
+                            .mark_unrecoverable()?;
                         Ok(Self::Var(VarAtom::IndexOp(expr)))
                     })
             })
             .recover_with(|| {
-                lexer.next_if_eq(Token::Period).ok_or_else(|| {
-                    ParseError::recoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::Period),
-                    )
-                })?;
+                lexer.expecting_token(Token::Period)?;
 
                 Ident::parse(lexer, alloc)
                     .mark_unrecoverable()
                     .map(|ident| Self::Var(VarAtom::Name(ident)))
             })
             .recover_with(|| {
-                lexer.next_if_eq(Token::Colon).ok_or_else(|| {
-                    ParseError::recoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::Colon),
-                    )
-                })?;
+                lexer.expecting_token(Token::Colon)?;
 
                 let name = Ident::parse(lexer, alloc).mark_unrecoverable()?;
                 FnArgs::parse(lexer, alloc)

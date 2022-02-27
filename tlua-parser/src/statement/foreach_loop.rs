@@ -8,7 +8,6 @@ use crate::{
     ParseError,
     ParseErrorExt,
     PeekableLexer,
-    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -23,9 +22,7 @@ impl<'chunk> ForEachLoop<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        let for_kw = lexer.next_if_eq(Token::KWfor).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWfor))
-        })?;
+        let for_kw = lexer.expecting_token(Token::KWfor)?;
 
         let vars = match Ident::parse_list1(lexer, alloc) {
             Ok(idents) => idents,
@@ -35,10 +32,9 @@ impl<'chunk> ForEachLoop<'chunk> {
             }
         };
 
-        lexer.next_if_eq(Token::KWin).ok_or_else(|| {
-            lexer.reset(for_kw);
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWin))
-        })?;
+        lexer
+            .expecting_token(Token::KWin)
+            .reset_on_err(lexer, for_kw)?;
 
         let expressions = Expression::parse_list1(lexer, alloc).mark_unrecoverable()?;
 

@@ -8,7 +8,6 @@ use crate::{
     ParseError,
     ParseErrorExt,
     PeekableLexer,
-    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -30,9 +29,7 @@ impl<'chunk> If<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.next_if_eq(Token::KWif).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWif))
-        })?;
+        lexer.expecting_token(Token::KWif)?;
 
         let cond = parse_cond_then(lexer, alloc)?;
 
@@ -40,17 +37,9 @@ impl<'chunk> If<'chunk> {
             .chain_or_recover_with(|| {
                 ElseIf::parse_list1(lexer, alloc)
                     .chain_or_recover_with(|| {
-                        parse_else(lexer, alloc).map(Some).recover_with(|| {
-                            lexer
-                                .next_if_eq(Token::KWend)
-                                .ok_or_else(|| {
-                                    ParseError::recoverable_from_here(
-                                        lexer,
-                                        SyntaxError::ExpectedToken(Token::KWend),
-                                    )
-                                })
-                                .map(|_| None)
-                        })
+                        parse_else_final(lexer, alloc)
+                            .map(Some)
+                            .recover_with(|| lexer.expecting_token(Token::KWend).map(|_| None))
                     })
                     .map(|(elifs, else_final)| (elifs.unwrap_or_default(), else_final))
             })
@@ -72,12 +61,7 @@ impl<'chunk> ElseIf<'chunk> {
         alloc: &'chunk ASTAllocator,
     ) -> Result<List<'chunk, Self>, ParseError> {
         parse_list1(lexer, alloc, |lexer, alloc| {
-            lexer.next_if_eq(Token::KWelseif).ok_or_else(|| {
-                ParseError::recoverable_from_here(
-                    lexer,
-                    SyntaxError::ExpectedToken(Token::KWelseif),
-                )
-            })?;
+            lexer.expecting_token(Token::KWelseif)?;
             parse_cond_then(lexer, alloc).and_then(|cond| {
                 Block::parse(lexer, alloc).recover().map(|body| ElseIf {
                     cond,
@@ -88,15 +72,12 @@ impl<'chunk> ElseIf<'chunk> {
     }
 }
 
-fn parse_else<'chunk>(
+fn parse_else_final<'chunk>(
     lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
 ) -> Result<Block<'chunk>, ParseError> {
     lexer
-        .next_if_eq(Token::KWelse)
-        .ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWelse))
-        })
+        .expecting_token(Token::KWelse)
         .and_then(|_| Block::parse_with_end(lexer, alloc))
 }
 
@@ -105,9 +86,7 @@ fn parse_cond_then<'chunk>(
     alloc: &'chunk ASTAllocator,
 ) -> Result<Expression<'chunk>, ParseError> {
     let cond = Expression::parse(lexer, alloc).mark_unrecoverable()?;
-    lexer.next_if_eq(Token::KWthen).ok_or_else(|| {
-        ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWthen))
-    })?;
+    lexer.expecting_token(Token::KWthen).mark_unrecoverable()?;
     Ok(cond)
 }
 

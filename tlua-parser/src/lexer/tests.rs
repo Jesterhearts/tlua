@@ -28,11 +28,6 @@ fn test() {
         }
         dbg!((token, span));
     }
-
-    dbg!(lex.extras);
-
-    // assert_eq!(lex.next(), Some(Token::MultilineCommentStart));
-    // assert_eq!(lex.slice(), b"====");
 }
 
 #[test]

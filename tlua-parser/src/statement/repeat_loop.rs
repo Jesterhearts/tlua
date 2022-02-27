@@ -6,7 +6,6 @@ use crate::{
     ParseError,
     ParseErrorExt,
     PeekableLexer,
-    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -20,19 +19,12 @@ impl<'chunk> RepeatLoop<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.next_if_eq(Token::KWrepeat).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWrepeat))
-        })?;
+        lexer.expecting_token(Token::KWrepeat)?;
 
         let (body, _) = Block::parse(lexer, alloc).chain_or_recover_with(|| {
             lexer
-                .next_if_eq(Token::KWuntil)
-                .ok_or_else(|| {
-                    ParseError::unrecoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::KWuntil),
-                    )
-                })
+                .expecting_token(Token::KWuntil)
+                .mark_unrecoverable()
                 .map(|_| ())
         })?;
 

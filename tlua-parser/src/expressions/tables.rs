@@ -60,40 +60,22 @@ impl<'chunk> Field<'chunk> {
             })
             .and_then(|token| {
                 Ident::parse(lexer, alloc).and_then(|name| {
-                    lexer.next_if_eq(Token::Equals).ok_or_else(|| {
-                        lexer.reset(token);
-                        ParseError::recoverable_from_here(
-                            lexer,
-                            SyntaxError::ExpectedToken(Token::Equals),
-                        )
-                    })?;
+                    lexer
+                        .expecting_token(Token::Equals)
+                        .reset_on_err(lexer, token)?;
 
                     let expression = Expression::parse(lexer, alloc)?;
                     Ok(Self::Named { name, expression })
                 })
             })
             .recover_with(|| {
-                lexer.next_if_eq(Token::LBracket).ok_or_else(|| {
-                    ParseError::recoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::LBracket),
-                    )
-                })?;
+                lexer.expecting_token(Token::LBracket)?;
                 let index = Expression::parse(lexer, alloc)?;
 
-                lexer.next_if_eq(Token::RBracket).ok_or_else(|| {
-                    ParseError::unrecoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::RBracket),
-                    )
-                })?;
-
-                lexer.next_if_eq(Token::Equals).ok_or_else(|| {
-                    ParseError::unrecoverable_from_here(
-                        lexer,
-                        SyntaxError::ExpectedToken(Token::Equals),
-                    )
-                })?;
+                lexer
+                    .expecting_token(Token::RBracket)
+                    .mark_unrecoverable()?;
+                lexer.expecting_token(Token::Equals).mark_unrecoverable()?;
 
                 let expression = Expression::parse(lexer, alloc)?;
 
@@ -113,19 +95,14 @@ impl<'chunk> TableConstructor<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.next_if_eq(Token::LBrace).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::LBrace))
-        })?;
+        lexer.expecting_token(Token::LBrace)?;
 
         let match_sep =
             |token: &SpannedToken| matches!(token.as_ref(), Token::Comma | Token::Semicolon);
         let fields = parse_separated_list0(lexer, alloc, Field::parse, match_sep)?;
         lexer.next_if(match_sep);
 
-        lexer.next_if_eq(Token::RBrace).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::RBrace))
-        })?;
-
+        lexer.expecting_token(Token::RBrace).mark_unrecoverable()?;
         Ok(Self { fields })
     }
 }

@@ -207,6 +207,19 @@ impl<'src> SpannedTokenStream<'src, '_> {
         self.next_if(|t| token == *t)
     }
 
+    fn expecting_token_or(
+        &mut self,
+        token: Token,
+        err: SyntaxError,
+    ) -> Result<SpannedToken<'src>, ParseError> {
+        self.next_if_eq(token)
+            .ok_or_else(|| ParseError::recoverable_from_here(self, err))
+    }
+
+    fn expecting_token(&mut self, token: Token) -> Result<SpannedToken<'src>, ParseError> {
+        self.expecting_token_or(token, SyntaxError::ExpectedToken(token))
+    }
+
     fn remainder(&self) -> &'src [u8] {
         if let Some(peeked) = self.peeked.as_ref() {
             &self.src[peeked.span.start..]

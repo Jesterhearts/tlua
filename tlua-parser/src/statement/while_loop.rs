@@ -6,7 +6,6 @@ use crate::{
     ParseError,
     ParseErrorExt,
     PeekableLexer,
-    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -20,9 +19,7 @@ impl<'chunk> WhileLoop<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.next_if_eq(Token::KWwhile).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWwhile))
-        })?;
+        lexer.expecting_token(Token::KWwhile)?;
 
         let cond = Expression::parse(lexer, alloc).mark_unrecoverable()?;
         let body = Block::parse_do(lexer, alloc).mark_unrecoverable()?;

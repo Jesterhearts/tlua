@@ -5,7 +5,6 @@ use crate::{
     ASTAllocator,
     ParseError,
     PeekableLexer,
-    SyntaxError,
 };
 
 #[derive(Debug, PartialEq)]
@@ -18,9 +17,7 @@ impl<'chunk> RetStatement<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.next_if_eq(Token::KWreturn).ok_or_else(|| {
-            ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWreturn))
-        })?;
+        lexer.expecting_token(Token::KWreturn)?;
 
         let expressions = Expression::parse_list0(lexer, alloc)?;
         lexer.next_if_eq(Token::Semicolon);
