@@ -24,7 +24,7 @@ impl<'chunk> RepeatLoop<'chunk> {
             ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::KWrepeat))
         })?;
 
-        let (body, _) = Block::parse(lexer, alloc).alt_chain(|| {
+        let (body, _) = Block::parse(lexer, alloc).chain_or_recover_with(|| {
             lexer
                 .next_if_eq(Token::KWuntil)
                 .ok_or_else(|| {

@@ -37,9 +37,9 @@ impl<'chunk> If<'chunk> {
         let cond = parse_cond_then(lexer, alloc)?;
 
         let (body, (elif, else_final)) = Block::parse(lexer, alloc)
-            .alt_chain(|| {
+            .chain_or_recover_with(|| {
                 ElseIf::parse_list1(lexer, alloc)
-                    .alt_chain(|| {
+                    .chain_or_recover_with(|| {
                         parse_else(lexer, alloc).map(Some).recover_with(|| {
                             lexer
                                 .next_if_eq(Token::KWend)

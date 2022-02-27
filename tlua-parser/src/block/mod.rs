@@ -54,7 +54,7 @@ impl<'chunk> Block<'chunk> {
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
         Self::parse(lexer, alloc)
-            .alt_chain(|| {
+            .chain_or_recover_with(|| {
                 lexer.next_if_eq(Token::KWend).ok_or_else(|| {
                     ParseError::unrecoverable_from_here(
                         lexer,

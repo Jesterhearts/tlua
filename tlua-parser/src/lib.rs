@@ -308,7 +308,7 @@ pub(crate) trait ParseErrorExt: Sized {
     ) -> Result<Self::Data, Self::Error>;
 
     #[allow(clippy::type_complexity)]
-    fn alt_chain<D, F: FnOnce() -> Result<D, Self::Error>>(
+    fn chain_or_recover_with<D, F: FnOnce() -> Result<D, Self::Error>>(
         self,
         next: F,
     ) -> Result<(Option<Self::Data>, D), Self::Error>;
@@ -347,7 +347,7 @@ impl<T> ParseErrorExt for Result<T, ParseError> {
         }
     }
 
-    fn alt_chain<D, F: FnOnce() -> Result<D, Self::Error>>(
+    fn chain_or_recover_with<D, F: FnOnce() -> Result<D, Self::Error>>(
         self,
         next: F,
     ) -> Result<(Option<Self::Data>, D), Self::Error> {
