@@ -10,7 +10,6 @@ use logos::{
     Lexer,
     Logos,
 };
-use nom::Offset;
 use strum::Display;
 
 use crate::SourceSpan;
@@ -333,7 +332,8 @@ fn parse_multiline_comment(lexer: &mut Lexer<Token>) -> MultilineComment {
 
     let token = bump_to_end_of_multiline_comment(&mut comment_lexer, tag_len);
 
-    lexer.bump(remain.offset(comment_lexer.remainder()));
+    let offset = comment_lexer.remainder().as_ptr() as usize - remain.as_ptr() as usize;
+    lexer.bump(offset);
     token
 }
 

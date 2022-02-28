@@ -13,11 +13,9 @@ rendered-errors = [ "ariadne", "indexmap" ]
 [dependencies]
 atoi = '1.0.0'
 bstr = '0.2.17'
-combine = '4.6.3'
 derive_more = '0.99.17'
 hexf-parse = '0.2.1'
 logos = '0.12.0'
-nom = '7.1.0'
 thiserror = '1.0.30'
 
 [dependencies.bumpalo]

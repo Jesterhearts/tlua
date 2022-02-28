@@ -5,7 +5,6 @@ use bstr::{
 use bumpalo::Bump;
 use indexmap::IndexSet;
 use logos::Lexer;
-use nom::Offset;
 use tlua_strings::LuaString;
 
 pub mod block;
@@ -231,14 +230,15 @@ impl<'src> SpannedTokenStream<'src, '_> {
     fn reset(&mut self, token: SpannedToken<'src>) {
         self.peeked = Some(token);
         self.lexer = Lexer::new(self.src);
-        self.lexer
-            .bump(self.src.offset(token.src) + token.src.len());
+        let offset = token.src.as_ptr() as usize - self.src.as_ptr() as usize + token.src.len();
+        self.lexer.bump(offset);
     }
 
     fn set_source_loc(&mut self, src: &'src [u8]) {
         self.peeked = None;
         self.lexer = Lexer::new(self.src);
-        self.lexer.bump(self.src.offset(src));
+        let offset = src.as_ptr() as usize - self.src.as_ptr() as usize;
+        self.lexer.bump(offset);
         let _peek = self.peek();
     }
 }
