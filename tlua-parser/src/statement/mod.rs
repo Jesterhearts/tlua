@@ -88,10 +88,8 @@ pub enum Statement<'chunk> {
     Empty(Empty),
     Assignment(&'chunk Assignment<'chunk>),
     Call(&'chunk FnCallPrefixExpression<'chunk>),
-    // TODO(lang-5.4): Scoping & matching rules.
     Label(Label),
     Break(Break),
-    // TODO(lang-5.4): Scoping & matching rules.
     Goto(Goto),
     Do(&'chunk Block<'chunk>),
     While(&'chunk WhileLoop<'chunk>),
