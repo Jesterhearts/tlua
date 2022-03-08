@@ -30,7 +30,9 @@ pub(crate) enum StringToken {
     PossibleClose,
 }
 
-pub(crate) fn parse_string(lexer: &mut PeekableLexer) -> Result<ConstantString, ParseError> {
+pub(crate) fn parse_string(
+    lexer: &mut PeekableLexer,
+) -> Result<Option<ConstantString>, ParseError> {
     let (end_tag_len, base_span) = if let Some(SpannedToken {
         token: Token::MultilineStringStart(tag_len),
         span,
@@ -40,29 +42,21 @@ pub(crate) fn parse_string(lexer: &mut PeekableLexer) -> Result<ConstantString, 
     {
         (tag_len, span)
     } else {
-        return Err(ParseError::recoverable_from_here(
-            lexer,
-            SyntaxError::ExpectedString,
-        ));
+        return Ok(None);
     };
 
     let remain = lexer.remainder();
     let mut string_lexer = Lexer::<StringToken>::new(remain);
 
     let string = internal_parse(&mut string_lexer, end_tag_len).map_err(
-        |ParseError {
-             error,
-             location,
-             recoverable,
-         }| ParseError {
+        |ParseError { error, location }| ParseError {
             error,
             location: location.translate(base_span),
-            recoverable,
         },
     )?;
 
     lexer.set_source_loc(string_lexer.remainder());
-    Ok(lexer.strings.add_string(string))
+    Ok(Some(lexer.strings.add_string(string)))
 }
 
 fn internal_parse(
@@ -78,7 +72,6 @@ fn internal_parse(
                 return Err(ParseError {
                     error: SyntaxError::UnclosedString,
                     location: string_lexer.span().into(),
-                    recoverable: false,
                 });
             }
             StringToken::Eol => {
@@ -106,7 +99,6 @@ fn internal_parse(
     Err(ParseError {
         error: SyntaxError::UnclosedString,
         location: string_lexer.span().into(),
-        recoverable: false,
     })
 }
 
@@ -128,9 +120,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"".as_bstr())
@@ -146,9 +138,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"".as_bstr())
@@ -164,9 +156,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"]==".as_bstr())
@@ -182,9 +174,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"".as_bstr())
@@ -200,9 +192,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"line1\nline2\nline3\nline4\nline5\n\nline6\n\nline7\n\nline8\n\nline9\nline10\n\n\nline11".as_bstr())

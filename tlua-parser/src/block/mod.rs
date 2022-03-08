@@ -1,11 +1,10 @@
 use crate::{
+    combinators::parse_list0,
     lexer::Token,
     list::List,
-    parse_list1,
     statement::Statement,
     ASTAllocator,
     ParseError,
-    ParseErrorExt,
     PeekableLexer,
 };
 
@@ -23,18 +22,10 @@ impl<'chunk> Block<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        parse_list1(lexer, alloc, Statement::parse)
-            .and_then(|statements| {
-                RetStatement::parse(lexer, alloc)
-                    .recover()
-                    .map(|ret| Self { statements, ret })
-            })
-            .recover_with(|| {
-                RetStatement::parse(lexer, alloc).map(|ret| Self {
-                    statements: Default::default(),
-                    ret: Some(ret),
-                })
-            })
+        let statements = parse_list0(lexer, alloc, Statement::try_parse)?;
+        let ret = RetStatement::try_parse(lexer, alloc)?;
+
+        Ok(Self { statements, ret })
     }
 
     pub(crate) fn parse_do(
@@ -51,8 +42,7 @@ impl<'chunk> Block<'chunk> {
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
         Self::parse(lexer, alloc)
-            .chain_or_recover_with(|| lexer.expecting_token(Token::KWend).mark_unrecoverable())
-            .map(|(block, _)| block.unwrap_or_default())
+            .and_then(|block| lexer.expecting_token(Token::KWend).map(|_| block))
     }
 }
 

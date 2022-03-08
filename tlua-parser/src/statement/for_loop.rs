@@ -5,7 +5,6 @@ use crate::{
     lexer::Token,
     ASTAllocator,
     ParseError,
-    ParseErrorExt,
     PeekableLexer,
 };
 
@@ -19,35 +18,23 @@ pub struct ForLoop<'chunk> {
 }
 
 impl<'chunk> ForLoop<'chunk> {
-    pub(crate) fn parse(
+    pub(crate) fn parse_remaining(
+        var: Ident,
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        let for_kw = lexer.expecting_token(Token::KWfor)?;
+        lexer.expecting_token(Token::Equals)?;
 
-        let var = match Ident::parse(lexer, alloc) {
-            Ok(ident) => ident,
-            Err(e) => {
-                lexer.reset(for_kw);
-                return Err(e);
-            }
-        };
+        let init = Expression::parse(lexer, alloc)?;
+        lexer.expecting_token(Token::Comma)?;
 
-        lexer
-            .expecting_token(Token::Equals)
-            .reset_on_err(lexer, for_kw)?;
-
-        let init = Expression::parse(lexer, alloc).mark_unrecoverable()?;
-        lexer.expecting_token(Token::Comma).mark_unrecoverable()?;
-
-        let condition = Expression::parse(lexer, alloc).mark_unrecoverable()?;
+        let condition = Expression::parse(lexer, alloc)?;
 
         let increment = lexer
-            .expecting_token(Token::Comma)
-            .and_then(|_| Expression::parse(lexer, alloc))
-            .recover()?;
+            .next_if_eq(Token::Comma)
+            .map_or(Ok(None), |_| Expression::try_parse(lexer, alloc))?;
 
-        let body = Block::parse_do(lexer, alloc).mark_unrecoverable()?;
+        let body = Block::parse_do(lexer, alloc)?;
 
         Ok(Self {
             var,
@@ -56,44 +43,5 @@ impl<'chunk> ForLoop<'chunk> {
             increment,
             body,
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use pretty_assertions::assert_eq;
-
-    use super::ForLoop;
-    use crate::{
-        expressions::{
-            number::Number,
-            Expression,
-        },
-        final_parser,
-        identifiers::Ident,
-        ASTAllocator,
-        StringTable,
-    };
-
-    #[test]
-    pub fn parses_for() -> anyhow::Result<()> {
-        let src = "for a = 0, 10 do end";
-
-        let alloc = ASTAllocator::default();
-        let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => ForLoop::parse)?;
-
-        assert_eq!(
-            result,
-            ForLoop {
-                var: Ident(0),
-                init: Expression::Number(Number::Integer(0)),
-                condition: Expression::Number(Number::Integer(10)),
-                increment: None,
-                body: Default::default()
-            }
-        );
-
-        Ok(())
     }
 }

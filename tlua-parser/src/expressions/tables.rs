@@ -7,9 +7,13 @@ use crate::{
     },
     list::List,
     parse_separated_list0,
+    prefix_expression::{
+        HeadAtom,
+        PrefixExpression,
+    },
+    token_subset,
     ASTAllocator,
     ParseError,
-    ParseErrorExt,
     PeekableLexer,
     SyntaxError,
 };
@@ -42,67 +46,80 @@ pub enum Field<'chunk> {
     Arraylike { expression: Expression<'chunk> },
 }
 
+token_subset! {
+    FieldToken {
+        Token::Ident,
+        Token::LBracket,
+        Error(SyntaxError::ExpectedTableField)
+    }
+}
+
+impl<'chunk> Field<'chunk> {
+    pub(crate) fn try_parse(
+        lexer: &mut PeekableLexer,
+        alloc: &'chunk ASTAllocator,
+    ) -> Result<Option<Self>, ParseError> {
+        let token = if let Some(token) = FieldToken::next(lexer) {
+            token
+        } else if let Some(expression) = Expression::try_parse(lexer, alloc)? {
+            return Ok(Some(Self::Arraylike { expression }));
+        } else {
+            return Ok(None);
+        };
+
+        match token.as_ref() {
+            FieldToken::Ident => {
+                let name = lexer.strings.add_ident(token.src);
+                if lexer.next_if_eq(Token::Equals).is_some() {
+                    Ok(Some(Self::Named {
+                        name,
+                        expression: Expression::parse(lexer, alloc)?,
+                    }))
+                } else {
+                    let expr =
+                        PrefixExpression::parse_remaining(HeadAtom::Name(name), lexer, alloc)?;
+                    Ok(Some(Self::Arraylike {
+                        expression: Expression::from((expr, alloc)),
+                    }))
+                }
+            }
+            FieldToken::LBracket => Expression::parse(lexer, alloc).and_then(|index| {
+                lexer.expecting_token(Token::RBracket)?;
+                lexer.expecting_token(Token::Equals)?;
+                Expression::parse(lexer, alloc)
+                    .map(|expression| Some(Self::Indexed { index, expression }))
+            }),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub struct TableConstructor<'chunk> {
     pub fields: List<'chunk, Field<'chunk>>,
 }
 
-impl<'chunk> Field<'chunk> {
-    pub(crate) fn parse(
-        lexer: &mut PeekableLexer,
-        alloc: &'chunk ASTAllocator,
-    ) -> Result<Self, ParseError> {
-        lexer
-            .peek()
-            .filter(|token| *token == Token::Ident)
-            .ok_or_else(|| {
-                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedToken(Token::Ident))
-            })
-            .and_then(|token| {
-                Ident::parse(lexer, alloc).and_then(|name| {
-                    lexer
-                        .expecting_token(Token::Equals)
-                        .reset_on_err(lexer, token)?;
-
-                    let expression = Expression::parse(lexer, alloc)?;
-                    Ok(Self::Named { name, expression })
-                })
-            })
-            .recover_with(|| {
-                lexer.expecting_token(Token::LBracket)?;
-                let index = Expression::parse(lexer, alloc)?;
-
-                lexer
-                    .expecting_token(Token::RBracket)
-                    .mark_unrecoverable()?;
-                lexer.expecting_token(Token::Equals).mark_unrecoverable()?;
-
-                let expression = Expression::parse(lexer, alloc)?;
-
-                Ok(Self::Indexed { index, expression })
-            })
-            .recover_with(|| {
-                Expression::parse(lexer, alloc).map(|expression| Self::Arraylike { expression })
-            })
-            .ok_or_else(|| {
-                ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedTableField)
-            })
-    }
-}
-
 impl<'chunk> TableConstructor<'chunk> {
-    pub(crate) fn parse(
+    pub(crate) fn try_parse(
+        lexer: &mut PeekableLexer,
+        alloc: &'chunk ASTAllocator,
+    ) -> Result<Option<Self>, ParseError> {
+        if lexer.next_if_eq(Token::LBrace).is_none() {
+            return Ok(None);
+        }
+
+        Self::parse_remaining(lexer, alloc).map(Some)
+    }
+
+    pub(crate) fn parse_remaining(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.expecting_token(Token::LBrace)?;
-
         let match_sep =
             |token: &SpannedToken| matches!(token.as_ref(), Token::Comma | Token::Semicolon);
-        let fields = parse_separated_list0(lexer, alloc, Field::parse, match_sep)?;
+        let fields = parse_separated_list0(lexer, alloc, Field::try_parse, match_sep)?;
         lexer.next_if(match_sep);
 
-        lexer.expecting_token(Token::RBrace).mark_unrecoverable()?;
+        lexer.expecting_token(Token::RBrace)?;
         Ok(Self { fields })
     }
 }
@@ -141,13 +158,13 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::try_parse)?;
 
         assert_eq!(
             result,
-            TableConstructor {
+            Some(TableConstructor {
                 fields: Default::default(),
-            }
+            })
         );
 
         Ok(())
@@ -160,18 +177,18 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::try_parse)?;
 
         assert_eq!(
             result,
-            TableConstructor {
+            Some(TableConstructor {
                 fields: List::new(&mut ListNode::new(Field::Arraylike {
                     expression: Expression::FunctionCall(&FnCallPrefixExpression::Call {
                         head: HeadAtom::Name(Ident(0)),
                         args: FunctionAtom::Call(FnArgs::Expressions(Default::default()))
                     })
                 })),
-            }
+            })
         );
 
         Ok(())
@@ -184,13 +201,13 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::try_parse)?;
 
         assert_eq!(
             result,
-            TableConstructor {
+            Some(TableConstructor {
                 fields: Default::default(),
-            }
+            })
         );
         Ok(())
     }
@@ -201,13 +218,13 @@ mod tests {
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Field::parse)?;
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Field::try_parse)?;
 
         assert_eq!(
             result,
-            Field::Arraylike {
+            Some(Field::Arraylike {
                 expression: Expression::Number(Number::Integer(10))
-            }
+            })
         );
 
         Ok(())
@@ -219,14 +236,14 @@ mod tests {
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Field::parse)?;
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Field::try_parse)?;
 
         assert_eq!(
             result,
-            Field::Named {
+            Some(Field::Named {
                 name: Ident(0),
                 expression: Expression::Number(Number::Integer(10))
-            }
+            })
         );
 
         Ok(())
@@ -238,14 +255,14 @@ mod tests {
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Field::parse)?;
+        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => Field::try_parse)?;
 
         assert_eq!(
             result,
-            Field::Indexed {
+            Some(Field::Indexed {
                 index: Expression::Number(Number::Integer(11)),
                 expression: Expression::Number(Number::Integer(10))
-            }
+            })
         );
 
         Ok(())
@@ -258,11 +275,11 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => TableConstructor::try_parse)?;
 
         assert_eq!(
             result,
-            TableConstructor {
+            Some(TableConstructor {
                 fields: List::from_slice(&mut [
                     ListNode::new(Field::Arraylike {
                         expression: Expression::Number(Number::Integer(10))
@@ -279,7 +296,7 @@ mod tests {
                         expression: Expression::Number(Number::Integer(14))
                     }),
                 ]),
-            }
+            })
         );
 
         Ok(())

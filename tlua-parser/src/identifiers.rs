@@ -1,7 +1,7 @@
 use crate::{
+    combinators::parse_separated_list_with_head,
     lexer::Token,
     list::List,
-    parse_separated_list1,
     ASTAllocator,
     ParseError,
     PeekableLexer,
@@ -17,10 +17,23 @@ impl Ident {
             .map(|ident| lexer.strings.add_ident(ident.src))
     }
 
-    pub(crate) fn parse_list1<'chunk>(
+    pub(crate) fn try_parse(lexer: &mut PeekableLexer, _: &ASTAllocator) -> Option<Self> {
+        lexer
+            .next_if_eq(Token::Ident)
+            .map(|ident| lexer.strings.add_ident(ident.src))
+    }
+
+    pub(crate) fn parse_list_with_head<'chunk>(
+        head: Ident,
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<List<'chunk, Self>, ParseError> {
-        parse_separated_list1(lexer, alloc, Self::parse, |token| *token == Token::Comma)
+        parse_separated_list_with_head(
+            head,
+            lexer,
+            alloc,
+            |lexer, alloc| Ok(Self::try_parse(lexer, alloc)),
+            |token| *token == Token::Comma,
+        )
     }
 }

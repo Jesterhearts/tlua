@@ -21,7 +21,6 @@ pub(crate) use combinators::*;
 pub use errors::ChunkParseError;
 pub(crate) use errors::{
     ParseError,
-    ParseErrorExt,
     SyntaxError,
 };
 
@@ -79,7 +78,15 @@ pub fn parse_chunk<'src, 'strings, 'chunk>(
     if input.is_empty() {
         Ok(Block::default())
     } else {
-        final_parser!((input.as_bytes(), alloc, strings) => Block::parse)
+        let mut token_stream = SpannedTokenStream::new(input.as_bytes(), strings);
+        Block::parse(&mut token_stream, alloc)
+            .and_then(|val| match token_stream.peek() {
+                None => Ok(val),
+                Some(token) => Err(ParseError {
+                    error: SyntaxError::ExpectedStatement,
+                    location: token.span,
+                }),
+            })
             .map_err(ChunkParseError::from)
     }
 }
@@ -212,7 +219,7 @@ impl<'src> SpannedTokenStream<'src, '_> {
         err: SyntaxError,
     ) -> Result<SpannedToken<'src>, ParseError> {
         self.next_if_eq(token)
-            .ok_or_else(|| ParseError::recoverable_from_here(self, err))
+            .ok_or_else(|| ParseError::from_here(self, err))
     }
 
     fn expecting_token(&mut self, token: Token) -> Result<SpannedToken<'src>, ParseError> {
@@ -245,6 +252,7 @@ impl<'src> SpannedTokenStream<'src, '_> {
 
 type PeekableLexer<'src, 'strings> = SpannedTokenStream<'src, 'strings>;
 
+#[cfg(test)]
 macro_rules! final_parser {
     (($input:expr, $alloc:expr, $strings:expr) => $parser:expr) => {{
         let mut token_stream = $crate::SpannedTokenStream::new($input, $strings);
@@ -253,7 +261,6 @@ macro_rules! final_parser {
             Some(token) => Err($crate::ParseError {
                 error: $crate::errors::SyntaxError::ExpectedEOF(token.token),
                 location: token.span,
-                recoverable: false,
             }),
         });
 
@@ -261,7 +268,64 @@ macro_rules! final_parser {
     }};
 }
 
+#[cfg(test)]
 pub(crate) use final_parser;
+
+macro_rules! token_subset {
+    ($visibility:vis $name:ident { $(Token:: $token:ident $(($data:ident : $type:ty))? ,)+  Error( $err:expr ) $(,)? }) => {
+        $visibility enum $name {
+            $($token $(($type))?),+
+        }
+
+        impl ::std::convert::TryFrom<$crate::lexer::Token> for $name {
+            type Error = SyntaxError;
+
+            fn try_from(value: $crate::lexer::Token) -> Result<Self, Self::Error> {
+                match value {
+                    $(Token::$token $(($data))? => Ok(Self::$token $(($data))? ),)+
+                    _ => Err(Self::ERROR)
+                }
+            }
+        }
+
+        impl $name {
+            const ERROR: SyntaxError = $err;
+
+            $visibility fn matches(token: &$crate::lexer::SpannedToken) -> bool {
+                Self::try_from(token.token).is_ok()
+            }
+
+            #[allow(unused)]
+            $visibility fn expect_next<'src>(
+                lexer: &mut $crate::PeekableLexer<'src,'_>,
+            ) -> Result<$crate::lexer::SpannedToken<'src, Self>, $crate::errors::ParseError> {
+                let pos = lexer.current_span();
+                lexer.next_if(Self::matches).map_or_else(
+                    || Err($crate::errors::ParseError{
+                        error: Self::ERROR,
+                        location: pos,
+                    }),
+                    |token| Self::try_from(token.token).map(|sub_token| {
+                        $crate::lexer::SpannedToken{
+                            token: sub_token,
+                            span: token.span,
+                            src: token.src
+                        }
+                    }).map_err(|e| ParseError::from_here(lexer, e))
+                )
+            }
+
+            #[allow(unused)]
+            $visibility fn next<'src>(
+                lexer: &mut $crate::PeekableLexer<'src, '_>,
+            ) -> Option<$crate::lexer::SpannedToken<'src, Self>> {
+                Self::expect_next(lexer).ok()
+            }
+        }
+    };
+}
+
+pub(crate) use token_subset;
 
 #[cfg(test)]
 mod tests {

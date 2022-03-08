@@ -1,12 +1,14 @@
 use crate::{
     block::Block,
+    combinators::{
+        parse_separated_list0,
+        parse_separated_list1_or,
+    },
     identifiers::Ident,
     lexer::Token,
     list::List,
-    parse_separated_list1,
     ASTAllocator,
     ParseError,
-    ParseErrorExt,
     PeekableLexer,
     SyntaxError,
 };
@@ -20,18 +22,6 @@ pub struct FnParams<'chunk> {
     pub varargs: bool,
 }
 
-#[derive(Debug, PartialEq)]
-pub struct FnBody<'chunk> {
-    pub params: FnParams<'chunk>,
-    pub body: Block<'chunk>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct FnName<'chunk> {
-    pub path: List<'chunk, Ident>,
-    pub method: Option<Ident>,
-}
-
 impl<'chunk> FnParams<'chunk> {
     pub(crate) fn parse(
         lexer: &mut PeekableLexer,
@@ -39,33 +29,35 @@ impl<'chunk> FnParams<'chunk> {
     ) -> Result<Self, ParseError> {
         lexer.expecting_token(Token::LParen)?;
 
-        parse_separated_list1(lexer, alloc, Ident::parse, |token| *token == Token::Comma)
-            .and_then(|named_params| {
-                let varargs = if lexer.next_if_eq(Token::Comma).is_some() {
-                    lexer
-                        .expecting_token_or(Token::Ellipses, SyntaxError::ExpectedIdentOrVaArgs)?;
-                    true
-                } else {
-                    false
-                };
+        let named_params = parse_separated_list0(
+            lexer,
+            alloc,
+            |lexer, alloc| Ok(Ident::try_parse(lexer, alloc)),
+            |token| *token == Token::Comma,
+        )?;
 
-                Ok(Self {
-                    named_params,
-                    varargs,
-                })
-            })
-            .recover_with(|| {
-                let varargs = lexer.next_if_eq(Token::Ellipses).is_some();
-                Ok(Self {
-                    named_params: Default::default(),
-                    varargs,
-                })
-            })
-            .and_then(|params| {
-                lexer.expecting_token(Token::RParen).mark_unrecoverable()?;
-                Ok(params)
-            })
+        let varargs = if named_params.is_empty() {
+            lexer.next_if_eq(Token::Ellipses).is_some()
+        } else {
+            lexer.next_if_eq(Token::Comma).map_or(Ok(false), |_| {
+                lexer.expecting_token_or(Token::Ellipses, SyntaxError::ExpectedIdentOrVaArgs)?;
+                Ok(true)
+            })?
+        };
+
+        lexer.expecting_token(Token::RParen)?;
+
+        Ok(Self {
+            named_params,
+            varargs,
+        })
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FnBody<'chunk> {
+    pub params: FnParams<'chunk>,
+    pub body: Block<'chunk>,
 }
 
 impl<'chunk> FnBody<'chunk> {
@@ -75,9 +67,15 @@ impl<'chunk> FnBody<'chunk> {
     ) -> Result<Self, ParseError> {
         let params = FnParams::parse(lexer, alloc)?;
 
-        let body = Block::parse_with_end(lexer, alloc).mark_unrecoverable()?;
+        let body = Block::parse_with_end(lexer, alloc)?;
         Ok(Self { params, body })
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct FnName<'chunk> {
+    pub path: List<'chunk, Ident>,
+    pub method: Option<Ident>,
 }
 
 impl<'chunk> FnName<'chunk> {
@@ -85,8 +83,13 @@ impl<'chunk> FnName<'chunk> {
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        let path =
-            parse_separated_list1(lexer, alloc, Ident::parse, |token| *token == Token::Period)?;
+        let path = parse_separated_list1_or(
+            lexer,
+            alloc,
+            |lexer, alloc| Ident::parse(lexer, alloc).map(Some),
+            |token| *token == Token::Period,
+            SyntaxError::ExpectedToken(Token::Ident),
+        )?;
 
         let method = if lexer.next_if_eq(Token::Colon).is_some() {
             Some(Ident::parse(lexer, alloc)?)

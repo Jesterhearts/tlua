@@ -13,16 +13,18 @@ pub struct RetStatement<'chunk> {
 }
 
 impl<'chunk> RetStatement<'chunk> {
-    pub(crate) fn parse(
+    pub(crate) fn try_parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Self, ParseError> {
-        lexer.expecting_token(Token::KWreturn)?;
+    ) -> Result<Option<Self>, ParseError> {
+        if lexer.next_if_eq(Token::KWreturn).is_none() {
+            return Ok(None);
+        }
 
         let expressions = Expression::parse_list0(lexer, alloc)?;
         lexer.next_if_eq(Token::Semicolon);
 
-        Ok(Self { expressions })
+        Ok(Some(Self { expressions }))
     }
 }
 
@@ -51,11 +53,12 @@ mod tests {
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::try_parse)?;
 
         assert_eq!(
             result,
-            (RetStatement {
+            Some(RetStatement {
                 expressions: Default::default()
             })
         );
@@ -69,11 +72,12 @@ mod tests {
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::try_parse)?;
 
         assert_eq!(
             result,
-            (RetStatement {
+            Some(RetStatement {
                 expressions: Default::default()
             })
         );
@@ -87,11 +91,12 @@ mod tests {
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::try_parse)?;
 
         assert_eq!(
             result,
-            (RetStatement {
+            Some(RetStatement {
                 expressions: List::new(&mut ListNode::new(Expression::Number(Number::Integer(10))))
             })
         );
@@ -105,11 +110,12 @@ mod tests {
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::try_parse)?;
 
         assert_eq!(
             result,
-            (RetStatement {
+            Some(RetStatement {
                 expressions: List::new(&mut ListNode::new(Expression::Number(Number::Integer(10))))
             })
         );
@@ -123,11 +129,12 @@ mod tests {
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::try_parse)?;
 
         assert_eq!(
             result,
-            (RetStatement {
+            Some(RetStatement {
                 expressions: List::from_slice(&mut [
                     ListNode::new(Expression::Number(Number::Integer(10))),
                     ListNode::new(Expression::Number(Number::Integer(11)))
@@ -144,11 +151,12 @@ mod tests {
 
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::parse)?;
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => RetStatement::try_parse)?;
 
         assert_eq!(
             result,
-            (RetStatement {
+            Some(RetStatement {
                 expressions: List::from_slice(&mut [ListNode::new(Expression::Parenthesized(
                     &Expression::Number(Number::Integer(10))
                 )),])

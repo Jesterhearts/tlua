@@ -10,6 +10,7 @@ use logos::{
 use crate::{
     identifiers::Ident,
     lexer::Token,
+    token_subset,
     ASTAllocator,
     ParseError,
     PeekableLexer,
@@ -31,17 +32,20 @@ impl From<&'_ Ident> for ConstantString {
     }
 }
 
+token_subset! {
+    StringStart {
+        Token::SingleQuotedStringStart,
+        Token::DoubleQuotedStringStart,
+        Error(SyntaxError::ExpectedString)
+    }
+}
+
 impl ConstantString {
-    pub(crate) fn parse(
+    pub(crate) fn try_parse(
         lexer: &mut PeekableLexer,
         _: &ASTAllocator,
-    ) -> Result<ConstantString, ParseError> {
-        let token = if let Some(token) = lexer.next_if(|token| {
-            matches!(
-                token.as_ref(),
-                Token::SingleQuotedStringStart | Token::DoubleQuotedStringStart
-            )
-        }) {
+    ) -> Result<Option<ConstantString>, ParseError> {
+        let token = if let Some(token) = StringStart::next(lexer) {
             token
         } else {
             return multiline_strings::parse_string(lexer);
@@ -51,26 +55,22 @@ impl ConstantString {
         let mut string_lexer = Lexer::<StringToken>::new(remain);
 
         let string = match token.as_ref() {
-            Token::SingleQuotedStringStart => internal_parse(&mut string_lexer, Delim::SingleQuote),
-            Token::DoubleQuotedStringStart => internal_parse(&mut string_lexer, Delim::DoubleQuote),
-            _ => unreachable!(),
+            StringStart::SingleQuotedStringStart => {
+                internal_parse(&mut string_lexer, Delim::SingleQuote)
+            }
+            StringStart::DoubleQuotedStringStart => {
+                internal_parse(&mut string_lexer, Delim::DoubleQuote)
+            }
         }
-        .map_err(
-            |ParseError {
-                 error,
-                 location,
-                 recoverable,
-             }| ParseError {
-                error,
-                location: location.translate(token.span),
-                recoverable,
-            },
-        )?;
+        .map_err(|ParseError { error, location }| ParseError {
+            error,
+            location: location.translate(token.span),
+        })?;
 
         let string = lexer.strings.add_string(string);
 
         lexer.set_source_loc(string_lexer.remainder());
-        Ok(string)
+        Ok(Some(string))
     }
 }
 
@@ -146,7 +146,6 @@ fn internal_parse(
                 return Err(ParseError {
                     error: SyntaxError::UnclosedString,
                     location: string_lexer.span().into(),
-                    recoverable: false,
                 });
             }
             StringToken::SingleQuote => {
@@ -187,7 +186,6 @@ fn internal_parse(
                             return Err(ParseError {
                                 error: SyntaxError::DecimalEscapeTooLarge,
                                 location: string_lexer.span().into(),
-                                recoverable: false,
                             });
                         }
                     }
@@ -199,7 +197,6 @@ fn internal_parse(
                 return Err(ParseError {
                     error: SyntaxError::UnclosedUnicodeEscapeSequence,
                     location: string_lexer.span().into(),
-                    recoverable: false,
                 });
             }
             StringToken::UnicodeEscape => {
@@ -212,7 +209,6 @@ fn internal_parse(
                         return Err(ParseError {
                             error: SyntaxError::Utf8ValueTooLarge,
                             location: string_lexer.span().into(),
-                            recoverable: false,
                         });
                     }
                 };
@@ -224,7 +220,6 @@ fn internal_parse(
                 return Err(ParseError {
                     error: SyntaxError::InvalidEscapeSequence,
                     location: string_lexer.span().into(),
-                    recoverable: false,
                 });
             }
             StringToken::EscapeSeqBell => {
@@ -264,7 +259,6 @@ fn internal_parse(
     Err(ParseError {
         error: SyntaxError::UnclosedString,
         location: string_lexer.span().into(),
-        recoverable: false,
     })
 }
 
@@ -392,9 +386,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"a string".as_bstr())
@@ -410,9 +404,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"a string".as_bstr())
@@ -428,9 +422,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\x07".as_bstr())
@@ -446,9 +440,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\x08".as_bstr())
@@ -464,9 +458,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\x0C".as_bstr())
@@ -482,9 +476,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\n".as_bstr())
@@ -500,9 +494,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\r".as_bstr())
@@ -518,9 +512,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\t".as_bstr())
@@ -536,9 +530,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\x0B".as_bstr())
@@ -554,9 +548,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\\".as_bstr())
@@ -572,9 +566,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\"".as_bstr())
@@ -590,9 +584,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"\'".as_bstr())
@@ -609,9 +603,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"a string".as_bstr())
@@ -627,9 +621,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"a string".as_bstr())
@@ -645,9 +639,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"line1 \n a string".as_bstr())
@@ -663,9 +657,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"line1 \n a string".as_bstr())
@@ -681,9 +675,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"line1 \n a string".as_bstr())
@@ -699,9 +693,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some(b"line1 \n a string".as_bstr())
@@ -717,9 +711,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some("\u{2764}".as_bytes().as_bstr())
@@ -735,9 +729,9 @@ mod tests {
         let alloc = ASTAllocator::default();
         let mut strings = StringTable::default();
         let result =
-            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::parse)?;
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
 
-        assert_eq!(result, ConstantString(0));
+        assert_eq!(result, Some(ConstantString(0)));
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some([253, 191, 191, 191, 191, 191].as_bstr())

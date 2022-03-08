@@ -1,4 +1,8 @@
 use crate::{
+    combinators::{
+        parse_separated_list0,
+        parse_separated_list_with_head,
+    },
     expressions::{
         operator::Or,
         strings::ConstantString,
@@ -8,15 +12,14 @@ use crate::{
         Token,
     },
     list::List,
-    parse_separated_list1,
     prefix_expression::{
         FnCallPrefixExpression,
         PrefixExpression,
         VarPrefixExpression,
     },
+    token_subset,
     ASTAllocator,
     ParseError,
-    ParseErrorExt,
     PeekableLexer,
     SyntaxError,
 };
@@ -59,11 +62,21 @@ pub enum Expression<'chunk> {
     UnaryOp(UnaryOperator<'chunk>),
 }
 
+impl<'chunk> From<(PrefixExpression<'chunk>, &'chunk ASTAllocator)> for Expression<'chunk> {
+    fn from((expr, alloc): (PrefixExpression<'chunk>, &'chunk ASTAllocator)) -> Self {
+        match expr {
+            PrefixExpression::Variable(var) => Self::Variable(alloc.alloc(var)),
+            PrefixExpression::FnCall(call) => Self::FunctionCall(alloc.alloc(call)),
+            PrefixExpression::Parenthesized(expr) => Self::Parenthesized(expr),
+        }
+    }
+}
+
 impl<'chunk> Expression<'chunk> {
-    pub(crate) fn parse(
+    pub(crate) fn try_parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Self, ParseError> {
+    ) -> Result<Option<Self>, ParseError> {
         // We start at the bottom of the precedence tree, and internally it'll
         // recursively move up the tree until it reaches the top.
         // After attempting to match an operator at the top of the tree, it'll move down
@@ -72,83 +85,85 @@ impl<'chunk> Expression<'chunk> {
         Or::parse(lexer, alloc)
     }
 
+    pub(crate) fn parse(
+        lexer: &mut PeekableLexer,
+        alloc: &'chunk ASTAllocator,
+    ) -> Result<Self, ParseError> {
+        Self::try_parse(lexer, alloc).and_then(|expr| {
+            expr.ok_or_else(|| ParseError::from_here(lexer, SyntaxError::ExpectedExpression))
+        })
+    }
+
     pub(crate) fn parse_list1(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<List<'chunk, Self>, ParseError> {
-        parse_separated_list1(lexer, alloc, Self::parse, |token| *token == Token::Comma)
+        let head = Self::parse(lexer, alloc)?;
+        parse_separated_list_with_head(head, lexer, alloc, Self::try_parse, |token| {
+            *token == Token::Comma
+        })
     }
 
     pub(crate) fn parse_list0(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<List<'chunk, Self>, ParseError> {
-        Self::parse_list1(lexer, alloc)
-            .recover()
-            .map(Option::unwrap_or_default)
+        parse_separated_list0(lexer, alloc, Self::try_parse, |token| {
+            *token == Token::Comma
+        })
     }
 
     fn parse_leaf(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Self, ParseError> {
-        ConstantString::parse(lexer, alloc)
-            .map(Self::String)
-            .recover_with(|| TableConstructor::parse(lexer, alloc).map(Self::TableConstructor))
-            .recover_with(|| {
-                PrefixExpression::parse(lexer, alloc).map(|prefix_expr| match prefix_expr {
-                    PrefixExpression::Variable(var) => Self::Variable(alloc.alloc(var)),
-                    PrefixExpression::FnCall(call) => Self::FunctionCall(alloc.alloc(call)),
-                    PrefixExpression::Parenthesized(expr) => Self::Parenthesized(expr),
-                })
-            })
-            .recover_with(|| {
-                let token = lexer
-                    .next_if(|token| {
-                        matches!(
-                            token.as_ref(),
-                            Token::Nil
-                                | Token::Boolean(_)
-                                | Token::HexInt(_)
-                                | Token::HexFloat(_)
-                                | Token::Int(_)
-                                | Token::Float(_)
-                                | Token::Ellipses
-                                | Token::KWfunction
-                        )
-                    })
-                    .ok_or_else(|| {
-                        ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedExpression)
-                    })?;
+    ) -> Result<Option<Self>, ParseError> {
+        token_subset! {
+            LeafToken {
+                Token::Nil,
+                Token::Boolean(val: bool),
+                Token::HexInt(val: LexedNumber),
+                Token::HexFloat(val: LexedNumber),
+                Token::Int(val: LexedNumber),
+                Token::Float(val: LexedNumber),
+                Token::Ellipses,
+                Token::KWfunction,
+                Error(SyntaxError::ExpectedExpression)
+            }
+        }
 
-                Ok(match token.into() {
-                    Token::Nil => Self::Nil(Nil),
-                    Token::Boolean(b) => Self::Bool(b),
-                    Token::Int(i) | Token::Float(i) | Token::HexFloat(i) | Token::HexInt(i) => {
-                        match i {
-                            LexedNumber::Float(f) => Self::Number(Number::Float(f)),
-                            LexedNumber::Int(i) => Self::Number(Number::Integer(i)),
-                            LexedNumber::MalformedNumber => {
-                                return Err(ParseError::unrecoverable_from_here(
-                                    lexer,
-                                    SyntaxError::MalformedNumber,
-                                ));
-                            }
-                        }
+        if let Some(string) = ConstantString::try_parse(lexer, alloc)? {
+            Ok(Some(Self::String(string)))
+        } else if let Some(table) = TableConstructor::try_parse(lexer, alloc)? {
+            Ok(Some(Self::TableConstructor(table)))
+        } else if let Some(prefix_expr) = PrefixExpression::try_parse(lexer, alloc)? {
+            match prefix_expr {
+                PrefixExpression::Variable(var) => Ok(Some(Self::Variable(alloc.alloc(var)))),
+                PrefixExpression::FnCall(call) => Ok(Some(Self::FunctionCall(alloc.alloc(call)))),
+                PrefixExpression::Parenthesized(expr) => Ok(Some(Self::Parenthesized(expr))),
+            }
+        } else if let Some(token) = LeafToken::next(lexer) {
+            Ok(Some(match token.as_ref() {
+                LeafToken::Nil => Self::Nil(Nil),
+                LeafToken::Boolean(b) => Self::Bool(*b),
+                LeafToken::Int(i)
+                | LeafToken::Float(i)
+                | LeafToken::HexFloat(i)
+                | LeafToken::HexInt(i) => match i {
+                    LexedNumber::Float(f) => Self::Number(Number::Float(*f)),
+                    LexedNumber::Int(i) => Self::Number(Number::Integer(*i)),
+                    LexedNumber::MalformedNumber => {
+                        return Err(ParseError::from_here(lexer, SyntaxError::MalformedNumber));
                     }
-                    Token::Ellipses => Self::VarArgs(VarArgs),
-                    Token::KWfunction => {
-                        let body = FnBody::parse(lexer, alloc).ok_or_else(|| {
-                            ParseError::unrecoverable_from_here(
-                                lexer,
-                                SyntaxError::ExpectedFunctionDef,
-                            )
-                        })?;
-                        Self::FnDef(alloc.alloc(body))
-                    }
-                    _ => unreachable!(),
-                })
-            })
+                },
+                LeafToken::Ellipses => Self::VarArgs(VarArgs),
+                LeafToken::KWfunction => {
+                    let body = FnBody::parse(lexer, alloc)?;
+                    Self::FnDef(alloc.alloc(body))
+                }
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }
 

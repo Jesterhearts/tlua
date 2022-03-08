@@ -1,7 +1,6 @@
 use atoi::atoi;
 use bstr::BString;
 use derive_more::{
-    AsRef,
     Deref,
     From,
 };
@@ -32,27 +31,24 @@ pub(crate) enum LexedNumber {
     MalformedNumber,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deref, AsRef, From)]
-pub(crate) struct SpannedToken<'src> {
+#[derive(Debug, Clone, Copy, PartialEq, Deref, From)]
+pub(crate) struct SpannedToken<'src, TokenT = Token> {
     #[deref]
-    pub(crate) token: Token,
+    pub(crate) token: TokenT,
     pub(crate) span: SourceSpan,
     pub(crate) src: &'src [u8],
 }
 
-impl From<SpannedToken<'_>> for Token {
-    fn from(
-        SpannedToken {
-            token,
-            span: _,
-            src: _,
-        }: SpannedToken,
-    ) -> Self {
-        token
+impl<TokenT> AsRef<TokenT> for SpannedToken<'_, TokenT> {
+    fn as_ref(&self) -> &TokenT {
+        &self.token
     }
 }
 
-impl PartialEq<Token> for SpannedToken<'_> {
+impl<Token> PartialEq<Token> for SpannedToken<'_, Token>
+where
+    Token: PartialEq,
+{
     fn eq(&self, other: &Token) -> bool {
         self.token == *other
     }

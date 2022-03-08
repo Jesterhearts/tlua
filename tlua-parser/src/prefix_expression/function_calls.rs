@@ -6,9 +6,9 @@ use crate::{
     },
     lexer::Token,
     list::List,
+    token_subset,
     ASTAllocator,
     ParseError,
-    ParseErrorExt,
     PeekableLexer,
     SyntaxError,
 };
@@ -20,24 +20,46 @@ pub enum FnArgs<'chunk> {
     String(ConstantString),
 }
 
+token_subset! {
+    ArgToken {
+        Token::LBrace,
+        Token::LParen,
+        Error(SyntaxError::ExpectedFnArgs)
+    }
+}
+
 impl<'chunk> FnArgs<'chunk> {
     pub(crate) fn parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        ConstantString::parse(lexer, alloc)
-            .map(Self::String)
-            .recover_with(|| TableConstructor::parse(lexer, alloc).map(Self::TableConstructor))
-            .recover_with(|| {
-                lexer.expecting_token(Token::LParen)?;
+        Self::try_parse(lexer, alloc).and_then(|args| {
+            args.ok_or_else(|| ParseError::from_here(lexer, SyntaxError::ExpectedFnArgs))
+        })
+    }
 
-                let exprs = Expression::parse_list0(lexer, alloc)?;
+    pub(crate) fn try_parse(
+        lexer: &mut PeekableLexer,
+        alloc: &'chunk ASTAllocator,
+    ) -> Result<Option<Self>, ParseError> {
+        let token = if let Some(token) = ArgToken::next(lexer) {
+            token
+        } else if let Some(string) = ConstantString::try_parse(lexer, alloc)? {
+            return Ok(Some(Self::String(string)));
+        } else {
+            return Ok(None);
+        };
 
-                lexer.expecting_token(Token::RParen).mark_unrecoverable()?;
-
-                Ok(Self::Expressions(exprs))
-            })
-            .ok_or_else(|| ParseError::recoverable_from_here(lexer, SyntaxError::ExpectedFnArgs))
+        match token.as_ref() {
+            ArgToken::LBrace => TableConstructor::parse_remaining(lexer, alloc)
+                .map(Self::TableConstructor)
+                .map(Some),
+            ArgToken::LParen => Expression::parse_list0(lexer, alloc).and_then(|expr| {
+                lexer
+                    .expecting_token(Token::RParen)
+                    .map(|_| Some(Self::Expressions(expr)))
+            }),
+        }
     }
 }
 

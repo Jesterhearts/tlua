@@ -1,12 +1,11 @@
 use crate::{
     block::Block,
+    combinators::parse_list0,
     expressions::Expression,
     lexer::Token,
     list::List,
-    parse_list1,
     ASTAllocator,
     ParseError,
-    ParseErrorExt,
     PeekableLexer,
 };
 
@@ -25,26 +24,21 @@ pub struct ElseIf<'chunk> {
 }
 
 impl<'chunk> If<'chunk> {
-    pub(crate) fn parse(
+    pub(crate) fn parse_remaining(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        lexer.expecting_token(Token::KWif)?;
-
         let cond = parse_cond_then(lexer, alloc)?;
+        let body = Block::parse(lexer, alloc)?;
 
-        let (body, (elif, else_final)) = Block::parse(lexer, alloc)
-            .chain_or_recover_with(|| {
-                ElseIf::parse_list1(lexer, alloc)
-                    .chain_or_recover_with(|| {
-                        parse_else_final(lexer, alloc)
-                            .map(Some)
-                            .recover_with(|| lexer.expecting_token(Token::KWend).map(|_| None))
-                    })
-                    .map(|(elifs, else_final)| (elifs.unwrap_or_default(), else_final))
-            })
-            .map(|(body, rest)| (body.unwrap_or_default(), rest))
-            .mark_unrecoverable()?;
+        let elif = parse_list0(lexer, alloc, ElseIf::try_parse)?;
+        let else_final = lexer
+            .next_if_eq(Token::KWelse)
+            .map(|_| Block::parse_with_end(lexer, alloc))
+            .map_or_else(
+                || lexer.expecting_token(Token::KWend).map(|_| None),
+                |block| block.map(Some),
+            )?;
 
         Ok(Self {
             cond,
@@ -56,120 +50,23 @@ impl<'chunk> If<'chunk> {
 }
 
 impl<'chunk> ElseIf<'chunk> {
-    fn parse_list1(
+    fn try_parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<List<'chunk, Self>, ParseError> {
-        parse_list1(lexer, alloc, |lexer, alloc| {
-            lexer.expecting_token(Token::KWelseif)?;
-            parse_cond_then(lexer, alloc).and_then(|cond| {
-                Block::parse(lexer, alloc).recover().map(|body| ElseIf {
-                    cond,
-                    body: body.unwrap_or_default(),
-                })
-            })
-        })
-    }
-}
+    ) -> Result<Option<Self>, ParseError> {
+        if lexer.next_if_eq(Token::KWelseif).is_none() {
+            return Ok(None);
+        }
 
-fn parse_else_final<'chunk>(
-    lexer: &mut PeekableLexer,
-    alloc: &'chunk ASTAllocator,
-) -> Result<Block<'chunk>, ParseError> {
-    lexer
-        .expecting_token(Token::KWelse)
-        .and_then(|_| Block::parse_with_end(lexer, alloc))
+        parse_cond_then(lexer, alloc)
+            .and_then(|cond| Block::parse(lexer, alloc).map(|body| Some(Self { cond, body })))
+    }
 }
 
 fn parse_cond_then<'chunk>(
     lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
 ) -> Result<Expression<'chunk>, ParseError> {
-    let cond = Expression::parse(lexer, alloc).mark_unrecoverable()?;
-    lexer.expecting_token(Token::KWthen).mark_unrecoverable()?;
-    Ok(cond)
-}
-
-#[cfg(test)]
-mod tests {
-    use pretty_assertions::assert_eq;
-
-    use super::If;
-    use crate::{
-        expressions::Expression,
-        final_parser,
-        list::{
-            List,
-            ListNode,
-        },
-        statement::if_statement::ElseIf,
-        ASTAllocator,
-        StringTable,
-    };
-
-    #[test]
-    pub fn parses_if() -> anyhow::Result<()> {
-        let src = "if true then end";
-
-        let alloc = ASTAllocator::default();
-        let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => If::parse)?;
-
-        assert_eq!(
-            result,
-            If {
-                cond: Expression::Bool(true),
-                body: Default::default(),
-                elif: Default::default(),
-                else_final: None,
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    pub fn parses_if_else() -> anyhow::Result<()> {
-        let src = "if true then else end";
-
-        let alloc = ASTAllocator::default();
-        let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => If::parse)?;
-
-        assert_eq!(
-            result,
-            If {
-                cond: Expression::Bool(true),
-                body: Default::default(),
-                elif: Default::default(),
-                else_final: Some(Default::default())
-            }
-        );
-
-        Ok(())
-    }
-
-    #[test]
-    pub fn parses_if_elseif_else() -> anyhow::Result<()> {
-        let src = "if true then elseif true then else end";
-
-        let alloc = ASTAllocator::default();
-        let mut strings = StringTable::default();
-        let result = final_parser!((src.as_bytes(), &alloc, &mut strings) => If::parse)?;
-
-        assert_eq!(
-            result,
-            If {
-                cond: Expression::Bool(true),
-                body: Default::default(),
-                elif: List::new(&mut ListNode::new(ElseIf {
-                    cond: Expression::Bool(true),
-                    body: Default::default(),
-                })),
-                else_final: Some(Default::default())
-            }
-        );
-
-        Ok(())
-    }
+    Expression::parse(lexer, alloc)
+        .and_then(|cond| lexer.expecting_token(Token::KWthen).map(|_| cond))
 }

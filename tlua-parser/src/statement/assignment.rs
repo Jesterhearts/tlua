@@ -1,15 +1,14 @@
 use crate::{
+    combinators::parse_separated_list_with_head,
     expressions::Expression,
     lexer::Token,
     list::List,
-    parse_list_with_head,
     prefix_expression::{
         PrefixExpression,
         VarPrefixExpression,
     },
     ASTAllocator,
     ParseError,
-    ParseErrorExt,
     PeekableLexer,
     SyntaxError,
 };
@@ -21,26 +20,37 @@ pub struct Assignment<'chunk> {
 }
 
 impl<'chunk> Assignment<'chunk> {
-    pub(crate) fn parse(
+    pub(crate) fn parse_remaining(
         head: VarPrefixExpression<'chunk>,
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
     ) -> Result<Self, ParseError> {
-        let varlist = parse_list_with_head(head, lexer, alloc, |lexer, alloc| {
-            lexer.expecting_token(Token::Comma)?;
-            match PrefixExpression::parse(lexer, alloc).mark_unrecoverable()? {
-                PrefixExpression::Variable(var) => Ok(var),
-                _ => Err(ParseError::unrecoverable_from_here(
-                    lexer,
-                    SyntaxError::ExpectedVariable,
-                )),
-            }
-        })
-        .mark_unrecoverable()?;
+        let varlist = parse_separated_list_with_head(
+            head,
+            lexer,
+            alloc,
+            |lexer, alloc| {
+                let pos = lexer.current_span();
+                PrefixExpression::try_parse(lexer, alloc).and_then(|expr| {
+                    if let Some(PrefixExpression::Variable(v)) = expr {
+                        Ok(Some(v))
+                    } else {
+                        Err(ParseError {
+                            error: SyntaxError::ExpectedVariable,
+                            location: crate::SourceSpan {
+                                start: pos.start,
+                                end: lexer.current_span().end,
+                            },
+                        })
+                    }
+                })
+            },
+            |token| *token == Token::Comma,
+        )?;
 
-        lexer.expecting_token(Token::Equals).mark_unrecoverable()?;
+        lexer.expecting_token(Token::Equals)?;
 
-        let expressions = Expression::parse_list1(lexer, alloc).mark_unrecoverable()?;
+        let expressions = Expression::parse_list1(lexer, alloc)?;
 
         Ok(Self {
             varlist,

@@ -4,9 +4,9 @@ use crate::{
         SpannedToken,
         Token,
     },
+    token_subset,
     ASTAllocator,
     ParseError,
-    ParseErrorExt,
     PeekableLexer,
     SyntaxError,
 };
@@ -64,7 +64,7 @@ impl<'chunk> Exponetiation<'chunk> {
     pub(crate) fn parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Expression<'chunk>, ParseError> {
+    ) -> Result<Option<Expression<'chunk>>, ParseError> {
         parse_right_assoc_binop(
             lexer,
             alloc,
@@ -93,29 +93,37 @@ pub struct BitNot<'chunk>(pub &'chunk Expression<'chunk>);
 pub(crate) fn parse_unary<'chunk>(
     lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
-) -> Result<Expression<'chunk>, ParseError> {
-    let token = if let Some(token) = lexer.next_if(|token| {
-        matches!(
-            token.as_ref(),
-            Token::KWnot | Token::Hashtag | Token::Minus | Token::Tilde
-        )
-    }) {
+) -> Result<Option<Expression<'chunk>>, ParseError> {
+    token_subset! {
+        UnaryToken {
+            Token::KWnot,
+            Token::Hashtag,
+            Token::Minus,
+            Token::Tilde,
+            Error(SyntaxError::ExpectedExpression)
+        }
+    }
+
+    let token = if let Some(token) = UnaryToken::next(lexer) {
         token
     } else {
         return Exponetiation::parse(lexer, alloc);
     };
 
-    let expr = Exponetiation::parse(lexer, alloc).ok_or_else(|| {
-        ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedExpression)
-    })?;
-
-    Ok(match token.as_ref() {
-        Token::KWnot => Expression::UnaryOp(UnaryOperator::Not(Not(alloc.alloc(expr)))),
-        Token::Hashtag => Expression::UnaryOp(UnaryOperator::Length(Length(alloc.alloc(expr)))),
-        Token::Minus => Expression::UnaryOp(UnaryOperator::Minus(Negation(alloc.alloc(expr)))),
-        Token::Tilde => Expression::UnaryOp(UnaryOperator::BitNot(BitNot(alloc.alloc(expr)))),
-        _ => unreachable!(),
-    })
+    Ok(
+        Exponetiation::parse(lexer, alloc)?.map(|expr| match token.as_ref() {
+            UnaryToken::KWnot => Expression::UnaryOp(UnaryOperator::Not(Not(alloc.alloc(expr)))),
+            UnaryToken::Hashtag => {
+                Expression::UnaryOp(UnaryOperator::Length(Length(alloc.alloc(expr))))
+            }
+            UnaryToken::Minus => {
+                Expression::UnaryOp(UnaryOperator::Minus(Negation(alloc.alloc(expr))))
+            }
+            UnaryToken::Tilde => {
+                Expression::UnaryOp(UnaryOperator::BitNot(BitNot(alloc.alloc(expr))))
+            }
+        }),
+    )
 }
 
 #[derive(Debug, PartialEq)]
@@ -145,7 +153,7 @@ pub struct Modulo<'chunk> {
 pub(crate) fn parse_muldivmod<'chunk>(
     lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
-) -> Result<Expression<'chunk>, ParseError> {
+) -> Result<Option<Expression<'chunk>>, ParseError> {
     parse_left_assoc_binop(
         lexer,
         alloc,
@@ -181,7 +189,7 @@ pub struct Minus<'chunk> {
 pub(crate) fn parse_addsub<'chunk>(
     lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
-) -> Result<Expression<'chunk>, ParseError> {
+) -> Result<Option<Expression<'chunk>>, ParseError> {
     parse_left_assoc_binop(
         lexer,
         alloc,
@@ -205,7 +213,7 @@ impl<'chunk> Concat<'chunk> {
     pub(crate) fn parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Expression<'chunk>, ParseError> {
+    ) -> Result<Option<Expression<'chunk>>, ParseError> {
         parse_right_assoc_binop(
             lexer,
             alloc,
@@ -232,7 +240,7 @@ pub struct ShiftRight<'chunk> {
 pub(crate) fn parse_shift<'chunk>(
     lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
-) -> Result<Expression<'chunk>, ParseError> {
+) -> Result<Option<Expression<'chunk>>, ParseError> {
     parse_left_assoc_binop(
         lexer,
         alloc,
@@ -265,7 +273,7 @@ impl<'chunk> BitAnd<'chunk> {
     pub(crate) fn parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Expression<'chunk>, ParseError> {
+    ) -> Result<Option<Expression<'chunk>>, ParseError> {
         parse_left_assoc_binop(
             lexer,
             alloc,
@@ -286,7 +294,7 @@ impl<'chunk> BitXor<'chunk> {
     pub(crate) fn parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Expression<'chunk>, ParseError> {
+    ) -> Result<Option<Expression<'chunk>>, ParseError> {
         parse_left_assoc_binop(
             lexer,
             alloc,
@@ -307,7 +315,7 @@ impl<'chunk> BitOr<'chunk> {
     pub(crate) fn parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Expression<'chunk>, ParseError> {
+    ) -> Result<Option<Expression<'chunk>>, ParseError> {
         parse_left_assoc_binop(
             lexer,
             alloc,
@@ -357,7 +365,7 @@ pub struct NotEqual<'chunk> {
 pub(crate) fn parse_logical<'chunk>(
     lexer: &mut PeekableLexer,
     alloc: &'chunk ASTAllocator,
-) -> Result<Expression<'chunk>, ParseError> {
+) -> Result<Option<Expression<'chunk>>, ParseError> {
     parse_left_assoc_binop(
         lexer,
         alloc,
@@ -407,7 +415,7 @@ impl<'chunk> And<'chunk> {
     pub(crate) fn parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Expression<'chunk>, ParseError> {
+    ) -> Result<Option<Expression<'chunk>>, ParseError> {
         parse_left_assoc_binop(
             lexer,
             alloc,
@@ -428,7 +436,7 @@ impl<'chunk> Or<'chunk> {
     pub(crate) fn parse(
         lexer: &mut PeekableLexer,
         alloc: &'chunk ASTAllocator,
-    ) -> Result<Expression<'chunk>, ParseError> {
+    ) -> Result<Option<Expression<'chunk>>, ParseError> {
         parse_left_assoc_binop(
             lexer,
             alloc,
@@ -445,26 +453,32 @@ fn parse_left_assoc_binop<'src, 'chunk, F, M, C>(
     higher_precedent: F,
     match_next: M,
     combine: C,
-) -> Result<Expression<'chunk>, ParseError>
+) -> Result<Option<Expression<'chunk>>, ParseError>
 where
-    F: Fn(&mut PeekableLexer, &'chunk ASTAllocator) -> Result<Expression<'chunk>, ParseError>,
+    F: Fn(
+        &mut PeekableLexer,
+        &'chunk ASTAllocator,
+    ) -> Result<Option<Expression<'chunk>>, ParseError>,
     M: Fn(&SpannedToken) -> bool,
     C: Fn(Token, &'chunk Expression<'chunk>, &'chunk Expression<'chunk>) -> Expression<'chunk>,
 {
-    let mut lhs = higher_precedent(lexer, alloc)?;
+    let mut lhs = if let Some(lhs) = higher_precedent(lexer, alloc)? {
+        lhs
+    } else {
+        return Ok(None);
+    };
 
     loop {
         let token = if let Some(token) = lexer.next_if(&match_next) {
             token
         } else {
-            return Ok(lhs);
+            return Ok(Some(lhs));
         };
 
-        let rhs = higher_precedent(lexer, alloc).ok_or_else(|| {
-            ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedExpression)
-        })?;
+        let rhs = higher_precedent(lexer, alloc)?
+            .ok_or_else(|| ParseError::from_here(lexer, SyntaxError::ExpectedExpression))?;
 
-        lhs = combine(token.into(), &*alloc.alloc(lhs), &*alloc.alloc(rhs));
+        lhs = combine(token.token, &*alloc.alloc(lhs), &*alloc.alloc(rhs));
     }
 }
 
@@ -475,21 +489,33 @@ fn parse_right_assoc_binop<'src, 'chunk, F1, F2, C>(
     equal_precedent: F2,
     match_next: Token,
     combine: C,
-) -> Result<Expression<'chunk>, ParseError>
+) -> Result<Option<Expression<'chunk>>, ParseError>
 where
-    F1: Fn(&mut PeekableLexer, &'chunk ASTAllocator) -> Result<Expression<'chunk>, ParseError>,
-    F2: Fn(&mut PeekableLexer, &'chunk ASTAllocator) -> Result<Expression<'chunk>, ParseError>,
+    F1: Fn(
+        &mut PeekableLexer,
+        &'chunk ASTAllocator,
+    ) -> Result<Option<Expression<'chunk>>, ParseError>,
+    F2: Fn(
+        &mut PeekableLexer,
+        &'chunk ASTAllocator,
+    ) -> Result<Option<Expression<'chunk>>, ParseError>,
     C: Fn(&'chunk Expression<'chunk>, &'chunk Expression<'chunk>) -> Expression<'chunk>,
 {
-    let lhs = higher_precedent(lexer, alloc)?;
+    let lhs = if let Some(lhs) = higher_precedent(lexer, alloc)? {
+        lhs
+    } else {
+        return Ok(None);
+    };
 
     let mut exprs = vec![lhs];
     while lexer.next_if_eq(match_next).is_some() {
-        let rhs = higher_precedent(lexer, alloc)
-            .recover_with(|| equal_precedent(lexer, alloc))
-            .ok_or_else(|| {
-                ParseError::unrecoverable_from_here(lexer, SyntaxError::ExpectedExpression)
-            })?;
+        let rhs = if let Some(rhs) = higher_precedent(lexer, alloc)? {
+            rhs
+        } else if let Some(rhs) = equal_precedent(lexer, alloc)? {
+            rhs
+        } else {
+            break;
+        };
 
         exprs.push(rhs);
     }
@@ -499,5 +525,5 @@ where
         rhs = combine(&*alloc.alloc(lhs), &*alloc.alloc(rhs));
     }
 
-    Ok(rhs)
+    Ok(Some(rhs))
 }

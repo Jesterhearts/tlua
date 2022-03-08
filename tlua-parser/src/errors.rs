@@ -1,10 +1,7 @@
 use thiserror::Error;
 
 use crate::{
-    lexer::{
-        SpannedToken,
-        Token,
-    },
+    lexer::Token,
     PeekableLexer,
     SourceSpan,
 };
@@ -19,12 +16,8 @@ pub(crate) enum SyntaxError {
     ExpectedVarOrCall,
     #[error("Expected a field")]
     ExpectedTableField,
-    #[error("Expected a prefix expression")]
-    ExpectedPrefixExpression,
     #[error("Expected an argument list")]
     ExpectedFnArgs,
-    #[error("Expected a function definition")]
-    ExpectedFunctionDef,
     #[error("decimal escape too large")]
     DecimalEscapeTooLarge,
     #[error("unclosed string literal")]
@@ -43,19 +36,23 @@ pub(crate) enum SyntaxError {
     ExpectedIdentOrVaArgs,
     #[error("invalid attribute - expected <const> or <close>")]
     InvalidAttribute,
-    #[error("Expected end of file, found: {0:}")]
-    ExpectedEOF(Token),
     #[error("Expected {0:}")]
     ExpectedToken(Token),
+    #[error("Expected {0:} or {1:}")]
+    ExpectedToken2(Token, Token),
+    #[error("Expected {0:}, {1:}, or {2:}")]
+    ExpectedToken3(Token, Token, Token),
     #[error("Expected a string")]
     ExpectedString,
+    #[allow(unused)]
+    #[error("Expected end of file, found: {0:}")]
+    ExpectedEOF(Token),
 }
 
 #[derive(Debug, Clone, Copy, Error, PartialEq)]
 pub struct ParseError {
     pub(crate) error: SyntaxError,
     pub(crate) location: SourceSpan,
-    pub(crate) recoverable: bool,
 }
 
 impl std::fmt::Display for ParseError {
@@ -65,45 +62,10 @@ impl std::fmt::Display for ParseError {
 }
 
 impl ParseError {
-    pub(crate) fn recoverable_from_here(lexer: &mut PeekableLexer, err: SyntaxError) -> Self {
+    pub(crate) fn from_here(lexer: &mut PeekableLexer, err: SyntaxError) -> Self {
         Self {
             error: err,
             location: lexer.current_span(),
-            recoverable: true,
-        }
-    }
-
-    pub(crate) fn unrecoverable_from_here(lexer: &mut PeekableLexer, err: SyntaxError) -> Self {
-        Self {
-            error: err,
-            location: lexer.current_span(),
-            recoverable: false,
-        }
-    }
-
-    pub(crate) fn recover_with<T, F: FnOnce() -> Result<T, Self>>(
-        self,
-        recover: F,
-    ) -> Result<T, Self> {
-        if self.recoverable {
-            let res = recover();
-            res.map_err(|e_new| {
-                if !e_new.recoverable || e_new.location.end > self.location.end {
-                    e_new
-                } else {
-                    self
-                }
-            })
-        } else {
-            Err(self)
-        }
-    }
-
-    pub(crate) fn map_recoverable_err<F: FnOnce() -> Self>(self, err: F) -> Self {
-        if self.recoverable {
-            err()
-        } else {
-            self
         }
     }
 }
@@ -111,98 +73,6 @@ impl ParseError {
 impl<T> From<ParseError> for Result<T, ParseError> {
     fn from(e: ParseError) -> Self {
         Err(e)
-    }
-}
-pub(crate) trait ParseErrorExt: Sized {
-    type Data;
-    type Error;
-
-    fn reset_on_err<'src>(
-        self,
-        lexer: &mut PeekableLexer<'src, '_>,
-        to: SpannedToken<'src>,
-    ) -> Result<Self::Data, Self::Error>;
-
-    fn mark_unrecoverable(self) -> Result<Self::Data, Self::Error>;
-
-    fn recover(self) -> Result<Option<Self::Data>, Self::Error>;
-    fn recover_with<F: FnOnce() -> Result<Self::Data, Self::Error>>(
-        self,
-        recover: F,
-    ) -> Result<Self::Data, Self::Error>;
-
-    #[allow(clippy::type_complexity)]
-    fn chain_or_recover_with<D, F: FnOnce() -> Result<D, Self::Error>>(
-        self,
-        next: F,
-    ) -> Result<(Option<Self::Data>, D), Self::Error>;
-
-    fn ok_or_else<F: FnOnce() -> Self::Error>(self, err: F) -> Result<Self::Data, Self::Error>;
-}
-
-impl<T> ParseErrorExt for Result<T, ParseError> {
-    type Data = T;
-    type Error = ParseError;
-
-    #[inline]
-    fn reset_on_err<'src>(
-        self,
-        lexer: &mut PeekableLexer<'src, '_>,
-        to: SpannedToken<'src>,
-    ) -> Result<Self::Data, Self::Error> {
-        self.map_err(|e| {
-            if e.recoverable {
-                lexer.reset(to);
-            }
-            e
-        })
-    }
-
-    #[inline]
-    fn mark_unrecoverable(self) -> Result<Self::Data, Self::Error> {
-        self.map_err(|mut e| {
-            e.recoverable = false;
-            e
-        })
-    }
-
-    #[inline]
-    fn recover(self) -> Result<Option<Self::Data>, Self::Error> {
-        match self {
-            Ok(data) => Ok(Some(data)),
-            Err(e) => e.recover_with(|| Ok(None)),
-        }
-    }
-
-    #[inline]
-    fn recover_with<F: FnOnce() -> Result<Self::Data, Self::Error>>(
-        self,
-        recover: F,
-    ) -> Result<Self::Data, Self::Error> {
-        match self {
-            ok @ Ok(_) => ok,
-            Err(e) => e.recover_with(recover),
-        }
-    }
-
-    fn chain_or_recover_with<D, F: FnOnce() -> Result<D, Self::Error>>(
-        self,
-        next: F,
-    ) -> Result<(Option<Self::Data>, D), Self::Error> {
-        match self {
-            Ok(v) => match next() {
-                Ok(d) => Ok((Some(v), d)),
-                Err(e) => Err(e),
-            },
-            Err(e) => e.recover_with(next).map(|d| (None, d)),
-        }
-    }
-
-    fn ok_or_else<F: FnOnce() -> Self::Error>(self, err: F) -> Result<Self::Data, Self::Error> {
-        match self {
-            ok @ Ok(_) => ok,
-            Err(e) => Err(e.map_recoverable_err(err)),
-        }
     }
 }
 
