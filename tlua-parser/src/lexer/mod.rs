@@ -61,11 +61,11 @@ pub(crate) enum Token {
     Ident,
 
     #[strum(to_string = "'")]
-    #[regex(br#"'"#)]
+    #[token(br#"'"#)]
     SingleQuotedStringStart,
 
     #[strum(to_string = "\"")]
-    #[regex(br#"""#)]
+    #[token(br#"""#)]
     DoubleQuotedStringStart,
 
     #[strum(to_string = "multiline string start")]
