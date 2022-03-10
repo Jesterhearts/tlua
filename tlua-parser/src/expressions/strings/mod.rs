@@ -96,7 +96,7 @@ enum StringToken {
 
     #[regex(br"\\x[[:xdigit:]][[:xdigit:]]")]
     HexLiteral,
-    #[regex(br"\\\d\d\d")]
+    #[regex(br"\\(?:\d\d\d|\d\d|\d)")]
     DecimalLiteral,
 
     #[token(br"\\u\{")]
@@ -110,7 +110,7 @@ enum StringToken {
     #[regex(br"\\z[[:space:]]*")]
     SkipWhitespace,
 
-    #[regex(br"\\.")]
+    #[regex(br"\\[^\d]")]
     UnknownEscapeSequence,
     #[token(br"\a")]
     EscapeSeqBell,
@@ -174,23 +174,33 @@ fn internal_parse(
                 }
             }
             StringToken::DecimalLiteral => {
-                if let [d1, d2, d3] = string_lexer.slice()[..] {
-                    let hundreds = char::from(d1).to_digit(10).expect("Is ascii digit");
-                    let tens = char::from(d2).to_digit(10).expect("Is ascii digit");
-                    let ones = char::from(d3).to_digit(10).expect("Is ascii digit");
-
-                    let result = hundreds * 100 + tens * 10 + ones;
-                    match u8::try_from(result) {
-                        Ok(byte) => string.push(byte),
-                        Err(_) => {
-                            return Err(ParseError {
-                                error: SyntaxError::DecimalEscapeTooLarge,
-                                location: string_lexer.span().into(),
-                            });
-                        }
+                let (hundreds, tens, ones) = match string_lexer.slice()[1..] {
+                    [d1, d2, d3] => {
+                        let hundreds = char::from(d1).to_digit(10).expect("Is ascii digit");
+                        let tens = char::from(d2).to_digit(10).expect("Is ascii digit");
+                        let ones = char::from(d3).to_digit(10).expect("Is ascii digit");
+                        (hundreds, tens, ones)
                     }
-                } else {
-                    unreachable!()
+                    [d1, d2] => {
+                        let tens = char::from(d1).to_digit(10).expect("Is ascii digit");
+                        let ones = char::from(d2).to_digit(10).expect("Is ascii digit");
+                        (0, tens, ones)
+                    }
+                    [d1] => {
+                        let ones = char::from(d1).to_digit(10).expect("Is ascii digit");
+                        (0, 0, ones)
+                    }
+                    _ => unreachable!(),
+                };
+                let result = hundreds * 100 + tens * 10 + ones;
+                match u8::try_from(result) {
+                    Ok(byte) => string.push(byte),
+                    Err(_) => {
+                        return Err(ParseError {
+                            error: SyntaxError::DecimalEscapeTooLarge,
+                            location: string_lexer.span().into(),
+                        });
+                    }
                 }
             }
             StringToken::UnclosedUnicodeEscape => {
@@ -371,6 +381,7 @@ fn encode_utf8_raw(span: &[u8]) -> Result<(usize, [u8; 6]), ()> {
 #[cfg(test)]
 mod tests {
     use bstr::ByteSlice;
+    use pretty_assertions::assert_eq;
 
     use crate::{
         expressions::strings::ConstantString,
@@ -735,6 +746,78 @@ mod tests {
         assert_eq!(
             strings.strings.get_index(0).map(|s| s.as_bstr()),
             Some([253, 191, 191, 191, 191, 191].as_bstr())
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn escape_decimal1() -> anyhow::Result<()> {
+        let src = r#""\0""#;
+
+        let alloc = ASTAllocator::default();
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
+
+        assert_eq!(result, Some(ConstantString(0)));
+        assert_eq!(
+            strings.strings.get_index(0).map(|s| s.as_bstr()),
+            Some("\x00".as_bytes().as_bstr())
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn escape_decimal2() -> anyhow::Result<()> {
+        let src = r#""\10""#;
+
+        let alloc = ASTAllocator::default();
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
+
+        assert_eq!(result, Some(ConstantString(0)));
+        assert_eq!(
+            strings.strings.get_index(0).map(|s| s.as_bstr()),
+            Some("\x0A".as_bytes().as_bstr())
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn escape_decimal3() -> anyhow::Result<()> {
+        let src = r#""\102""#;
+
+        let alloc = ASTAllocator::default();
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
+
+        assert_eq!(result, Some(ConstantString(0)));
+        assert_eq!(
+            strings.strings.get_index(0).map(|s| s.as_bstr()),
+            Some("\x66".as_bytes().as_bstr())
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn escape_decimal4() -> anyhow::Result<()> {
+        let src = r#""\1029""#;
+
+        let alloc = ASTAllocator::default();
+        let mut strings = StringTable::default();
+        let result =
+            final_parser!((src.as_bytes(), &alloc, &mut strings) => ConstantString::try_parse)?;
+
+        assert_eq!(result, Some(ConstantString(0)));
+        assert_eq!(
+            strings.strings.get_index(0).map(|s| s.as_bstr()),
+            Some("\x669".as_bytes().as_bstr())
         );
 
         Ok(())
