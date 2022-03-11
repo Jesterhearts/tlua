@@ -54,7 +54,7 @@ pub(super) struct RootScope {
 
     /// All locals currently in scope, with the last value for each vec
     /// representing the current register mapped for the local.
-    all_locals: HashMap<Ident, Vec<OffsetRegister>>,
+    all_locals: HashMap<Ident, OffsetRegister>,
 
     /// The id of the current most recently created scope.
     current_scope_id: usize,
@@ -311,7 +311,7 @@ pub(crate) struct BlockScope<'block, 'function> {
 
     pending_scope_push: Option<usize>,
 
-    declared_locals: HashSet<Ident>,
+    declared_locals: HashMap<Ident, Option<OffsetRegister>>,
     declared_labels: HashSet<LabelId>,
 }
 
@@ -325,17 +325,11 @@ impl Drop for BlockScope<'_, '_> {
             self.emit(opcodes::Op::PopScope);
         }
 
-        for decl in self.declared_locals.drain() {
-            match self.function_scope.root_scope.all_locals.entry(decl) {
-                hash_map::Entry::Occupied(mut shadows) => {
-                    let popped = shadows.get_mut().pop();
-                    debug_assert!(popped.is_some());
-
-                    if shadows.get_mut().is_empty() {
-                        shadows.remove();
-                    }
-                }
-                hash_map::Entry::Vacant(_) => unreachable!("Local decl not in root list."),
+        for (decl, prev) in self.declared_locals.drain() {
+            if let Some(prev) = prev {
+                self.function_scope.root_scope.all_locals.insert(decl, prev);
+            } else {
+                self.function_scope.root_scope.all_locals.remove(&decl);
             }
         }
 
@@ -598,33 +592,17 @@ impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
         };
         self.block_scope.function_scope.function.local_registers += 1;
 
-        if self.block_scope.declared_locals.contains(&ident) {
-            *self
-                .block_scope
-                .function_scope
-                .root_scope
-                .all_locals
-                .get_mut(&ident)
-                .and_then(|vec| vec.last_mut())
-                .expect("Previous local decl") = offset_register;
-        } else {
-            self.block_scope.declared_locals.insert(ident);
+        let prev = self
+            .block_scope
+            .function_scope
+            .root_scope
+            .all_locals
+            .insert(ident, offset_register);
 
-            match self
-                .block_scope
-                .function_scope
-                .root_scope
-                .all_locals
-                .entry(ident)
-            {
-                hash_map::Entry::Occupied(mut shadow_list) => {
-                    shadow_list.get_mut().push(offset_register);
-                }
-                hash_map::Entry::Vacant(first_decl) => {
-                    first_decl.insert(vec![offset_register]);
-                }
-            }
-        }
+        self.block_scope
+            .declared_locals
+            .entry(ident)
+            .or_insert(prev);
 
         Ok(MappedLocalRegister::from(offset_register).into())
     }
@@ -655,45 +633,38 @@ impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
         &mut self,
         ident: Ident,
     ) -> Result<MappedLocalRegister, CompileError> {
-        match self
-            .block_scope
+        self.block_scope
             .function_scope
             .root_scope
             .all_locals
-            .entry(ident)
-        {
-            hash_map::Entry::Occupied(exists) => Ok(exists
-                .get()
-                .last()
-                .copied()
-                .expect("Empty shadows lists should be removed.")
-                .into()),
-            hash_map::Entry::Vacant(unknown) => {
+            .get(&ident)
+            .map(|reg| Ok(MappedLocalRegister::from(*reg)))
+            .unwrap_or_else(|| {
                 // No ident is in scope, must be a global
-                let offset_register = OffsetRegister {
-                    source_scope_depth: GLOBAL_SCOPE,
-                    offset: self
-                        .block_scope
-                        .function_scope
-                        .root_scope
-                        .globals
-                        .len()
-                        .try_into()
-                        .map_err(|_| CompileError::TooManyGlobals {
-                            max: u16::MAX.into(),
-                        })?,
-                };
-
-                unknown.insert(vec![offset_register]);
-                self.block_scope
+                let global_id = self.block_scope.function_scope.root_scope.globals.len();
+                match self
+                    .block_scope
                     .function_scope
                     .root_scope
                     .globals
-                    .insert(ident, offset_register);
-
-                Ok(offset_register.into())
-            }
-        }
+                    .entry(ident)
+                {
+                    hash_map::Entry::Occupied(existing) => {
+                        Ok(MappedLocalRegister::from(*existing.get()))
+                    }
+                    hash_map::Entry::Vacant(new) => {
+                        let offset_register = OffsetRegister {
+                            source_scope_depth: GLOBAL_SCOPE,
+                            offset: global_id.try_into().map_err(|_| {
+                                CompileError::TooManyGlobals {
+                                    max: u16::MAX.into(),
+                                }
+                            })?,
+                        };
+                        Ok(MappedLocalRegister::from(*new.insert(offset_register)))
+                    }
+                }
+            })
     }
 
     /// Instruct the compiler to emit a sequence of instruction corresponding to

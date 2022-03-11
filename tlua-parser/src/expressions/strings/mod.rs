@@ -276,11 +276,7 @@ fn internal_parse(
 /// per spec) utf8 byte sequence.
 fn encode_utf8_raw(span: &[u8]) -> Result<(usize, [u8; 6]), ()> {
     let (val, _) = u32::from_radix_16_checked(span);
-    let val = if let Some(val) = val {
-        val
-    } else {
-        return Err(());
-    };
+    let val = val.ok_or(())?;
 
     #[rustfmt::skip]
     mod tag {
