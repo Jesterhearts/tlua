@@ -37,7 +37,7 @@ use self::compiler::Scope;
 use crate::compiler::{
     unasm::MappedLocalRegister,
     Compiler,
-    InitRegister,
+    RegisterOps,
 };
 
 #[derive(Debug)]
@@ -57,35 +57,52 @@ enum NodeOutput {
 impl NodeOutput {
     pub(crate) fn into_register(self, scope: &mut Scope) -> ImmediateRegister {
         match self {
-            NodeOutput::Constant(c) => scope.push_immediate().init_from_const(scope, c),
+            NodeOutput::Constant(c) => {
+                let reg = scope.push_immediate();
+                reg.set_from_constant(scope, c).unwrap();
+                reg
+            }
             NodeOutput::Immediate(i) => i,
             NodeOutput::MappedRegister(other) => {
-                scope.push_immediate().init_from_mapped_reg(scope, other)
+                let reg = scope.push_immediate();
+                reg.set_from_local(scope, other).unwrap();
+                reg
             }
             NodeOutput::TableEntry { table, index } => {
                 let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(index));
-                table.init_from_table_entry(&mut scope, table, index)
+                table
+                    .set_from_table_entry(&mut scope, table, index)
+                    .unwrap();
+                table
             }
-            NodeOutput::ReturnValues => scope.push_immediate().init_from_ret(scope),
-            NodeOutput::VAStack => scope.push_immediate().init_from_va(scope, 0),
-            NodeOutput::Err(_) => scope.push_immediate().no_init_needed(),
+            NodeOutput::ReturnValues => {
+                let reg = scope.push_immediate();
+                reg.set_from_ret(scope).unwrap();
+                reg
+            }
+            NodeOutput::VAStack => {
+                let reg = scope.push_immediate();
+                reg.set_from_va(scope, 0).unwrap();
+                reg
+            }
+            NodeOutput::Err(_) => scope.push_immediate(),
         }
     }
 
     pub(crate) fn into_existing_register(self, scope: &mut Scope, dest: ImmediateRegister) {
         match self {
-            NodeOutput::Constant(value) => dest.init_from_const(scope, value),
+            NodeOutput::Constant(value) => dest.set_from_constant(scope, value).unwrap(),
             NodeOutput::Immediate(other) => {
                 let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(other));
-                dest.init_from_immediate(&mut scope, other)
+                dest.set_from_immediate(&mut scope, other).unwrap()
             }
-            NodeOutput::MappedRegister(other) => dest.init_from_mapped_reg(scope, other),
+            NodeOutput::MappedRegister(other) => dest.set_from_local(scope, other).unwrap(),
             NodeOutput::TableEntry { table, index } => {
-                dest.init_from_table_entry(scope, table, index)
+                dest.set_from_table_entry(scope, table, index).unwrap()
             }
-            NodeOutput::ReturnValues => dest.init_from_ret(scope),
-            NodeOutput::VAStack => dest.init_from_va(scope, 0),
-            NodeOutput::Err(_) => dest,
+            NodeOutput::ReturnValues => dest.set_from_ret(scope).unwrap(),
+            NodeOutput::VAStack => dest.set_from_va(scope, 0).unwrap(),
+            NodeOutput::Err(_) => (),
         };
     }
 }
@@ -140,6 +157,15 @@ pub enum CompileError {
     ScopeNestingTooDeep { max: usize },
     #[error("The specified table index exceeds the max entries.")]
     TooManyTableEntries { max: usize },
+}
+
+#[derive(Debug)]
+pub(crate) enum Void {}
+
+impl From<Void> for CompileError {
+    fn from(_: Void) -> Self {
+        unreachable!()
+    }
 }
 
 trait CompileExpression {

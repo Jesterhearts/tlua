@@ -13,7 +13,7 @@ use tlua_parser::expressions::{
 };
 
 use crate::{
-    compiler::InitRegister,
+    compiler::RegisterOps,
     CompileError,
     CompileExpression,
     NodeOutput,
@@ -22,7 +22,8 @@ use crate::{
 
 impl CompileExpression for TableConstructor<'_> {
     fn compile(&self, scope: &mut Scope) -> Result<NodeOutput, CompileError> {
-        let table = scope.push_immediate().init_alloc_table(scope);
+        let table = scope.push_immediate();
+        table.alloc_and_set_from_table(scope)?;
 
         emit_init_sequence(scope, table, self.fields.iter())?;
 
@@ -41,13 +42,13 @@ where
     let mut arraylike = vec![];
     let mut last_field_va = false;
 
-    let index = scope.push_immediate().no_init_needed();
+    let index = scope.push_immediate();
     let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(index));
 
     for field in fields {
         match field {
             Field::Named { name, expression } => {
-                index.init_from_const(&mut scope, ConstantString::from(name).into());
+                index.set_from_constant(&mut scope, ConstantString::from(name).into())?;
 
                 let value = expression.compile(&mut scope)?;
                 let value = value.into_register(&mut scope);
@@ -67,7 +68,7 @@ where
                 let mut scope =
                     guard_on_success(&mut scope, |scope| scope.pop_immediate(index_init));
 
-                index.init_from_immediate(&mut scope, index_init);
+                index.set_from_immediate(&mut scope, index_init)?;
 
                 let value = expression.compile(&mut scope)?;
                 let value = value.into_register(&mut scope);
@@ -98,14 +99,14 @@ where
         let value = init.into_register(&mut scope);
         let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(value));
 
-        index.init_from_const(
+        index.set_from_constant(
             &mut scope,
             i64::try_from(array_index + 1)
                 .map_err(|_| CompileError::TooManyTableEntries {
                     max: i64::MAX as usize,
                 })?
                 .into(),
-        );
+        )?;
 
         scope.emit(opcodes::SetProperty::from((table, index, value)));
     }

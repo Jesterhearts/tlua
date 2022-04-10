@@ -32,8 +32,7 @@ use crate::{
         },
         HasVaArgs,
         LabelId,
-        UninitRegister,
-        UninitRegisterRange,
+        RegisterRange,
     },
     Chunk,
     CompileError,
@@ -557,9 +556,7 @@ impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
         self.block_scope.overwrite(location, opcode)
     }
 
-    pub(crate) fn new_local_self(
-        &mut self,
-    ) -> Result<UninitRegister<MappedLocalRegister>, CompileError> {
+    pub(crate) fn new_local_self(&mut self) -> Result<MappedLocalRegister, CompileError> {
         let ident = self
             .block_scope
             .function_scope
@@ -571,10 +568,7 @@ impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
     }
 
     /// Map a new register for a local variable.
-    pub(crate) fn new_local(
-        &mut self,
-        ident: Ident,
-    ) -> Result<UninitRegister<MappedLocalRegister>, CompileError> {
+    pub(crate) fn new_local(&mut self, ident: Ident) -> Result<MappedLocalRegister, CompileError> {
         self.block_scope.current_scope_id =
             self.block_scope.function_scope.root_scope.next_scope_id();
 
@@ -609,11 +603,12 @@ impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
             .entry(ident)
             .or_insert(prev);
 
-        Ok(MappedLocalRegister::from(offset_register).into())
+        Ok(MappedLocalRegister::from(offset_register))
     }
 
-    pub(crate) fn push_immediate(&mut self) -> UninitRegister<ImmediateRegister> {
-        self.block_scope.function_scope.push_immediate().into()
+    #[must_use]
+    pub(crate) fn push_immediate(&mut self) -> ImmediateRegister {
+        self.block_scope.function_scope.push_immediate()
     }
 
     pub(crate) fn pop_immediate(&mut self, reg: ImmediateRegister) {
@@ -621,13 +616,14 @@ impl<'scope, 'block, 'function> Scope<'scope, 'block, 'function> {
     }
 
     /// Allocate a sequence of immediate registers.
-    pub(crate) fn reserve_immediate_range(&mut self, count: usize) -> UninitRegisterRange {
-        UninitRegisterRange {
+    #[must_use]
+    pub(crate) fn reserve_immediate_range(&mut self, count: usize) -> RegisterRange {
+        RegisterRange {
             range: self.block_scope.function_scope.push_immediate_range(count),
         }
     }
 
-    pub(crate) fn pop_immediate_range(&mut self, range: UninitRegisterRange) {
+    pub(crate) fn pop_immediate_range(&mut self, range: RegisterRange) {
         self.block_scope
             .function_scope
             .pop_immediate_range(range.range);

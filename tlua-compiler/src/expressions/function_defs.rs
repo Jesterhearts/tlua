@@ -7,7 +7,7 @@ use tlua_parser::{
 use crate::{
     compiler::{
         HasVaArgs,
-        InitRegister,
+        RegisterOps,
     },
     CompileError,
     CompileExpression,
@@ -31,7 +31,7 @@ pub(crate) fn emit_fn(
         let mut scope = scope.enter();
 
         if is_method {
-            scope.new_local_self()?.no_init_needed();
+            scope.new_local_self()?;
         }
 
         for param in params {
@@ -39,7 +39,7 @@ pub(crate) fn emit_fn(
             // register for every duplicate identifier in the parameter list. It
             // still works fine though, because the number of registers is
             // correct.
-            scope.new_local(param)?.no_init_needed();
+            scope.new_local(param)?;
         }
 
         for stat in body {
@@ -73,8 +73,9 @@ impl CompileExpression for FnBody<'_> {
             self.body.ret.as_ref(),
         )?;
 
-        Ok(NodeOutput::Immediate(
-            scope.push_immediate().init_alloc_fn(scope, func_id),
-        ))
+        let reg = scope.push_immediate();
+        reg.alloc_and_set_from_fn(scope, func_id)?;
+
+        Ok(NodeOutput::Immediate(reg))
     }
 }

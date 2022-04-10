@@ -11,8 +11,8 @@ use tlua_parser::statement::for_loop::ForLoop;
 
 use crate::{
     compiler::{
-        InitRegister,
         JumpTemplate,
+        RegisterOps,
     },
     CompileError,
     CompileExpression,
@@ -27,10 +27,10 @@ impl CompileStatement for ForLoop<'_> {
         let mut scope = scope.enter();
 
         let loop_exit_label = scope.push_loop_label();
-        let typecheck0 = scope.push_immediate().no_init_needed();
+        let typecheck0 = scope.push_immediate();
         let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(typecheck0));
 
-        let typecheck1 = scope.push_immediate().no_init_needed();
+        let typecheck1 = scope.push_immediate();
         let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(typecheck1));
 
         let init = self.init.compile(&mut scope)?;
@@ -69,13 +69,15 @@ impl CompileStatement for ForLoop<'_> {
         );
         let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(step));
 
-        let zero = scope.push_immediate().init_from_const(&mut scope, 0.into());
+        let zero = scope.push_immediate();
+        zero.set_from_constant(&mut scope, 0.into())?;
         let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(zero));
 
         let pending_skip_flip_step = {
             // Check for a negative step, we always want to be dealing with negative steps
             // for simplicity.
-            let ge_zero = scope.push_immediate().init_from_immediate(&mut scope, step);
+            let ge_zero = scope.push_immediate();
+            ge_zero.set_from_immediate(&mut scope, step)?;
             let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(ge_zero));
 
             scope.emit(opcodes::GreaterEqual::from((ge_zero, zero)));
@@ -86,7 +88,8 @@ impl CompileStatement for ForLoop<'_> {
 
         {
             // Check for a zero step to raise an error.
-            let gt_zero = scope.push_immediate().init_from_immediate(&mut scope, step);
+            let gt_zero = scope.push_immediate();
+            gt_zero.set_from_immediate(&mut scope, step)?;
             let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(gt_zero));
 
             scope.emit(opcodes::GreaterThan::from((gt_zero, zero)));
@@ -108,7 +111,8 @@ impl CompileStatement for ForLoop<'_> {
         let cond_check_start = scope.next_instruction();
 
         let pending_skip_body = {
-            let cond_outcome = scope.push_immediate().init_from_immediate(&mut scope, init);
+            let cond_outcome = scope.push_immediate();
+            cond_outcome.set_from_immediate(&mut scope, init)?;
             let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(cond_outcome));
 
             scope.emit(opcodes::GreaterEqual::from((cond_outcome, limit)));
@@ -118,7 +122,7 @@ impl CompileStatement for ForLoop<'_> {
 
         scope
             .new_local(self.var)?
-            .init_from_immediate(&mut scope, init);
+            .set_from_immediate(&mut scope, init)?;
         scope.emit(opcodes::Add::from((init, step)));
 
         self.body.compile(&mut scope)?;
@@ -148,7 +152,7 @@ fn emit_assert_isnum(
         }
         NodeOutput::Constant(_) => {
             scope.emit(opcodes::Raise::from(err));
-            return scope.push_immediate().no_init_needed();
+            return scope.push_immediate();
         }
         target => target.into_register(scope),
     };

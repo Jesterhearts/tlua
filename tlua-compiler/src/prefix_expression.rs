@@ -21,7 +21,7 @@ use tlua_parser::{
 use crate::{
     compiler::{
         unasm::MappedLocalRegister,
-        InitRegister,
+        RegisterOps,
     },
     expressions::tables,
     CompileError,
@@ -93,17 +93,19 @@ impl CompileStatement for FnCallPrefixExpression<'_> {
 fn emit_load_head(scope: &mut Scope, head: &HeadAtom) -> Result<ImmediateRegister, CompileError> {
     match head {
         HeadAtom::Name(ident) => {
-            let reg = scope.read_variable(*ident)?;
-            Ok(scope.push_immediate().init_from_mapped_reg(scope, reg))
+            let var = scope.read_variable(*ident)?;
+            let reg = scope.push_immediate();
+            reg.set_from_local(scope, var)?;
+            Ok(reg)
         }
         HeadAtom::Parenthesized(expr) => match expr.compile(scope)? {
             NodeOutput::Constant(c) => {
                 scope.write_raise(OpError::NotATable {
                     ty: c.short_type_name(),
                 });
-                Ok(scope.push_immediate().no_init_needed())
+                Ok(scope.push_immediate())
             }
-            NodeOutput::Err(_) => Ok(scope.push_immediate().no_init_needed()),
+            NodeOutput::Err(_) => Ok(scope.push_immediate()),
             src => Ok(src.into_register(scope)),
         },
     }
@@ -187,23 +189,16 @@ pub(crate) fn emit_standard_call(
     let mut arg_registers = arg_range.iter().peekable();
     let mut scope = guard_on_success(scope, |scope| scope.pop_immediate_range(arg_range));
 
-    let first_arg_idx = usize::from(
-        arg_registers
-            .peek()
-            .cloned()
-            .expect("At least one arg.")
-            .no_init_needed(),
-    );
+    let first_arg_idx = usize::from(arg_registers.peek().cloned().expect("At least one arg."));
 
     if let Some(method) = method {
         let arg_reg = arg_registers
             .next()
             .expect("Should still have arg registers");
 
-        arg_reg.init_from_immediate(&mut scope, target);
-        let index_reg = scope
-            .push_immediate()
-            .init_from_const(&mut scope, Constant::String(method.into()));
+        arg_reg.set_from_immediate(&mut scope, target)?;
+        let index_reg = scope.push_immediate();
+        index_reg.set_from_constant(&mut scope, Constant::String(method.into()))?;
         let mut scope = guard_on_success(&mut scope, |scope| {
             scope.pop_immediate(index_reg);
         });
@@ -222,7 +217,7 @@ pub(crate) fn emit_standard_call(
         let arg_init = arg_init.into_register(&mut scope);
         let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(arg_init));
 
-        arg_reg.init_from_immediate(&mut scope, arg_init);
+        arg_reg.set_from_immediate(&mut scope, arg_init)?;
     }
 
     let last_reg = arg_registers.next().expect("Should have at least 1 arg");
@@ -249,7 +244,7 @@ pub(crate) fn emit_standard_call(
             let arg_init = arg.into_register(&mut scope);
             let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(arg_init));
 
-            last_reg.init_from_immediate(&mut scope, arg_init);
+            last_reg.set_from_immediate(&mut scope, arg_init)?;
         }
     }
 
@@ -266,9 +261,11 @@ pub(crate) fn map_var(
         VarPrefixExpression::TableAccess { head, middle, last } => {
             let table = emit_table_path_traversal(scope, head, middle.iter())?;
             let index = match last {
-                VarAtom::Name(ident) => scope
-                    .push_immediate()
-                    .init_from_const(scope, ConstantString::from(ident).into()),
+                VarAtom::Name(ident) => {
+                    let reg = scope.push_immediate();
+                    reg.set_from_constant(scope, ConstantString::from(ident).into())?;
+                    reg
+                }
                 VarAtom::IndexOp(index) => index.compile(scope)?.into_register(scope),
             };
 

@@ -11,8 +11,8 @@ use tlua_parser::{
 use crate::{
     block::emit_block,
     compiler::{
-        InitRegister,
         JumpTemplate,
+        RegisterOps,
     },
     statement::assignment::emit_assignments,
     CompileError,
@@ -56,22 +56,10 @@ fn emit_loop_header(
     let mut var_init_regsiters = var_inits.iter();
     let mut scope = guard_on_success(scope, |scope| scope.pop_immediate_range(var_inits));
 
-    let to_be_closed = var_init_regsiters
-        .next()
-        .expect("At least one control var")
-        .no_init_needed();
-    let iter_func = var_init_regsiters
-        .next()
-        .expect("At least one control var")
-        .no_init_needed();
-    let state = var_init_regsiters
-        .next()
-        .expect("At least one control var")
-        .no_init_needed();
-    let control = var_init_regsiters
-        .next()
-        .expect("At least one control var")
-        .no_init_needed();
+    let to_be_closed = var_init_regsiters.next().expect("At least one control var");
+    let iter_func = var_init_regsiters.next().expect("At least one control var");
+    let state = var_init_regsiters.next().expect("At least one control var");
+    let control = var_init_regsiters.next().expect("At least one control var");
 
     let control_vars_list = [iter_func, state, control, to_be_closed];
 
@@ -80,6 +68,7 @@ fn emit_loop_header(
         |_scope, var| Ok(var),
         |scope, var, init| {
             init.into_existing_register(scope, var);
+            Ok(())
         },
         control_vars_list.into_iter(),
         inits,
@@ -94,11 +83,9 @@ fn emit_loop_header(
     let named_control = vars.next().expect("At least one named variable");
     scope
         .new_local(named_control)?
-        .init_from_immediate(&mut scope, control);
+        .set_from_immediate(&mut scope, control)?;
     for (var, reg) in vars.zip(var_init_regsiters) {
-        scope
-            .new_local(var)?
-            .init_from_immediate(&mut scope, reg.no_init_needed());
+        scope.new_local(var)?.set_from_immediate(&mut scope, reg)?;
     }
 
     Ok((

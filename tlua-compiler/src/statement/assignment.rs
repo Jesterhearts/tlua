@@ -8,7 +8,7 @@ use tlua_bytecode::{
 use tlua_parser::statement::assignment::Assignment;
 
 use crate::{
-    compiler::InitRegister,
+    compiler::RegisterOps,
     prefix_expression::{
         self,
         TableIndex,
@@ -29,7 +29,7 @@ impl CompileStatement for Assignment<'_> {
                 Either::Left(var) => {
                     let init = init.into_register(scope);
                     let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(init));
-                    var.init_from_immediate(&mut scope, init);
+                    var.set_from_immediate(&mut scope, init)
                 }
                 Either::Right(TableIndex { table, index }) => {
                     let init = init.into_register(scope);
@@ -39,6 +39,7 @@ impl CompileStatement for Assignment<'_> {
                     let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(init));
 
                     scope.emit(opcodes::SetProperty::from((table, index, init)));
+                    Ok(())
                 }
             },
             self.varlist.iter(),
@@ -50,7 +51,7 @@ impl CompileStatement for Assignment<'_> {
 pub(crate) fn emit_assignments<VarExpr, VarDest>(
     scope: &mut Scope,
     mut compile_var: impl FnMut(&mut Scope, VarExpr) -> Result<VarDest, CompileError>,
-    mut assign_var: impl FnMut(&mut Scope, VarDest, NodeOutput),
+    mut assign_var: impl FnMut(&mut Scope, VarDest, NodeOutput) -> Result<(), CompileError>,
     mut vars: impl ExactSizeIterator<Item = VarExpr> + Clone,
     mut inits: impl ExactSizeIterator<Item = impl CompileExpression> + Clone,
 ) -> Result<Option<OpError>, CompileError> {
@@ -63,7 +64,7 @@ pub(crate) fn emit_assignments<VarExpr, VarDest>(
             .expect("Still in common length")
             .compile(scope)?;
 
-        assign_var(scope, dest, init);
+        assign_var(scope, dest, init)?;
     }
 
     if let Some(dest) = vars.next() {
@@ -78,42 +79,42 @@ pub(crate) fn emit_assignments<VarExpr, VarDest>(
                         let consumed_values = vars.len() + 1;
                         let mut regs = scope.reserve_immediate_range(consumed_values).iter();
 
-                        let first = regs.next().expect("At least one var.").no_init_needed();
+                        let first = regs.next().expect("At least one var.");
                         scope.emit(opcodes::ConsumeRetRange::from((
                             usize::from(first),
                             consumed_values,
                         )));
 
-                        assign_var(scope, dest, NodeOutput::Immediate(first));
+                        assign_var(scope, dest, NodeOutput::Immediate(first))?;
                         for (dest, reg) in vars.zip(regs) {
                             let dest = compile_var(scope, dest)?;
-                            assign_var(scope, dest, NodeOutput::Immediate(reg.no_init_needed()));
+                            assign_var(scope, dest, NodeOutput::Immediate(reg))?;
                         }
                     }
                     NodeOutput::VAStack => {
                         let consumed_values = vars.len() + 1;
                         let mut regs = scope.reserve_immediate_range(consumed_values).iter();
 
-                        let first = regs.next().expect("At least one var.").no_init_needed();
+                        let first = regs.next().expect("At least one var.");
                         scope.emit(opcodes::LoadVa::from((
                             usize::from(first),
                             0,
                             consumed_values,
                         )));
 
-                        assign_var(scope, dest, NodeOutput::Immediate(first));
+                        assign_var(scope, dest, NodeOutput::Immediate(first))?;
                         for (dest, reg) in vars.zip(regs) {
                             let dest = compile_var(scope, dest)?;
-                            assign_var(scope, dest, NodeOutput::Immediate(reg.no_init_needed()));
+                            assign_var(scope, dest, NodeOutput::Immediate(reg))?;
                         }
                     }
                     init => {
-                        assign_var(scope, dest, init);
+                        assign_var(scope, dest, init)?;
                     }
                 }
             }
             None => {
-                assign_var(scope, dest, NodeOutput::Constant(Constant::Nil));
+                assign_var(scope, dest, NodeOutput::Constant(Constant::Nil))?;
             }
         }
 

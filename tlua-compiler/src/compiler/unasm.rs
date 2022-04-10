@@ -32,6 +32,7 @@ impl From<OffsetRegister> for Register {
 
 pub(crate) type LocalRegister = OffsetRegister;
 
+#[must_use]
 pub(crate) type MappedLocalRegister = MappedRegister<LocalRegister>;
 
 impl AssembleOp for MappedRegister<LocalRegister> {

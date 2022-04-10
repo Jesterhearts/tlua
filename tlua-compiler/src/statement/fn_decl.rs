@@ -9,7 +9,7 @@ use tlua_parser::statement::fn_decl::FnDecl;
 use crate::{
     compiler::{
         HasVaArgs,
-        InitRegister,
+        RegisterOps,
     },
     expressions::function_defs::emit_fn,
     CompileError,
@@ -34,7 +34,8 @@ impl CompileStatement for FnDecl<'_> {
                     body.body.ret.as_ref(),
                 )?;
 
-                let func = scope.push_immediate().init_alloc_fn(scope, func_id);
+                let func = scope.push_immediate();
+                func.alloc_and_set_from_fn(scope, func_id)?;
                 let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(func));
 
                 if name.path.is_empty() {
@@ -47,37 +48,36 @@ impl CompileStatement for FnDecl<'_> {
                 let head = scope.read_variable(path.next().copied().expect("Path is not empty"))?;
 
                 if path.len() == 0 && name.method.is_none() {
-                    head.init_from_immediate(&mut scope, func);
+                    head.set_from_immediate(&mut scope, func)?;
                     return Ok(None);
                 }
 
-                let table = scope
-                    .push_immediate()
-                    .init_from_mapped_reg(&mut scope, head);
+                let table = scope.push_immediate();
+                table.set_from_local(&mut scope, head)?;
                 let mut scope = guard_on_success(&mut scope, |scope| scope.pop_immediate(table));
 
-                let index_reg = scope.push_immediate().no_init_needed();
+                let index_reg = scope.push_immediate();
                 let mut scope =
                     guard_on_success(&mut scope, |scope| scope.pop_immediate(index_reg));
 
                 for _ in 0..(path.len().saturating_sub(1)) {
                     let index = path.next().expect("Still in bounds");
-                    index_reg.init_from_const(&mut scope, Constant::String(index.into()));
+                    index_reg.set_from_constant(&mut scope, Constant::String(index.into()))?;
                     scope.emit(opcodes::Lookup::from((table, table, index_reg)));
                 }
 
                 match (path.next(), name.method) {
                     (Some(last), None) => {
-                        index_reg.init_from_const(&mut scope, Constant::String(last.into()));
+                        index_reg.set_from_constant(&mut scope, Constant::String(last.into()))?;
                     }
                     (Some(last), Some(method)) => {
-                        index_reg.init_from_const(&mut scope, Constant::String(last.into()));
+                        index_reg.set_from_constant(&mut scope, Constant::String(last.into()))?;
                         scope.emit(opcodes::Lookup::from((table, table, index_reg)));
 
-                        index_reg.init_from_const(&mut scope, Constant::String(method.into()));
+                        index_reg.set_from_constant(&mut scope, Constant::String(method.into()))?;
                     }
                     (None, Some(method)) => {
-                        index_reg.init_from_const(&mut scope, Constant::String(method.into()));
+                        index_reg.set_from_constant(&mut scope, Constant::String(method.into()))?;
                     }
                     (None, None) => unreachable!("Must have a path or a method name"),
                 }
@@ -106,7 +106,7 @@ impl CompileStatement for FnDecl<'_> {
                 // Because this is a local function declaration, we know we're the first write
                 // to it in scope. We had to have the register already allocated though so it
                 // could be in scope during compilation of child scopes.
-                register.init_alloc_fn(scope, fn_id);
+                register.alloc_and_set_from_fn(scope, fn_id)?;
             }
         };
 

@@ -3,7 +3,7 @@ use tlua_bytecode::OpError;
 use tlua_parser::statement::variables::LocalVarList;
 
 use crate::{
-    compiler::InitRegister,
+    compiler::RegisterOps,
     statement::assignment,
     CompileError,
     CompileStatement,
@@ -21,7 +21,7 @@ impl CompileStatement for LocalVarList<'_> {
             |scope, reg, src| {
                 let src = src.into_register(scope);
                 let mut scope = guard_on_success(scope, |scope| scope.pop_immediate(src));
-                reg.init_from_immediate(&mut scope, src);
+                reg.set_from_immediate(&mut scope, src)
             },
             self.vars.iter(),
             self.initializers.iter(),
